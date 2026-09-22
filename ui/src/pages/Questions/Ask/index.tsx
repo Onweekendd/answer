@@ -52,6 +52,7 @@ import { pathFactory } from '@/router/pathFactory';
 import { useCaptchaPlugin } from '@/utils/pluginKit';
 
 import SearchQuestion from './components/SearchQuestion';
+import PurchaseFields from './components/PurchaseFields';
 
 interface FormDataItem {
   title: Type.FormValue<string>;
@@ -59,6 +60,9 @@ interface FormDataItem {
   content: Type.FormValue<string>;
   answer_content: Type.FormValue<string>;
   edit_summary: Type.FormValue<string>;
+  images: Type.FormValue<string[]>;
+  price: Type.FormValue<string>;
+  link: Type.FormValue<string>;
 }
 
 const saveDraft = new SaveDraft({ type: 'question' });
@@ -86,6 +90,21 @@ const Ask = () => {
       errorMsg: '',
     },
     edit_summary: {
+      value: '',
+      isInvalid: false,
+      errorMsg: '',
+    },
+    images: {
+      value: [],
+      isInvalid: false,
+      errorMsg: '',
+    },
+    price: {
+      value: '',
+      isInvalid: false,
+      errorMsg: '',
+    },
+    link: {
       value: '',
       isInvalid: false,
       errorMsg: '',
@@ -162,6 +181,9 @@ const Ask = () => {
           formData.content.value = draft.content;
           formData.tags.value = draft.tags;
           formData.answer_content.value = draft.answer_content;
+          formData.images.value = draft.images || [];
+          formData.price.value = draft.price || '';
+          formData.link.value = draft.link || '';
           setCheckState(Boolean(draft.answer_content));
           setHasDraft(true);
         }
@@ -177,8 +199,16 @@ const Ask = () => {
   }, [qid]);
 
   useEffect(() => {
-    const { title, tags, content, answer_content } = formData;
-    const { title: editTitle, tags: editTags, content: editContent } = immData;
+    const { title, tags, content, answer_content, images, price, link } =
+      formData;
+    const {
+      title: editTitle,
+      tags: editTags,
+      content: editContent,
+      images: editImages,
+      price: editPrice,
+      link: editLink,
+    } = immData;
 
     // edited
     if (qid) {
@@ -188,7 +218,10 @@ const Ask = () => {
         !isEqual(
           editTags.value.map((v) => v.slug_name),
           tags.value.map((v) => v.slug_name),
-        )
+        ) ||
+        !isEqual(editImages.value, images.value) ||
+        editPrice.value !== price.value ||
+        editLink.value !== link.value
       ) {
         setBlockState(true);
       } else {
@@ -201,7 +234,10 @@ const Ask = () => {
       title.value ||
       tags.value.length > 0 ||
       content.value ||
-      answer_content.value
+      answer_content.value ||
+      images.value.length > 0 ||
+      price.value ||
+      link.value
     ) {
       // save draft
       saveDraft.save({
@@ -210,6 +246,9 @@ const Ask = () => {
           tags: tags.value,
           content: content.value,
           answer_content: answer_content.value,
+          images: images.value,
+          price: price.value,
+          link: link.value,
         },
         callback: () => setHasDraft(true),
       });
@@ -240,6 +279,11 @@ const Ask = () => {
           original_text: '',
         };
       });
+      formData.images.value = res.purchase?.images || [];
+      formData.price.value = res.purchase?.price
+        ? String(res.purchase.price)
+        : '';
+      formData.link.value = res.purchase?.link || '';
       setImmData({ ...formData });
       setFormData({ ...formData });
     });
@@ -282,6 +326,22 @@ const Ask = () => {
     setFormData((prev) => ({
       ...prev,
       answer_content: { value, errorMsg: '', isInvalid: false },
+    }));
+
+  const handleImagesChange = (value: string[]) =>
+    setFormData((prev) => ({
+      ...prev,
+      images: { value, errorMsg: '', isInvalid: false },
+    }));
+  const handlePriceChange = (value: string) =>
+    setFormData((prev) => ({
+      ...prev,
+      price: { value, errorMsg: '', isInvalid: false },
+    }));
+  const handleLinkChange = (value: string) =>
+    setFormData((prev) => ({
+      ...prev,
+      link: { value, errorMsg: '', isInvalid: false },
     }));
 
   const handleSummaryChange = (evt: React.ChangeEvent<HTMLInputElement>) =>
@@ -388,6 +448,11 @@ const Ask = () => {
       title: formData.title.value,
       content: formData.content.value,
       tags: formData.tags.value,
+      purchase: {
+        images: formData.images.value,
+        price: Number(formData.price.value) || 0,
+        link: formData.link.value.trim(),
+      },
     };
 
     if (isEdit) {
@@ -484,6 +549,14 @@ const Ask = () => {
               </Form.Control.Feedback>
               {bool && <SearchQuestion similarQuestions={similarQuestions} />}
             </Form.Group>
+            <PurchaseFields
+              images={formData.images}
+              price={formData.price}
+              link={formData.link}
+              onImagesChange={handleImagesChange}
+              onPriceChange={handlePriceChange}
+              onLinkChange={handleLinkChange}
+            />
             <Form.Group controlId="content">
               <Form.Label>{t('form.fields.body.label')}</Form.Label>
               <Editor

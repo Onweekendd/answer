@@ -20,7 +20,7 @@
 import { memo, FC, useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { Button, Card, OverlayTrigger, Tooltip } from 'react-bootstrap';
 
 import {
   Tag,
@@ -156,6 +156,45 @@ const Index: FC<Props> = ({ data, initPage, hasAnswer, isLogged }) => {
           </Button>
         </OverlayTrigger>
       </div>
+
+      {data?.purchase && (
+        <Card className="mb-4">
+          <Card.Body>
+            <div className="d-flex flex-wrap align-items-baseline mb-3">
+              <span className="text-secondary small me-2">
+                {t('price', { keyPrefix: 'purchase' })}
+              </span>
+              {data.purchase.price > 0 ? (
+                <span className="fs-4 fw-bold text-danger">
+                  ¥{data.purchase.price}
+                </span>
+              ) : (
+                <span className="text-secondary">
+                  {t('no_price', { keyPrefix: 'purchase' })}
+                </span>
+              )}
+              {data.purchase.link && (
+                <a
+                  href={data.purchase.link}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="ms-auto small">
+                  {t('open_link', { keyPrefix: 'purchase' })} ↗
+                </a>
+              )}
+            </div>
+            {data.purchase.images?.length > 0 && (
+              <ImgViewer>
+                <div className="purchase-gallery d-flex flex-wrap gap-2">
+                  {data.purchase.images.map((url: string) => (
+                    <img key={url} src={url} alt="" className="rounded" />
+                  ))}
+                </div>
+              </ImgViewer>
+            )}
+          </Card.Body>
+        </Card>
+      )}
 
       <ImgViewer>
         <article

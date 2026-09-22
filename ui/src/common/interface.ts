@@ -78,11 +78,20 @@ export interface TagInfo extends TagBase {
   excerpt?;
   status: string;
 }
+export interface PurchaseInfo {
+  images: string[];
+  price: number;
+  currency?: string;
+  link?: string;
+  ai_status?: number;
+}
+
 export interface QuestionParams extends ImgCodeReq {
   title: string;
   url_title?: string;
   content: string;
   tags: Tag[];
+  purchase: PurchaseInfo;
 }
 
 export interface QuestionWithAnswer extends QuestionParams {
@@ -254,6 +263,7 @@ export interface QuestionDetailRes {
   answered: boolean;
   collected: boolean;
   answer_ids: string[];
+  purchase?: PurchaseInfo;
 
   [prop: string]: any;
 }

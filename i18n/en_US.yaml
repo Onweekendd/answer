@@ -237,6 +237,9 @@ backend:
         other: Content cannot be empty.
       content_less_than_minimum:
         other: Not enough content entered.
+    purchase:
+      image_not_from_site:
+        other: Images must be uploaded to this site first.
     rank:
       fail_to_meet_the_condition:
         other: Reputation rank fail to meet the condition.
@@ -825,16 +828,16 @@ ui:
     prev: Prev
     next: Next
   page_title:
-    question: Question
-    questions: Questions
+    question: Post
+    questions: Posts
     tag: Tag
     tags: Tags
     tag_wiki: tag wiki
     create_tag: Create Tag
     edit_tag: Edit Tag
-    ask_a_question: Create Question
-    edit_question: Edit Question
-    edit_answer: Edit Answer
+    ask_a_question: New Post
+    edit_question: Edit Post
+    edit_answer: Edit Verdict
     search: Search
     posts_containing: Posts containing
     settings: Settings
@@ -859,13 +862,13 @@ ui:
     posts: Posts
     ai_assistant: AI Assistant
   ai_assistant:
-    description: Got a question? Ask it and get answers, perspectives, and recommendations.
+    description: Not sure whether to buy? Post it and let the community decide.
     recent_conversations: Recent Conversations
     show_more: Show more
     new: New chat
     ai_generate: AI-generated from posts and may not be accurate.
     copy: Copy
-    ask_a_follow_up: Ask a follow-up
+    ask_a_follow_up: Follow up
     ask_placeholder: Ask a question
     thinking: Thinking…
     thoughts: Thoughts
@@ -882,8 +885,8 @@ ui:
       posts: Posts
       invites: Invites
       votes: Votes
-    answer: Answer
-    question: Question
+    answer: Verdict
+    question: Post
     badge_award: Badge
   suspended:
     title: Your Account has been Suspended
@@ -1007,8 +1010,8 @@ ui:
   report_modal:
     flag_title: I am flagging to report this post as...
     close_title: I am closing this post as...
-    review_question_title: Review question
-    review_answer_title: Review answer
+    review_question_title: Review post
+    review_answer_title: Review verdict
     review_comment_title: Review comment
     btn_cancel: Cancel
     btn_submit: Submit
@@ -1118,21 +1121,21 @@ ui:
     show_more: "{{count}} more comments"
     tip_question: >-
       Use comments to ask for more information or suggest improvements. Avoid
-      answering questions in comments.
+      giving verdicts in comments.
     tip_answer: >-
       Use comments to reply to other users or notify them of changes. If you are
       adding new information, edit your post instead of commenting.
     tip_vote: It adds something useful to the post
   edit_answer:
-    title: Edit Answer
-    default_reason: Edit answer
-    default_first_reason: Add answer
+    title: Edit Verdict
+    default_reason: Edit verdict
+    default_first_reason: Add verdict
     form:
       fields:
         revision:
           label: Revision
         answer:
-          label: Answer
+          label: Verdict
           feedback:
             characters: content must be at least 6 characters in length.
         edit_summary:
@@ -1150,17 +1153,17 @@ ui:
       newest: Newest
     button_follow: Follow
     button_following: Following
-    tag_label: questions
+    tag_label: posts
     search_placeholder: Filter by tag name
     no_desc: The tag has no description.
     more: More
     wiki: Wiki
   ask:
-    title: Create Question
-    edit_title: Edit Question
-    default_reason: Edit question
-    default_first_reason: Create question
-    similar_questions: Similar questions
+    title: New Post
+    edit_title: Edit Post
+    default_reason: Edit post
+    default_first_reason: Create post
+    similar_questions: Similar posts
     form:
       fields:
         revision:
@@ -1176,25 +1179,44 @@ ui:
           msg:
             empty: Body cannot be empty.
           hint:
-            optional_body: Describe what the question is about.
-            minimum_characters: "Describe what the question is about, at least {{min_content_length}} characters are required."
+            optional_body: "Tell us why you are hesitating: price, use case, concerns..."
+            minimum_characters: "Tell us why you are hesitating, at least {{min_content_length}} characters are required."
         tags:
           label: Tags
           msg:
             empty: Tags cannot be empty.
-        answer:
-          label: Answer
+        images:
+          label: Screenshots
+          hint: Screenshots from Taobao / JD etc., 1–5 images. The first one is the cover.
+          cover: Cover
           msg:
-            empty: Answer cannot be empty.
+            empty: Upload at least one screenshot.
+        price:
+          label: Price
+          placeholder: Optional, in CNY
+        link:
+          label: Product link
+          placeholder: Optional, https://...
+        answer:
+          label: Verdict
+          msg:
+            empty: Verdict cannot be empty.
         edit_summary:
           label: Edit summary
           placeholder: >-
             Briefly explain your changes (corrected spelling, fixed grammar,
             improved formatting)
-    btn_post_question: Post your question
+    btn_post_question: Publish
     btn_save_edits: Save edits
-    answer_question: Answer your own question
-    post_question&answer: Post your question and answer
+    answer_question: Give a verdict on your own post
+    post_question&answer: Publish post and verdict
+  purchase:
+    info_title: Product
+    price: Price
+    link: Link
+    open_link: Open product page
+    no_price: Not provided
+    images_count: "{{ count }} screenshots"
   tag_selector:
     add_btn: Add tag
     create_btn: Create new tag
@@ -1206,7 +1228,7 @@ ui:
     tag_required_text: Required tag (at least one)
   header:
     nav:
-      question: Questions
+      question: Posts
       tag: Tags
       user: Users
       badges: Badges
@@ -1360,13 +1382,13 @@ ui:
       turn_on: Turn on
       inbox:
         label: Inbox notifications
-        description: Answers to your questions, comments, invites, and more.
+        description: Verdicts on your posts, comments, invites, and more.
       all_new_question:
-        label: All new questions
-        description: Get notified of all new questions. Up to 50 questions per week.
+        label: All new posts
+        description: Get notified of all new posts. Up to 50 per week.
       all_new_question_for_following_tags:
-        label: All new questions for following tags
-        description: Get notified of new questions for following tags.
+        label: All new posts for following categories
+        description: Get notified of new posts for following categories.
     account:
       heading: Account
       change_email_btn: Change email
@@ -1414,22 +1436,22 @@ ui:
     sent_success: Sent successfully
   related_question:
     title: Related
-    answers: answers
+    verdicts: verdicts
   linked_question:
     title: Linked
     description: Posts linked to
     no_linked_question: No contents linked from this content.
   invite_to_answer:
     title: Invite People
-    desc: Invite people you think can answer.
-    invite: Invite to answer
+    desc: Invite people who can give a verdict.
+    invite: Invite to review
     add: Add people
     search: Search people
   question_detail:
     action: Action
     created: Created
-    Asked: Asked
-    asked: asked
+    Posted: Posted
+    posted: posted
     update: Modified
     Edited: Edited
     edit: edited
@@ -1437,41 +1459,41 @@ ui:
     Views: Viewed
     Follow: Follow
     Following: Following
-    follow_tip: Follow this question to receive notifications
-    answered: answered
+    follow_tip: Follow this post to receive notifications
+    reviewed: reviewed
     closed_in: Closed in
-    show_exist: Show existing question.
+    show_exist: Show existing post.
     useful: Useful
     question_useful: It is useful and clear
     question_un_useful: It is unclear or not useful
-    question_bookmark: Bookmark this question
+    question_bookmark: Bookmark this post
     answer_useful: It is useful
     answer_un_useful: It is not useful
     answers:
-      title: Answers
+      title: Verdicts
       score: Score
       newest: Newest
       oldest: Oldest
       btn_accept: Accept
       btn_accepted: Accepted
     write_answer:
-      title: Your Answer
-      edit_answer: Edit my existing answer
-      btn_name: Post your answer
-      add_another_answer: Add another answer
-      confirm_title: Continue to answer
+      title: Your Verdict
+      edit_answer: Edit my existing verdict
+      btn_name: Post your verdict
+      add_another_answer: Add another verdict
+      confirm_title: Continue
       continue: Continue
       confirm_info: >-
-        <p>Are you sure you want to add another answer?</p><p>You could use the
-        edit link to refine and improve your existing answer, instead.</p>
-      empty: Answer cannot be empty.
+        <p>Are you sure you want to add another verdict?</p><p>You could use the
+        edit link to refine and improve your existing verdict, instead.</p>
+      empty: Verdict cannot be empty.
       characters: content must be at least 6 characters in length.
       tips:
-        header_1: Thanks for your answer
-        li1_1: Please be sure to <strong>answer the question</strong>. Provide details and share your research.
+        header_1: Thanks for your verdict
+        li1_1: "Please <strong>take a clear stance</strong>: buy, wait, or skip, and explain why."
         li1_2: Back up any statements you make with references or personal experience.
         header_2: But <strong>avoid</strong> ...
-        li2_1: Asking for help, seeking clarification, or responding to other answers.
+        li2_1: Asking for help, seeking clarification, or responding to other verdicts.
     reopen:
       confirm_btn: Reopen
       title: Reopen this post
@@ -1491,17 +1513,17 @@ ui:
   delete:
     title: Delete this post
     question: >-
-      We do not recommend <strong>deleting questions with answers</strong> because
+      We do not recommend <strong>deleting posts with verdicts</strong> because
       doing so deprives future readers of this knowledge.</p><p>Repeated deletion
-      of answered questions can result in your account being blocked from asking.
+      of reviewed posts can result in your account being blocked from posting.
       Are you sure you wish to delete?
     answer_accepted: >-
-      <p>We do not recommend <strong>deleting accepted answer</strong> because
+      <p>We do not recommend <strong>deleting accepted verdict</strong> because
       doing so deprives future readers of this knowledge. </p> Repeated deletion
-      of accepted answers can result in your account being blocked from answering.
+      of accepted verdicts can result in your account being blocked from reviewing.
       Are you sure you wish to delete?
     other: Are you sure you wish to delete?
-    tip_answer_deleted: This answer has been deleted
+    tip_answer_deleted: This verdict has been deleted
     undelete_title: Undelete this post
     undelete_desc: Are you sure you wish to undelete?
   btns:
@@ -1525,8 +1547,8 @@ ui:
     discard_draft: Discard draft
     pinned: Pinned
     all: All
-    question: Question
-    answer: Answer
+    question: Post
+    answer: Verdict
     comment: Comment
     refresh: Refresh
     resend: Resend
@@ -1579,10 +1601,10 @@ ui:
       title: Advanced Search Tips
       tag: "<1>[tag]</1> search with a tag"
       user: "<1>user:username</1> search by author"
-      answer: "<1>answers:0</1> unanswered questions"
+      answer: "<1>answers:0</1> pending posts"
       score: "<1>score:3</1> posts with a 3+ score"
-      question: "<1>is:question</1> search questions"
-      is_answer: "<1>is:answer</1> search answers"
+      question: "<1>is:question</1> search posts"
+      is_answer: "<1>is:answer</1> search verdicts"
     empty: We couldn't find anything. <br /> Try different or less specific keywords.
   share:
     name: Share
@@ -1615,33 +1637,33 @@ ui:
     following_tags: Following Tags
     edit: Edit
     save: Save
-    follow_tag_tip: Follow tags to curate your list of questions.
-    hot_questions: Hot Questions
-    all_questions: All Questions
-    x_questions: "{{ count }} Questions"
-    x_answers: "{{ count }} answers"
+    follow_tag_tip: Follow categories to curate your list of posts.
+    hot_questions: Hot
+    all_questions: All
+    x_questions: "{{ count }} Posts"
+    x_answers: "{{ count }} verdicts"
     x_posts: "{{ count }} Posts"
-    questions: Questions
-    answers: Answers
+    questions: Posts
+    answers: Verdicts
     newest: Newest
     active: Active
     hot: Hot
     frequent: Frequent
     recommend: Recommend
     score: Score
-    unanswered: Unanswered
+    unanswered: Pending
     modified: modified
-    answered: answered
-    asked: asked
+    reviewed: reviewed
+    posted: posted
     closed: closed
     follow_a_tag: Follow a tag
     more: More
   personal:
     overview: Overview
-    answers: Answers
-    answer: answer
-    questions: Questions
-    question: question
+    answers: Verdicts
+    verdict: verdict
+    questions: Posts
+    post: post
     bookmarks: Bookmarks
     reputation: Reputation
     comments: Comments
@@ -1657,21 +1679,21 @@ ui:
     last_login: Seen
     about_me: About Me
     about_me_empty: "// Hello, World !"
-    top_answers: Top Answers
-    top_questions: Top Questions
+    top_answers: Top Verdicts
+    top_questions: Top Posts
     stats: Stats
     list_empty: No posts found.<br />Perhaps you'd like to select a different tab?
     content_empty: No posts found.
     accepted: Accepted
-    answered: answered
-    asked: asked
+    reviewed: reviewed
+    posted: posted
     downvoted: downvoted
     mod_short: MOD
     mod_long: Moderators
     x_reputation: reputation
     x_votes: votes received
-    x_answers: answers
-    x_questions: questions
+    x_verdicts: verdicts
+    x_posts: posts
     recent_badges: Recent Badges
   install:
     title: Installation
@@ -1792,7 +1814,7 @@ ui:
   counts:
     views: views
     votes: votes
-    answers: answers
+    verdicts: verdicts
     accepted: Accepted
   page_error:
     http_error: HTTP Error {{ code }}

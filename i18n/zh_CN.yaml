@@ -236,6 +236,9 @@ backend:
         other: 内容不能为空。
       content_less_than_minimum:
         other: 输入的内容不足。
+    purchase:
+      image_not_from_site:
+        other: 图片必须先上传到本站。
     rank:
       fail_to_meet_the_condition:
         other: 声望值未达到要求。
@@ -814,16 +817,16 @@ ui:
     prev: 上一页
     next: 下一页
   page_title:
-    question: 问题
-    questions: 问题
+    question: 买不买
+    questions: 买不买
     tag: 标签
     tags: 标签
     tag_wiki: 标签维基
     create_tag: 创建标签
     edit_tag: 编辑标签
-    ask_a_question: 创建问题
-    edit_question: 编辑问题
-    edit_answer: 编辑回答
+    ask_a_question: 发一个买不买
+    edit_question: 编辑买不买
+    edit_answer: 编辑审批意见
     search: 搜索
     posts_containing: 帖子包含
     settings: 设置
@@ -848,13 +851,13 @@ ui:
     posts: 帖子
     ai_assistant: AI 助手
   ai_assistant:
-    description: 有问题？问它并获得答案、观点和建议。
+    description: 纠结买不买？发出来，让大家帮你决定。
     recent_conversations: 新对话
     show_more: 显示更多
     new: 新聊天
     ai_generate: 来自帖子的 AI，可能不准确。
     copy: 复制
-    ask_a_follow_up: 提出后续问题
+    ask_a_follow_up: 继续追问
     ask_placeholder: 提问
   notifications:
     title: 通知
@@ -869,8 +872,8 @@ ui:
       posts: 帖子
       invites: 邀请
       votes: 投票
-    answer: 回答
-    question: 问题
+    answer: 审批意见
+    question: 买不买
     badge_award: 徽章
   suspended:
     title: 你的账号账号已被封禁
@@ -994,8 +997,8 @@ ui:
   report_modal:
     flag_title: 我举报这篇帖子的原因是...
     close_title: 我关闭这篇帖子的原因是...
-    review_question_title: 审查问题
-    review_answer_title: 审查回答
+    review_question_title: 审查买不买
+    review_answer_title: 审查审批意见
     review_comment_title: 审查评论
     btn_cancel: 取消
     btn_submit: 提交
@@ -1101,20 +1104,20 @@ ui:
     btn_cancel: 取消
     show_more: "{{count}} 条剩余评论"
     tip_question: >-
-      使用评论提问更多信息或者提出改进意见。避免在评论里回答问题。
+      使用评论提问更多信息或者提出改进意见。避免在评论里给出审批意见。
     tip_answer: >-
-      使用评论对回答者进行回复，或者通知回答者你已更新了问题的内容。如果要补充或者完善问题的内容，请在原问题中更改。
+      使用评论回复审批者，或者通知对方你已更新了帖子内容。如果要补充或者完善帖子内容，请在原帖中更改。
     tip_vote: 它给帖子添加了一些有用的内容
   edit_answer:
-    title: 编辑回答
-    default_reason: 编辑回答
+    title: 编辑审批意见
+    default_reason: 编辑审批意见
     default_first_reason: 添加答案
     form:
       fields:
         revision:
           label: 编辑历史
         answer:
-          label: 回答内容
+          label: 审批意见
           feedback:
             characters: 内容长度至少 6 个字符
         edit_summary:
@@ -1131,17 +1134,17 @@ ui:
       newest: 最新
     button_follow: 关注
     button_following: 已关注
-    tag_label: 个问题
+    tag_label: 个帖子
     search_placeholder: 通过标签名称过滤
     no_desc: 此标签无描述。
     more: 更多
     wiki: 维基
   ask:
-    title: 创建问题
-    edit_title: 编辑问题
-    default_reason: 编辑问题
-    default_first_reason: 创建问题
-    similar_questions: 相似问题
+    title: 发一个买不买
+    edit_title: 编辑买不买
+    default_reason: 编辑买不买
+    default_first_reason: 发一个买不买
+    similar_questions: 有人问过同款
     form:
       fields:
         revision:
@@ -1157,24 +1160,43 @@ ui:
           msg:
             empty: 内容不能为空。
           hint:
-            optional_body: 描述这个问题是什么。
-            minimum_characters: "详细描述这个问题，至少需要 {{min_content_length}} 字符。"
+            optional_body: 说说你为什么纠结：价格、用途、顾虑……
+            minimum_characters: "说说你为什么纠结，至少需要 {{min_content_length}} 字符。"
         tags:
           label: 标签
           msg:
             empty: 必须选择一个标签
-        answer:
-          label: 回答内容
+        images:
+          label: 商品截图
+          hint: 淘宝 / 京东等页面的截图，1–5 张，第一张会作为封面。
+          cover: 封面
           msg:
-            empty: 回答内容不能为空
+            empty: 至少上传一张截图。
+        price:
+          label: 价格
+          placeholder: 选填，单位：元
+        link:
+          label: 商品链接
+          placeholder: 选填，https://…
+        answer:
+          label: 审批意见
+          msg:
+            empty: 审批意见不能为空
         edit_summary:
           label: 编辑备注
           placeholder: >-
             简单描述更改原因（更正拼写、修复语法、改进格式）
-    btn_post_question: 提交问题
+    btn_post_question: 发布
     btn_save_edits: 保存更改
-    answer_question: 回答自己的问题
-    post_question&answer: 提交问题和回答
+    answer_question: 给自己的帖子写审批意见
+    post_question&answer: 发布帖子和审批意见
+  purchase:
+    info_title: 商品信息
+    price: 价格
+    link: 链接
+    open_link: 查看商品页
+    no_price: 未填写
+    images_count: "{{ count }} 张截图"
   tag_selector:
     add_btn: 添加标签
     create_btn: 创建新标签
@@ -1186,7 +1208,7 @@ ui:
     tag_required_text: 必选标签（至少一个）
   header:
     nav:
-      question: 问题
+      question: 买不买
       tag: 标签
       user: 用户
       badges: 徽章
@@ -1334,13 +1356,13 @@ ui:
       turn_on: 开启
       inbox:
         label: 收件箱通知
-        description: 你的提问有新的回答，评论，邀请回答和其他。
+        description: 你的帖子有新的审批意见，评论，邀请回答和其他。
       all_new_question:
-        label: 所有新问题
-        description: 获取所有新问题的通知。每周最多有50个问题。
+        label: 所有新帖子
+        description: 获取所有新帖子的通知。每周最多有 50 个。
       all_new_question_for_following_tags:
-        label: 所有关注标签的新问题
-        description: 获取关注的标签下新问题通知。
+        label: 所有关注品类的新帖子
+        description: 获取关注品类下的新帖子通知。
     account:
       heading: 账号
       change_email_btn: 更改邮箱
@@ -1387,7 +1409,7 @@ ui:
     sent_success: 发送成功
   related_question:
     title: 相似
-    answers: 个回答
+    answers: 条审批意见
   linked_question:
     title: 关联
     description: 帖子关联到
@@ -1395,52 +1417,52 @@ ui:
   invite_to_answer:
     title: 受邀人
     desc: 邀请你认为可能知道答案的人。
-    invite: 邀请回答
+    invite: 邀请审批
     add: 添加人员
     search: 搜索人员
   question_detail:
     action: 操作
     created: 创建于
-    Asked: 提问于
-    asked: 提问于
+    Asked: 发布于
+    asked: 发布于
     update: 修改于
     Edited: 编辑于
     edit: 编辑于
     commented: 评论
     Views: 阅读次数
-    Follow: 关注此问题
+    Follow: 关注此帖
     Following: 已关注
-    follow_tip: 关注此问题以接收通知
-    answered: 回答于
+    follow_tip: 关注此帖以接收通知
+    answered: 审批于
     closed_in: 关闭于
-    show_exist: 查看类似问题。
+    show_exist: 查看同款帖子。
     useful: 有用的
     question_useful: 它是有用和明确的
     question_un_useful: 它不明确或没用的
-    question_bookmark: 收藏该问题
+    question_bookmark: 收藏此帖
     answer_useful: 这是有用的
     answer_un_useful: 它是没有用的
     answers:
-      title: 个回答
+      title: 条审批意见
       score: 评分
       newest: 最新
       oldest: 最旧
       btn_accept: 采纳
       btn_accepted: 已被采纳
     write_answer:
-      title: 你的回答
-      edit_answer: 编辑我的回答
-      btn_name: 提交你的回答
-      add_another_answer: 添加另一个回答
-      confirm_title: 继续回答
+      title: 你的审批意见
+      edit_answer: 编辑我的审批意见
+      btn_name: 提交审批意见
+      add_another_answer: 再写一条审批意见
+      confirm_title: 继续审批
       continue: 继续
       confirm_info: >-
-        <p>你确定要提交一个新的回答吗？</p><p>作为替代，你可以通过编辑来完善和改进之前的回答。</p>
-      empty: 回答内容不能为空。
+        <p>你确定要再写一条审批意见吗？</p><p>作为替代，你可以通过编辑来完善之前的意见。</p>
+      empty: 审批意见不能为空。
       characters: 内容长度至少 6 个字符。
       tips:
-        header_1: 感谢你的回答
-        li1_1: 请务必确定在 <strong>回答问题</strong>。提供详细信息并分享你的研究。
+        header_1: 感谢你的审批意见
+        li1_1: 请务必 <strong>给出明确的立场</strong>：买、再等等还是不买，并说明理由。
         li1_2: 用参考资料或个人经历来支持你所做的任何陈述。
         header_2: 但是 <strong>请避免</strong>...
         li2_1: 请求帮助，寻求澄清，或答复其他答案。
@@ -1463,11 +1485,11 @@ ui:
   delete:
     title: 删除
     question: >-
-      我们不建议 <strong>删除有回答的帖子</strong>。因为这样做会使得后来的读者无法从该帖子中获得帮助。</p><p>如果删除过多有回答的帖子，你的账号将会被禁止提问。你确定要删除吗？
+      我们不建议 <strong>删除有审批意见的帖子</strong>。因为这样做会使得后来的读者无法从该帖子中获得帮助。</p><p>如果删除过多有回答的帖子，你的账号将会被禁止发帖。你确定要删除吗？
     answer_accepted: >-
-      <p>我们不建议<strong>删除被采纳的回答</strong>。因为这样做会使得后来的读者无法从该帖子中获得帮助。</p>如果删除过多被采纳的回答，你的账号将会被禁止回答任何提问。你确定要删除吗？
+      <p>我们不建议<strong>删除被采纳的审批意见</strong>。因为这样做会使得后来的读者无法从该帖子中获得帮助。</p>如果删除过多被采纳的审批意见，你的账号将会被禁止审批。你确定要删除吗？
     other: 你确定要删除？
-    tip_answer_deleted: 该回答已被删除
+    tip_answer_deleted: 该审批意见已被删除
     undelete_title: 撤销删除本帖
     undelete_desc: 你确定你要撤销删除吗？
   btns:
@@ -1491,8 +1513,8 @@ ui:
     discard_draft: 丢弃草稿
     pinned: 已置顶
     all: 全部
-    question: 问题
-    answer: 回答
+    question: 买不买
+    answer: 审批意见
     comment: 评论
     refresh: 刷新
     resend: 重新发送
@@ -1545,10 +1567,10 @@ ui:
       title: 高级搜索提示
       tag: "<1>[tag]</1> 在指定标签中搜索"
       user: "<1>user:username</1> 根据作者搜索"
-      answer: "<1>answers:0</1> 搜索未回答的问题"
+      answer: "<1>answers:0</1> 搜索待审批的帖子"
       score: "<1>score:3</1> 评分 3+ 的帖子"
-      question: "<1>is:question</1> 搜索问题"
-      is_answer: "<1>is:answer</1> 搜索回答"
+      question: "<1>is:question</1> 搜索帖子"
+      is_answer: "<1>is:answer</1> 搜索审批意见"
     empty: 找不到任何相关的内容。<br /> 请尝试其他关键字，或者减少查找内容的长度。
   share:
     name: 分享
@@ -1580,33 +1602,33 @@ ui:
     following_tags: 已关注的标签
     edit: 编辑
     save: 保存
-    follow_tag_tip: 关注标签来筛选你的问题列表。
-    hot_questions: 热门问题
-    all_questions: 全部问题
-    x_questions: "{{ count }} 个问题"
-    x_answers: "{{ count }} 个回答"
+    follow_tag_tip: 关注品类来筛选你的帖子列表。
+    hot_questions: 热门
+    all_questions: 全部
+    x_questions: "{{ count }} 个帖子"
+    x_answers: "{{ count }} 条审批意见"
     x_posts: "{{ count }} 个帖子"
-    questions: 问题
-    answers: 回答
+    questions: 买不买
+    answers: 审批意见
     newest: 最新
     active: 活跃
     hot: 热门
     frequent: 频繁的
     recommend: 推荐
     score: 评分
-    unanswered: 未回答
+    unanswered: 待审批
     modified: 更新于
-    answered: 回答于
-    asked: 提问于
+    answered: 审批于
+    asked: 发布于
     closed: 已关闭
     follow_a_tag: 关注一个标签
     more: 更多
   personal:
     overview: 概览
-    answers: 回答
-    answer: 回答
-    questions: 问题
-    question: 问题
+    answers: 审批意见
+    answer: 审批意见
+    questions: 买不买
+    question: 买不买
     bookmarks: 收藏
     reputation: 声望
     comments: 评论
@@ -1622,21 +1644,21 @@ ui:
     last_login: 上次登录
     about_me: 关于我
     about_me_empty: "// Hello, World!"
-    top_answers: 高分回答
-    top_questions: 高分问题
+    top_answers: 高分审批意见
+    top_questions: 高分帖子
     stats: 状态
     list_empty: 没有找到相关的内容。<br />试试看其他选项卡？
     content_empty: 未找到帖子。
     accepted: 已采纳
-    answered: 回答于
-    asked: 提问于
+    answered: 审批于
+    asked: 发布于
     downvoted: 点踩
     mod_short: 版主
     mod_long: 版主
     x_reputation: 声望
     x_votes: 得票
-    x_answers: 个回答
-    x_questions: 个问题
+    x_answers: 条审批意见
+    x_questions: 个帖子
     recent_badges: 最近的徽章
   install:
     title: 安装
@@ -1752,7 +1774,7 @@ ui:
   counts:
     views: 次浏览
     votes: 个点赞
-    answers: 个回答
+    answers: 条审批意见
     accepted: 已被采纳
   page_error:
     http_error: HTTP 错误 {{ code }}
@@ -1765,8 +1787,8 @@ ui:
   nav_menus:
     dashboard: 后台管理
     contents: 内容管理
-    questions: 问题
-    answers: 回答
+    questions: 买不买
+    answers: 审批意见
     users: 用户管理
     badges: 徽章
     flags: 举报管理

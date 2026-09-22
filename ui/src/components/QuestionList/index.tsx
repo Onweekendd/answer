@@ -167,25 +167,60 @@ const QuestionList: FC<Props> = ({
                       className="text-secondary ms-1 flex-shrink-0"
                     />
                   </div>
-                  <h5 className="text-wrap text-break">
-                    <NavLink
-                      className="link-dark d-block"
-                      onClick={(e) => e.stopPropagation()}
-                      to={pathFactory.questionLanding(li.id, li.url_title)}>
-                      {li.title}
-                      {li.status === 2 ? ` [${t('closed')}]` : ''}
-                    </NavLink>
-                  </h5>
-                  {viewType === 'card' && (
-                    <div className="text-truncate-2 mb-2">
-                      <NavLink
-                        to={pathFactory.questionLanding(li.id, li.url_title)}
-                        className="d-block small text-body"
-                        dangerouslySetInnerHTML={{ __html: li.description }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                  <div className="d-flex">
+                    <div className="flex-grow-1 min-w-0">
+                      <h5 className="text-wrap text-break">
+                        <NavLink
+                          className="link-dark d-block"
+                          onClick={(e) => e.stopPropagation()}
+                          to={pathFactory.questionLanding(li.id, li.url_title)}>
+                          {li.title}
+                          {li.status === 2 ? ` [${t('closed')}]` : ''}
+                        </NavLink>
+                      </h5>
+                      {li.purchase && (
+                        <div className="mb-2 small">
+                          {li.purchase.price > 0 ? (
+                            <span className="fw-bold text-danger">
+                              ¥{li.purchase.price}
+                            </span>
+                          ) : (
+                            <span className="text-secondary">
+                              {t('no_price', { keyPrefix: 'purchase' })}
+                            </span>
+                          )}
+                          {li.purchase.images?.length > 1 && (
+                            <span className="text-secondary ms-2">
+                              {t('images_count', {
+                                keyPrefix: 'purchase',
+                                count: li.purchase.images.length,
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {viewType === 'card' && (
+                        <div className="text-truncate-2 mb-2">
+                          <NavLink
+                            to={pathFactory.questionLanding(
+                              li.id,
+                              li.url_title,
+                            )}
+                            className="d-block small text-body"
+                            dangerouslySetInnerHTML={{ __html: li.description }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      )}
                     </div>
-                  )}
+                    {viewType === 'card' && li.purchase?.images?.[0] && (
+                      <img
+                        src={li.purchase.images[0]}
+                        alt=""
+                        className="question-cover rounded ms-3 flex-shrink-0"
+                      />
+                    )}
+                  </div>
 
                   <div className="question-tags mb-12">
                     {Array.isArray(li.tags)

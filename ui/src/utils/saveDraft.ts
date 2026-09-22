@@ -31,6 +31,9 @@ export type QuestionDraft = {
     content: string;
     tags: any[];
     answer_content: string;
+    images?: string[];
+    price?: string;
+    link?: string;
   };
   callback?: () => void;
 };

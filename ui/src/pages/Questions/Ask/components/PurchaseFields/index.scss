@@ -1,0 +1,26 @@
+.purchase-image-item {
+  width: 96px;
+  height: 96px;
+  background-color: var(--bs-tertiary-bg);
+
+  img {
+    object-fit: cover;
+  }
+}
+
+.purchase-image-add {
+  cursor: pointer;
+  border-style: dashed !important;
+  color: var(--bs-secondary-color);
+
+  &:hover {
+    color: var(--bs-body-color);
+    border-color: var(--bs-secondary-color) !important;
+  }
+}
+
+.purchase-image-remove {
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+}
