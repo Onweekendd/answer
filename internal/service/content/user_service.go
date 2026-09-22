@@ -41,6 +41,7 @@ import (
 	"github.com/apache/answer/internal/service/activity"
 	"github.com/apache/answer/internal/service/activity_common"
 	"github.com/apache/answer/internal/service/auth"
+	"github.com/apache/answer/internal/service/config"
 	"github.com/apache/answer/internal/service/export"
 	"github.com/apache/answer/internal/service/file_record"
 	"github.com/apache/answer/internal/service/role"
@@ -70,6 +71,7 @@ type UserService struct {
 	questionService               *questioncommon.QuestionCommon
 	eventQueueService             eventqueue.Service
 	fileRecordService             *file_record.FileRecordService
+	configService                 *config.ConfigService
 }
 
 func NewUserService(userRepo usercommon.UserRepo,
@@ -86,6 +88,7 @@ func NewUserService(userRepo usercommon.UserRepo,
 	questionService *questioncommon.QuestionCommon,
 	eventQueueService eventqueue.Service,
 	fileRecordService *file_record.FileRecordService,
+	configService *config.ConfigService,
 ) *UserService {
 	return &UserService{
 		userCommonService:             userCommonService,
@@ -102,6 +105,7 @@ func NewUserService(userRepo usercommon.UserRepo,
 		questionService:               questionService,
 		eventQueueService:             eventQueueService,
 		fileRecordService:             fileRecordService,
+		configService:                 configService,
 	}
 }
 
@@ -169,6 +173,15 @@ func (us *UserService) EmailLogin(ctx context.Context, req *schema.UserEmailLogi
 	if !exist || userInfo.Status == entity.UserStatusDeleted {
 		return nil, errors.BadRequest(reason.EmailOrPasswordWrong)
 	}
+
+	botID, err := us.configService.GetStringValue(ctx, constant.AIBotUserIDKey)
+	if err != nil {
+		return nil, err
+	}
+	if userInfo.ID == botID {
+		return nil, errors.BadRequest(reason.EmailOrPasswordWrong)
+	}
+
 	if !us.verifyPassword(ctx, req.Pass, userInfo.Pass) {
 		return nil, errors.BadRequest(reason.EmailOrPasswordWrong)
 	}
