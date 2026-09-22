@@ -21,6 +21,10 @@ package constant
 
 const (
 	AIConfigProvider = "ai_config.provider"
+	// AIBotUserIDKey config key that stores the user ID of the AI bot account
+	AIBotUserIDKey = "ai.bot_user_id"
+	// AIBotUsername username of the AI bot account
+	AIBotUsername = "ai-assistant"
 )
 
 const (

@@ -57,6 +57,7 @@ var (
 		&entity.Report{},
 		&entity.Revision{},
 		&entity.SiteInfo{},
+		&entity.PurchaseDetail{},
 		&entity.Tag{},
 		&entity.TagRel{},
 		&entity.Uniqid{},

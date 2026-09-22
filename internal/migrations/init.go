@@ -73,6 +73,7 @@ func (m *Mentor) InitDB() error {
 	m.do("init power", m.initPower)
 	m.do("init role power rel", m.initRolePowerRel)
 	m.do("init admin user role rel", m.initAdminUserRoleRel)
+	m.do("init bot user", m.initBotUser)
 	m.do("init site info interface", m.initSiteInfoInterface)
 	m.do("init site info users settings", m.initSiteInfoUsersSettings)
 	m.do("init site info general config", m.initSiteInfoGeneralData)
@@ -130,6 +131,10 @@ func (m *Mentor) initAdminUser() {
 		Rank:         1,
 		DisplayName:  m.userData.AdminName,
 	})
+}
+
+func (m *Mentor) initBotUser() {
+	m.err = ensureBotUser(m.ctx, m.engine)
 }
 
 func (m *Mentor) initConfig() {

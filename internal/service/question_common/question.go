@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/siteinfo_common"
 
 	"github.com/apache/answer/internal/base/constant"
@@ -55,8 +56,10 @@ import (
 // QuestionRepo question repository
 type QuestionRepo interface {
 	AddQuestion(ctx context.Context, question *entity.Question) (err error)
+	AddQuestionWithPurchase(ctx context.Context, question *entity.Question, detail *entity.PurchaseDetail) (err error)
 	RemoveQuestion(ctx context.Context, id string) (err error)
 	UpdateQuestion(ctx context.Context, question *entity.Question, Cols []string) (err error)
+	UpdateQuestionWithPurchase(ctx context.Context, question *entity.Question, detail *entity.PurchaseDetail, Cols []string) (err error)
 	GetQuestion(ctx context.Context, id string) (question *entity.Question, exist bool, err error)
 	GetQuestionList(ctx context.Context, question *entity.Question) (questions []*entity.Question, err error)
 	GetQuestionPage(ctx context.Context, page, pageSize int, tagIDs []string, userID, orderCond string, inDays int, showHidden, showPending bool) (
@@ -107,6 +110,7 @@ type QuestionCommon struct {
 	revisionRepo         revision.RevisionRepo
 	siteInfoService      siteinfo_common.SiteInfoCommonService
 	data                 *data.Data
+	purchaseService      *purchase.PurchaseService
 }
 
 func NewQuestionCommon(questionRepo QuestionRepo,
@@ -123,6 +127,7 @@ func NewQuestionCommon(questionRepo QuestionRepo,
 	revisionRepo revision.RevisionRepo,
 	siteInfoService siteinfo_common.SiteInfoCommonService,
 	data *data.Data,
+	purchaseService *purchase.PurchaseService,
 ) *QuestionCommon {
 	return &QuestionCommon{
 		questionRepo:         questionRepo,
@@ -139,6 +144,7 @@ func NewQuestionCommon(questionRepo QuestionRepo,
 		revisionRepo:         revisionRepo,
 		siteInfoService:      siteInfoService,
 		data:                 data,
+		purchaseService:      purchaseService,
 	}
 }
 
@@ -335,6 +341,11 @@ func (qs *QuestionCommon) Info(ctx context.Context, questionID string, loginUser
 	resp.UserInfo = userInfoMap[questionInfo.UserID]
 	resp.UpdateUserInfo = userInfoMap[questionInfo.LastEditUserID]
 	resp.LastAnsweredUserInfo = userInfoMap[resp.LastAnsweredUserID]
+	resp.Purchase, err = qs.purchaseService.GetByQuestionID(ctx, questionID)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(loginUserID) == 0 {
 		return resp, nil
 	}
@@ -358,6 +369,7 @@ func (qs *QuestionCommon) Info(ctx context.Context, questionID string, loginUser
 	if len(collectedMap) > 0 {
 		resp.Collected = true
 	}
+
 	return resp, nil
 }
 
@@ -438,9 +450,15 @@ func (qs *QuestionCommon) FormatQuestionsPage(
 	if err != nil {
 		return formattedQuestions, err
 	}
+
 	userInfoMap, err := qs.userCommon.BatchUserBasicInfoByID(ctx, userIDs)
 	if err != nil {
 		return formattedQuestions, err
+	}
+
+	purchaseMap, err := qs.purchaseService.BatchGetByQuestionIDs(ctx, questionIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, item := range formattedQuestions {
@@ -450,6 +468,7 @@ func (qs *QuestionCommon) FormatQuestionsPage(
 		} else {
 			item.Tags = make([]*schema.TagResp, 0)
 		}
+
 		userInfo, ok := userInfoMap[item.Operator.ID]
 		if ok {
 			if userInfo != nil {
@@ -459,6 +478,11 @@ func (qs *QuestionCommon) FormatQuestionsPage(
 				item.Operator.Status = userInfo.Status
 				item.Operator.Avatar = userInfo.Avatar
 			}
+		}
+
+		purchase, ok := purchaseMap[item.ID]
+		if ok {
+			item.Purchase = purchase
 		}
 	}
 	return formattedQuestions, nil
@@ -491,6 +515,15 @@ func (qs *QuestionCommon) FormatQuestions(ctx context.Context, questionList []*e
 		item.UpdateUserInfo = userInfoMap[item.LastEditUserID]
 		item.LastAnsweredUserInfo = userInfoMap[item.LastAnsweredUserID]
 	}
+
+	purchaseMap, err := qs.purchaseService.BatchGetByQuestionIDs(ctx, objectIds)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range list {
+		item.Purchase = purchaseMap[item.ID]
+	}
+
 	if loginUserID == "" {
 		return list, nil
 	}
@@ -502,6 +535,7 @@ func (qs *QuestionCommon) FormatQuestions(ctx context.Context, questionList []*e
 	for _, item := range list {
 		item.Collected = collectedMap[item.ID]
 	}
+
 	return list, nil
 }
 

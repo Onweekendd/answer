@@ -48,6 +48,7 @@ import (
 	"github.com/apache/answer/internal/service/noticequeue"
 	"github.com/apache/answer/internal/service/notification"
 	"github.com/apache/answer/internal/service/permission"
+	"github.com/apache/answer/internal/service/purchase"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/review"
 	"github.com/apache/answer/internal/service/revision_common"
@@ -95,6 +96,7 @@ type QuestionService struct {
 	eventQueueService                eventqueue.Service
 	reviewRepo                       review.ReviewRepo
 	vectorSyncService                vector_sync.Service
+	purchaseService                  *purchase.PurchaseService
 }
 
 func NewQuestionService(
@@ -122,6 +124,7 @@ func NewQuestionService(
 	eventQueueService eventqueue.Service,
 	reviewRepo review.ReviewRepo,
 	vectorSyncService vector_sync.Service,
+	purchaseService *purchase.PurchaseService,
 ) *QuestionService {
 	return &QuestionService{
 		activityRepo:                     activityRepo,
@@ -148,6 +151,7 @@ func NewQuestionService(
 		eventQueueService:                eventQueueService,
 		reviewRepo:                       reviewRepo,
 		vectorSyncService:                vectorSyncService,
+		purchaseService:                  purchaseService,
 	}
 }
 
@@ -369,6 +373,10 @@ func (qs *QuestionService) AddQuestion(ctx context.Context, req *schema.Question
 		}
 	}
 
+	if err = qs.purchaseService.Validate(ctx, req.Purchase); err != nil {
+		return nil, err
+	}
+
 	question := &entity.Question{}
 	now := time.Now()
 	question.UserID = req.UserID
@@ -386,7 +394,7 @@ func (qs *QuestionService) AddQuestion(ctx context.Context, req *schema.Question
 	question.Pin = entity.QuestionUnPin
 	question.Show = entity.QuestionShow
 	// question.UpdatedAt = nil
-	err = qs.questionRepo.AddQuestion(ctx, question)
+	err = qs.questionRepo.AddQuestionWithPurchase(ctx, question, qs.purchaseService.ToEntity(req.Purchase))
 	if err != nil {
 		return
 	}
@@ -969,9 +977,13 @@ func (qs *QuestionService) UpdateQuestion(ctx context.Context, req *schema.Quest
 	}
 
 	isChange := qs.tagCommon.CheckTagsIsChange(ctx, tagNameList, oldtagNameList)
+	purchaseChanged, err := qs.purchaseService.IsChanged(ctx, question.ID, req.Purchase)
+	if err != nil {
+		return
+	}
 
 	// If the content is the same, ignore it
-	if dbinfo.Title == req.Title && dbinfo.OriginalText == req.Content && !isChange {
+	if dbinfo.Title == req.Title && dbinfo.OriginalText == req.Content && !isChange && !purchaseChanged {
 		return
 	}
 
@@ -1046,7 +1058,12 @@ func (qs *QuestionService) UpdateQuestion(ctx context.Context, req *schema.Quest
 		if err != nil {
 			return questionInfo, err
 		}
-		saveerr := qs.questionRepo.UpdateQuestion(ctx, question, []string{"title", "original_text", "parsed_text", "updated_at", "post_update_time", "last_edit_user_id"})
+
+		if err = qs.purchaseService.Validate(ctx, req.Purchase); err != nil {
+			return questionInfo, err
+		}
+
+		saveerr := qs.questionRepo.UpdateQuestionWithPurchase(ctx, question, qs.purchaseService.ToEntity(req.Purchase), []string{"title", "original_text", "parsed_text", "updated_at", "post_update_time", "last_edit_user_id"})
 		if saveerr != nil {
 			return questionInfo, saveerr
 		}

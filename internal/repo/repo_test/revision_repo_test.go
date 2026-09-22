@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/apache/answer/internal/entity"
+	"github.com/apache/answer/internal/repo/purchase"
 	"github.com/apache/answer/internal/repo/question"
 	"github.com/apache/answer/internal/repo/revision"
 	"github.com/apache/answer/internal/repo/unique"
@@ -65,7 +66,8 @@ func Test_revisionRepo_AddRevision(t *testing.T) {
 	var (
 		uniqueIDRepo = unique.NewUniqueIDRepo(testDataSource)
 		revisionRepo = revision.NewRevisionRepo(testDataSource, uniqueIDRepo)
-		questionRepo = question.NewQuestionRepo(testDataSource, uniqueIDRepo)
+		purchaseRepo = purchase.NewPurchaseRepo(testDataSource)
+		questionRepo = question.NewQuestionRepo(testDataSource, uniqueIDRepo, purchaseRepo)
 	)
 
 	// create question

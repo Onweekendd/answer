@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/answer.exe ./cmd/answer"
+  bin = "./tmp/answer.exe"
+  args_bin = ["run", "-C", "./answer-data"]
+  include_ext = ["go", "yaml"]
+  exclude_dir = ["ui", "answer-data", "tmp", "docs", "script", "plugin"]
+  exclude_regex = ["_test\\.go$", "wire_gen\\.go$"]
+  delay = 800            # 毫秒，防止连续保存触发多次编译
+  kill_delay = "2s"      # 给旧进程优雅退出的时间（后面做优雅停机时你会关心这个）
+  send_interrupt = true
+
+[log]
+  time = true

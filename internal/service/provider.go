@@ -50,6 +50,7 @@ import (
 	notficationcommon "github.com/apache/answer/internal/service/notification_common"
 	"github.com/apache/answer/internal/service/object_info"
 	"github.com/apache/answer/internal/service/plugin_common"
+	"github.com/apache/answer/internal/service/purchase"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/rank"
 	"github.com/apache/answer/internal/service/reason"
@@ -86,6 +87,7 @@ var ProviderSetService = wire.NewSet(
 	auth.NewAuthService,
 	content.NewUserService,
 	content.NewQuestionService,
+	purchase.NewPurchaseService,
 	content.NewAnswerService,
 	export.NewEmailService,
 	tagcommon.NewTagCommonService,

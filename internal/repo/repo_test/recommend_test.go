@@ -27,6 +27,7 @@ import (
 	"github.com/apache/answer/internal/repo/activity"
 	"github.com/apache/answer/internal/repo/activity_common"
 	"github.com/apache/answer/internal/repo/config"
+	"github.com/apache/answer/internal/repo/purchase"
 	"github.com/apache/answer/internal/repo/question"
 	"github.com/apache/answer/internal/repo/tag"
 	"github.com/apache/answer/internal/repo/tag_common"
@@ -40,7 +41,8 @@ import (
 func Test_questionRepo_GetRecommend(t *testing.T) {
 	var (
 		uniqueIDRepo       = unique.NewUniqueIDRepo(testDataSource)
-		questionRepo       = question.NewQuestionRepo(testDataSource, uniqueIDRepo)
+		purchaseRepo       = purchase.NewPurchaseRepo(testDataSource)
+		questionRepo       = question.NewQuestionRepo(testDataSource, uniqueIDRepo, purchaseRepo)
 		userRepo           = user.NewUserRepo(testDataSource)
 		tagRelRepo         = tag.NewTagRelRepo(testDataSource, uniqueIDRepo)
 		tagRepo            = tag.NewTagRepo(testDataSource, uniqueIDRepo)

@@ -48,6 +48,7 @@ const (
 	QuestionUnderReview              = "error.question.under_review"
 	QuestionContentCannotEmpty       = "error.question.content_cannot_empty"
 	QuestionContentLessThanMinimum   = "error.question.content_less_than_minimum"
+	PurchaseImageNotFromSite         = "error.purchase.image_not_from_site"
 	AnswerNotFound                   = "error.answer.not_found"
 	AnswerCannotDeleted              = "error.answer.cannot_deleted"
 	AnswerCannotUpdate               = "error.answer.cannot_update"

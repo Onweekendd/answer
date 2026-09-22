@@ -75,6 +75,14 @@ type ReopenQuestionReq struct {
 	UserID     string `json:"-"`
 }
 
+type PurchaseInfo struct {
+	Images   []string `json:"images" validate:"required,min=1,max=5,dive,url"`
+	Price    float64  `json:"price" validate:"gte=0"`
+	Currency string   `json:"currency" validate:"omitempty,len=3"`
+	Link     string   `json:"link" validate:"omitempty,url,lte=255"`
+	AIStatus int      `json:"ai_status"` // 只出不进，前端传了也忽略
+}
+
 type QuestionAdd struct {
 	// question title
 	Title string `validate:"required,notblank,gte=6,lte=150" json:"title"`
@@ -87,10 +95,11 @@ type QuestionAdd struct {
 	// user id
 	UserID string `json:"-"`
 	QuestionPermission
-	CaptchaID   string `json:"captcha_id"` // captcha_id
-	CaptchaCode string `json:"captcha_code"`
-	IP          string `json:"-"`
-	UserAgent   string `json:"-"`
+	CaptchaID   string        `json:"captcha_id"` // captcha_id
+	CaptchaCode string        `json:"captcha_code"`
+	IP          string        `json:"-"`
+	UserAgent   string        `json:"-"`
+	Purchase    *PurchaseInfo `json:"purchase" validate:"required"`
 }
 
 func (req *QuestionAdd) Check() (errFields []*validator.FormErrorField, err error) {
@@ -196,6 +205,8 @@ type QuestionUpdate struct {
 	QuestionPermission
 	CaptchaID   string `json:"captcha_id"` // captcha_id
 	CaptchaCode string `json:"captcha_code"`
+
+	Purchase *PurchaseInfo `json:"purchase" validate:"required"`
 }
 
 type QuestionRecoverReq struct {
@@ -264,6 +275,8 @@ type QuestionInfoResp struct {
 	Collected            bool           `json:"collected"`
 	VoteStatus           string         `json:"vote_status"`
 	IsFollowed           bool           `json:"is_followed"`
+
+	Purchase *PurchaseInfo `json:"purchase,omitempty"`
 
 	// MemberActions
 	MemberActions  []*PermissionMemberAction `json:"member_actions"`
@@ -414,6 +427,8 @@ type QuestionPageResp struct {
 	OperatedAt    int64                     `json:"operated_at"`
 	Operator      *QuestionPageRespOperator `json:"operator"`
 	OperationType string                    `json:"operation_type"`
+
+	Purchase *PurchaseInfo `json:"purchase,omitempty"`
 }
 
 type QuestionPageRespOperator struct {

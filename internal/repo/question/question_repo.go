@@ -34,6 +34,7 @@ import (
 	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/entity"
 	"github.com/apache/answer/internal/schema"
+	"github.com/apache/answer/internal/service/purchase"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/unique"
 	"github.com/apache/answer/pkg/htmltext"
@@ -49,16 +50,19 @@ import (
 type questionRepo struct {
 	data         *data.Data
 	uniqueIDRepo unique.UniqueIDRepo
+	purchaseRepo purchase.PurchaseRepo
 }
 
 // NewQuestionRepo new repository
 func NewQuestionRepo(
 	data *data.Data,
 	uniqueIDRepo unique.UniqueIDRepo,
+	purchaseRepo purchase.PurchaseRepo,
 ) questioncommon.QuestionRepo {
 	return &questionRepo{
 		data:         data,
 		uniqueIDRepo: uniqueIDRepo,
+		purchaseRepo: purchaseRepo,
 	}
 }
 
@@ -870,4 +874,64 @@ func (qr *questionRepo) GetQuestionLink(ctx context.Context, page, pageSize int,
 		}
 	}
 	return
+}
+
+// AddQuestionWithPurchase add question and its purchase detail in one transaction
+func (qr *questionRepo) AddQuestionWithPurchase(ctx context.Context, question *entity.Question, detail *entity.PurchaseDetail) (err error) {
+	question.ID, err = qr.uniqueIDRepo.GenUniqueIDStr(ctx, question.TableName())
+	if err != nil {
+		return errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+	}
+
+	_, err = qr.data.DB.Transaction(func(session *xorm.Session) (any, error) {
+		session = session.Context(ctx)
+
+		if _, err := session.Insert(question); err != nil {
+			return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+		}
+
+		detail.QuestionID = question.ID
+		if err := qr.purchaseRepo.UpsertWithSession(session, detail); err != nil {
+			return nil, err // already wrapped by purchase repo
+		}
+		return nil, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if handler.GetEnableShortID(ctx) {
+		question.ID = uid.EnShortID(question.ID)
+	}
+	return nil
+}
+
+func (qr *questionRepo) UpdateQuestionWithPurchase(ctx context.Context, question *entity.Question, detail *entity.PurchaseDetail, cols []string) (err error) {
+	question.ID = uid.DeShortID(question.ID)
+
+	_, err = qr.data.DB.Transaction(func(session *xorm.Session) (any, error) {
+		session = session.Context(ctx)
+
+		if _, err := session.Where("id =?", question.ID).Cols(cols...).Update(question); err != nil {
+			return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+		}
+
+		detail.QuestionID = question.ID
+		if err := qr.purchaseRepo.UpsertWithSession(session, detail); err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if handler.GetEnableShortID(ctx) {
+		question.ID = uid.EnShortID(question.ID)
+	}
+	_ = qr.UpdateSearch(ctx, question.ID)
+
+	return nil
 }
