@@ -22,6 +22,7 @@ package migrations
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/apache/answer/internal/base/constant"
 	"github.com/apache/answer/internal/entity"
@@ -39,6 +40,15 @@ func addPurchaseDetail(ctx context.Context, x *xorm.Engine) error {
 	return ensureBotUser(ctx, x)
 }
 
+func nextID(ctx context.Context, x *xorm.Engine, table string) (int64, error) {
+	var maxID int64
+	_, err := x.Context(ctx).SQL("SELECT COALESCE(MAX(id), 0) FROM " + x.Quote(table)).Get(&maxID)
+	if err != nil {
+		return 0, err
+	}
+	return maxID + 1, nil
+}
+
 // ensureBotUser makes sure the AI bot account exists and its ID is stored in config.
 // It is idempotent: safe to run on every upgrade and on fresh install.
 func ensureBotUser(ctx context.Context, x *xorm.Engine) error {
@@ -53,7 +63,14 @@ func ensureBotUser(ctx context.Context, x *xorm.Engine) error {
 		if err != nil {
 			return fmt.Errorf("hash bot password failed: %w", err)
 		}
+
+		newUserID, err := nextID(ctx, x, "user")
+		if err != nil {
+			return fmt.Errorf("get next user ID failed: %w", err)
+		}
+
 		bot = &entity.User{
+			ID:           strconv.FormatInt(newUserID, 10),
 			Username:     constant.AIBotUsername,
 			Pass:         string(hash),
 			EMail:        "ai-assistant@localhost",
@@ -74,8 +91,13 @@ func ensureBotUser(ctx context.Context, x *xorm.Engine) error {
 	if err != nil {
 		return fmt.Errorf("get bot config failed: %w", err)
 	}
+
+	newConfigID, err := nextID(ctx, x, "config")
+	if err != nil {
+		return fmt.Errorf("get next config ID failed: %w", err)
+	}
 	if !exists {
-		cfg = &entity.Config{Key: constant.AIBotUserIDKey, Value: bot.ID}
+		cfg = &entity.Config{ID: int(newConfigID), Key: constant.AIBotUserIDKey, Value: bot.ID}
 		if _, err = x.Context(ctx).Insert(cfg); err != nil {
 			return fmt.Errorf("insert bot config failed: %w", err)
 		}
