@@ -44,6 +44,8 @@ type Service interface {
 	Close()
 }
 
+// memoryQueue runs analyses one at a time on a single goroutine. Its backlog
+// lives in memory, so it is lost on restart, and a failed job is not retried.
 type memoryQueue struct {
 	name  string
 	queue chan *schema.PurchaseAIMsg
@@ -55,33 +57,9 @@ type memoryQueue struct {
 	closed  bool
 }
 
-// NewService new purchase ai queue service.
-// TODO(你来实现)
-//
-// 两条路，选一条：
-//
-//	A. 直接复用项目已有的泛型队列，一行：
-//	     return queue.New[*schema.PurchaseAIMsg]("purchase_ai", 32)
-//	   （import "github.com/apache/answer/internal/base/queue"；它的 Service[T]
-//	   正好有上面这三个方法，接口直接就对上了。）
-//
-//	B. 自己写这个 worker —— 想练并发的话选这个：
-//	     - 一个带缓冲的 channel 存待处理消息
-//	     - 一个 goroutine range 这个 channel，取到就调 handler
-//	     - handler 字段外面要加 sync.RWMutex：RegisterHandler 在主 goroutine 写，
-//	       worker goroutine 读，不加锁就是数据竞争，go test -race 会报
-//	     - 读锁里只拿 handler 的副本，解锁之后再调用。不要持着锁跑 handler，
-//	       它要跑几十秒，期间谁都别想注册
-//	     - handler 可能还是 nil（worker 比 RegisterHandler 先启动），要判
-//	     - 一个 sync.WaitGroup，让 Close 能等正在处理的那条消息跑完
-//	     - 一个 closed 标记，Close 之后再 Send 要丢弃，不能往已关闭的 channel 写（会 panic）
-//	   写完再去读 internal/base/queue/queue.go 对一下，看差在哪。
-//
-// 两条路都要定的两件事：
-//   - 缓冲区多大：一次分析要花真钱、跑几十秒，所以积压很深说明出问题了，
-//     而不是说明需要更大的缓冲
-//   - handler 拿到的是什么 context：绝对不能是调用方的，否则入队它的那个
-//     HTTP 请求一返回，分析就被取消了
+// NewService starts the worker and returns the queue. The buffer is small on
+// purpose: an analysis costs money and takes tens of seconds, so a deep backlog
+// means something is wrong rather than that more room is needed.
 func NewService() Service {
 	purchaseAIQueue := &memoryQueue{
 		name:  "purchase_ai",
