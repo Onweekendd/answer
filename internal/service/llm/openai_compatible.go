@@ -1,0 +1,202 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package llm
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/apache/answer/internal/base/reason"
+	"github.com/apache/answer/internal/service/siteinfo_common"
+	"github.com/sashabaranov/go-openai"
+	"github.com/segmentfault/pacman/errors"
+)
+
+const (
+	defaultTimeout = 120 * time.Second
+	// defaultMaxTokens is a budget for the whole completion. On a reasoning model
+	// the chain of thought is billed as completion tokens too, so it competes with
+	// the answer: too small a budget returns an empty Content and a long Reasoning.
+	defaultMaxTokens = 4096
+)
+
+// openAICompatibleClient talks the OpenAI chat-completions protocol, which is
+// what deepseek, qwen, moonshot and others expose. The provider is read from
+// the admin settings on every call, so changing it takes effect without a
+// restart, which also means the sdk client is built per call.
+type openAICompatibleClient struct {
+	siteInfoService siteinfo_common.SiteInfoCommonService
+	httpClient      *http.Client
+}
+
+// NewClient new llm client
+func NewClient(siteInfoService siteinfo_common.SiteInfoCommonService) Client {
+	return &openAICompatibleClient{
+		siteInfoService: siteInfoService,
+		httpClient:      &http.Client{Timeout: defaultTimeout},
+	}
+}
+
+// provider holds what one call needs from the admin settings.
+type provider struct {
+	client *openai.Client
+	model  string
+}
+
+// resolveProvider reads the admin settings and builds a client for them.
+func (c *openAICompatibleClient) resolveProvider(ctx context.Context) (*provider, error) {
+	aiConfig, err := c.siteInfoService.GetSiteAI(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := aiConfig.GetProvider()
+	if !aiConfig.Enabled || p.APIKey == "" || p.APIHost == "" {
+		return nil, errors.BadRequest(reason.AINotConfigured)
+	}
+
+	config := openai.DefaultConfig(p.APIKey)
+	config.BaseURL = baseURL(p.APIHost)
+	config.HTTPClient = c.httpClient
+	return &provider{client: openai.NewClientWithConfig(config), model: p.Model}, nil
+}
+
+// Chat sends one request and returns the whole answer.
+func (c *openAICompatibleClient) Chat(ctx context.Context, req *ChatReq) (*ChatResp, error) {
+	p, err := c.resolveProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// the request can hold base64 images, so it is never logged
+	resp, err := p.client.CreateChatCompletion(ctx, c.buildRequest(req, p.model))
+	if err != nil {
+		// includes the context being cancelled when the caller goes away
+		return nil, errors.InternalServer(reason.AIRequestFailed).WithError(err).WithStack()
+	}
+	if len(resp.Choices) == 0 {
+		return nil, errors.InternalServer(reason.AIRequestFailed).
+			WithError(fmt.Errorf("provider returned no choices")).WithStack()
+	}
+
+	msg := resp.Choices[0].Message
+	return &ChatResp{
+		Content:   msg.Content,
+		Reasoning: msg.ReasoningContent,
+		Model:     resp.Model,
+		Usage: Usage{
+			PromptTokens:     resp.Usage.PromptTokens,
+			CompletionTokens: resp.Usage.CompletionTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
+		},
+	}, nil
+}
+
+// buildRequest maps our request onto the sdk one, filling in what the caller
+// left empty from the configured provider.
+func (c *openAICompatibleClient) buildRequest(req *ChatReq, fallbackModel string) openai.ChatCompletionRequest {
+	model := req.Model
+	if model == "" {
+		model = fallbackModel
+	}
+	maxTokens := req.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = defaultMaxTokens
+	}
+
+	out := openai.ChatCompletionRequest{
+		Model:     model,
+		Messages:  toSDKMessages(req.Messages),
+		MaxTokens: maxTokens,
+	}
+	if req.Temperature != nil {
+		// the sdk field is tagged omitempty, so a temperature of exactly 0 is
+		// dropped from the payload and the provider applies its own default
+		out.Temperature = *req.Temperature
+	}
+	if req.JSONOutput {
+		out.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
+	return out
+}
+
+// toSDKMessages fills Content for text-only messages and MultiContent when a
+// message carries an image. The two are mutually exclusive: the sdk marshals
+// Content as a plain string and MultiContent as a parts array, and rejects a
+// message that sets both.
+func toSDKMessages(messages []Message) []openai.ChatCompletionMessage {
+	out := make([]openai.ChatCompletionMessage, 0, len(messages))
+	for _, m := range messages {
+		hasImage := false
+		for _, part := range m.Parts {
+			if part.ImageURL != "" {
+				hasImage = true
+				break
+			}
+		}
+
+		if !hasImage {
+			text := make([]string, 0, len(m.Parts))
+			for _, part := range m.Parts {
+				if part.Text != "" {
+					text = append(text, part.Text)
+				}
+			}
+			out = append(out, openai.ChatCompletionMessage{
+				Role:    m.Role,
+				Content: strings.Join(text, "\n"),
+			})
+			continue
+		}
+
+		parts := make([]openai.ChatMessagePart, 0, len(m.Parts))
+		for _, part := range m.Parts {
+			if part.ImageURL != "" {
+				parts = append(parts, openai.ChatMessagePart{
+					Type:     openai.ChatMessagePartTypeImageURL,
+					ImageURL: &openai.ChatMessageImageURL{URL: part.ImageURL},
+				})
+				continue
+			}
+			if part.Text != "" {
+				parts = append(parts, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: part.Text,
+				})
+			}
+		}
+		out = append(out, openai.ChatCompletionMessage{Role: m.Role, MultiContent: parts})
+	}
+	return out
+}
+
+// baseURL normalises the configured host, which admins write with or without
+// the /v1 suffix. The sdk appends the endpoint path itself.
+func baseURL(host string) string {
+	host = strings.TrimSuffix(strings.TrimSpace(host), "/")
+	if !strings.HasSuffix(host, "/v1") {
+		host += "/v1"
+	}
+	return host
+}

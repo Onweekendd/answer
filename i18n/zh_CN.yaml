@@ -239,6 +239,11 @@ backend:
     purchase:
       image_not_from_site:
         other: 图片必须先上传到本站。
+    ai:
+      not_configured:
+        other: AI 功能尚未配置，请联系管理员。
+      request_failed:
+        other: AI 服务请求失败，请稍后重试。
     rank:
       fail_to_meet_the_condition:
         other: 声望值未达到要求。

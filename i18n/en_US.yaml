@@ -240,6 +240,11 @@ backend:
     purchase:
       image_not_from_site:
         other: Images must be uploaded to this site first.
+    ai:
+      not_configured:
+        other: The AI feature is not configured yet. Please contact an administrator.
+      request_failed:
+        other: The AI service request failed. Please try again later.
     rank:
       fail_to_meet_the_condition:
         other: Reputation rank fail to meet the condition.
