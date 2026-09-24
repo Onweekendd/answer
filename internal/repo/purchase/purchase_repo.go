@@ -37,6 +37,10 @@ type purchaseRepo struct {
 }
 
 func dbError(err error) error {
+	// a nil in must stay nil, so callers can write "return dbError(err)"
+	if err == nil {
+		return nil
+	}
 	return errors.InternalServer(reason.DatabaseError).
 		WithError(err).
 		WithStack()
@@ -111,4 +115,14 @@ func (pr *purchaseRepo) BatchGetByQuestionIDs(ctx context.Context, questionIDs [
 	}
 
 	return details, nil
+}
+
+func (pr *purchaseRepo) UpdateAIStatus(ctx context.Context, questionID string, status int) (err error) {
+	questionID = uid.DeShortID(questionID)
+
+	_, err = pr.data.DB.Context(ctx).ID(questionID).Cols("ai_status").Update(&entity.PurchaseDetail{
+		AIStatus: status,
+	})
+
+	return dbError(err)
 }

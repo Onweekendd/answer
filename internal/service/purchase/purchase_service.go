@@ -130,6 +130,29 @@ func (ps *PurchaseService) GetByQuestionID(ctx context.Context, questionID strin
 	return ps.ToSchema(detail), nil
 }
 
+// The three Mark* methods below are the only way the ai_status column is written.
+// They exist instead of one UpdateAIStatus(ctx, id, status) so a caller cannot pass
+// the wrong constant: a typo in a method name fails to compile, a wrong int does not.
+
+// MarkProcessing records that an analysis has started, so the page can show progress
+// and a second analysis is not kicked off for the same question.
+func (ps *PurchaseService) MarkProcessing(ctx context.Context, questionID string) error {
+	return ps.purchaseRepo.UpdateAIStatus(ctx, questionID, entity.PurchaseAIStatusProcessing)
+}
+
+// MarkFinished records that the advice has been posted.
+func (ps *PurchaseService) MarkFinished(ctx context.Context, questionID string) error {
+	return ps.purchaseRepo.UpdateAIStatus(ctx, questionID, entity.PurchaseAIStatusFinished)
+}
+
+// MarkFailed records that the analysis gave up, which lets the page offer a retry.
+// The cause is logged rather than stored: there is no column for it, and the
+// provider's message is not something to show a reader.
+func (ps *PurchaseService) MarkFailed(ctx context.Context, questionID string, cause error) error {
+	log.Errorf("purchase ai analysis failed, questionID: %s, cause: %v", questionID, cause)
+	return ps.purchaseRepo.UpdateAIStatus(ctx, questionID, entity.PurchaseAIStatusFailed)
+}
+
 // BatchGetByQuestionIDs returns purchase info keyed by question ID, one query for the whole page.
 func (ps *PurchaseService) BatchGetByQuestionIDs(ctx context.Context, questionIDs []string) (map[string]*schema.PurchaseInfo, error) {
 	details, err := ps.purchaseRepo.BatchGetByQuestionIDs(ctx, questionIDs)

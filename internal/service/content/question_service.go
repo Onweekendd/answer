@@ -49,6 +49,7 @@ import (
 	"github.com/apache/answer/internal/service/notification"
 	"github.com/apache/answer/internal/service/permission"
 	"github.com/apache/answer/internal/service/purchase"
+	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/review"
 	"github.com/apache/answer/internal/service/revision_common"
@@ -96,6 +97,7 @@ type QuestionService struct {
 	eventQueueService                eventqueue.Service
 	reviewRepo                       review.ReviewRepo
 	vectorSyncService                vector_sync.Service
+	purchaseAIQueueService           purchaseaiqueue.Service
 	purchaseService                  *purchase.PurchaseService
 }
 
@@ -124,6 +126,7 @@ func NewQuestionService(
 	eventQueueService eventqueue.Service,
 	reviewRepo review.ReviewRepo,
 	vectorSyncService vector_sync.Service,
+	purchaseAIQueueService purchaseaiqueue.Service,
 	purchaseService *purchase.PurchaseService,
 ) *QuestionService {
 	return &QuestionService{
@@ -151,6 +154,7 @@ func NewQuestionService(
 		eventQueueService:                eventQueueService,
 		reviewRepo:                       reviewRepo,
 		vectorSyncService:                vectorSyncService,
+		purchaseAIQueueService:           purchaseAIQueueService,
 		purchaseService:                  purchaseService,
 	}
 }
@@ -470,6 +474,8 @@ func (qs *QuestionService) AddQuestion(ctx context.Context, req *schema.Question
 		QID(question.ID, question.UserID))
 	if question.Status == entity.QuestionStatusAvailable {
 		qs.vectorSyncService.Send(ctx, &vector_sync.Task{Action: vector_sync.ActionUpsert, ObjectType: vector_sync.ObjectTypeQuestion, ObjectID: question.ID})
+		// the advice arrives later as a bot comment; the post is usable meanwhile
+		qs.purchaseAIQueueService.Send(ctx, &schema.PurchaseAIMsg{QuestionID: question.ID})
 	}
 
 	questionInfo, err = qs.GetQuestion(ctx, question.ID, question.UserID, req.QuestionPermission)

@@ -43,6 +43,7 @@ import (
 	"github.com/apache/answer/internal/service/file_record"
 	"github.com/apache/answer/internal/service/follow"
 	"github.com/apache/answer/internal/service/importer"
+	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/internal/service/meta"
 	metacommon "github.com/apache/answer/internal/service/meta_common"
 	"github.com/apache/answer/internal/service/noticequeue"
@@ -51,6 +52,8 @@ import (
 	"github.com/apache/answer/internal/service/object_info"
 	"github.com/apache/answer/internal/service/plugin_common"
 	"github.com/apache/answer/internal/service/purchase"
+	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
+	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/rank"
 	"github.com/apache/answer/internal/service/reason"
@@ -88,6 +91,9 @@ var ProviderSetService = wire.NewSet(
 	content.NewUserService,
 	content.NewQuestionService,
 	purchase.NewPurchaseService,
+	purchaseai.NewPurchaseAIService,
+	purchaseaiqueue.NewService,
+	llm.NewClient,
 	content.NewAnswerService,
 	export.NewEmailService,
 	tagcommon.NewTagCommonService,

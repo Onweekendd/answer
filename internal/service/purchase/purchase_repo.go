@@ -37,4 +37,7 @@ type PurchaseRepo interface {
 	// BatchGetByQuestionIDs returns details for many questions in one query, keyed by question ID.
 	// Questions without a detail row are simply absent from the map.
 	BatchGetByQuestionIDs(ctx context.Context, questionIDs []string) (details map[string]*entity.PurchaseDetail, err error)
+	// UpdateAIStatus writes the ai_status column only. It does not report whether a
+	// row matched: the affected count means different things on mysql and postgres.
+	UpdateAIStatus(ctx context.Context, questionID string, status int) (err error)
 }
