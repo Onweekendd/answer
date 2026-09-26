@@ -103,6 +103,7 @@ func (c *openAICompatibleClient) Chat(ctx context.Context, req *ChatReq) (*ChatR
 		Content:   msg.Content,
 		Reasoning: msg.ReasoningContent,
 		Model:     resp.Model,
+		ToolCalls: fromSDKToolCalls(msg.ToolCalls),
 		Usage: Usage{
 			PromptTokens:     resp.Usage.PromptTokens,
 			CompletionTokens: resp.Usage.CompletionTokens,
@@ -127,6 +128,7 @@ func (c *openAICompatibleClient) buildRequest(req *ChatReq, fallbackModel string
 		Model:     model,
 		Messages:  toSDKMessages(req.Messages),
 		MaxTokens: maxTokens,
+		Tools:     toSDKTools(req.Tools),
 	}
 	if req.Temperature != nil {
 		// the sdk field is tagged omitempty, so a temperature of exactly 0 is
@@ -137,6 +139,55 @@ func (c *openAICompatibleClient) buildRequest(req *ChatReq, fallbackModel string
 		out.ResponseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
+	}
+	return out
+}
+
+// toSDKTools declares the tools as functions, the only kind of tool the chat
+// completions protocol has. With no tools the slice is empty and the sdk leaves
+// the field out, so a plain chat request looks the same as before.
+func toSDKTools(tools []Tool) []openai.Tool {
+	out := make([]openai.Tool, 0, len(tools))
+	for _, tool := range tools {
+		out = append(out, openai.Tool{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        tool.Name,
+				Description: tool.Description,
+				Parameters:  tool.Parameters,
+			},
+		})
+	}
+	return out
+}
+
+// toSDKToolCalls puts an earlier assistant turn's calls back into the
+// conversation, so the tool results that follow have something to answer.
+func toSDKToolCalls(calls []ToolCall) []openai.ToolCall {
+	out := make([]openai.ToolCall, 0, len(calls))
+	for _, call := range calls {
+		out = append(out, openai.ToolCall{
+			ID:   call.ID,
+			Type: openai.ToolTypeFunction,
+			Function: openai.FunctionCall{
+				Name:      call.Name,
+				Arguments: call.Arguments,
+			},
+		})
+	}
+	return out
+}
+
+// fromSDKToolCalls flattens the calls in a response. Arguments stay the raw
+// string the model wrote; each tool decodes and checks its own.
+func fromSDKToolCalls(calls []openai.ToolCall) []ToolCall {
+	out := make([]ToolCall, 0, len(calls))
+	for _, call := range calls {
+		out = append(out, ToolCall{
+			ID:        call.ID,
+			Name:      call.Function.Name,
+			Arguments: call.Function.Arguments,
+		})
 	}
 	return out
 }
@@ -164,8 +215,11 @@ func toSDKMessages(messages []Message) []openai.ChatCompletionMessage {
 				}
 			}
 			out = append(out, openai.ChatCompletionMessage{
-				Role:    m.Role,
-				Content: strings.Join(text, "\n"),
+				Role:             m.Role,
+				Content:          strings.Join(text, "\n"),
+				ReasoningContent: m.Reasoning,
+				ToolCalls:        toSDKToolCalls(m.ToolCalls),
+				ToolCallID:       m.ToolCallID,
 			})
 			continue
 		}
@@ -186,7 +240,13 @@ func toSDKMessages(messages []Message) []openai.ChatCompletionMessage {
 				})
 			}
 		}
-		out = append(out, openai.ChatCompletionMessage{Role: m.Role, MultiContent: parts})
+		out = append(out, openai.ChatCompletionMessage{
+			Role:             m.Role,
+			MultiContent:     parts,
+			ReasoningContent: m.Reasoning,
+			ToolCalls:        toSDKToolCalls(m.ToolCalls),
+			ToolCallID:       m.ToolCallID,
+		})
 	}
 	return out
 }

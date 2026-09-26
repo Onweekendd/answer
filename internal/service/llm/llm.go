@@ -21,13 +21,17 @@
 // code never imports a vendor SDK and tests never reach the network.
 package llm
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // Message roles, same names every OpenAI-compatible API uses.
 const (
 	RoleSystem    = "system"
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
+	RoleTool      = "tool"
 )
 
 // Part is one piece of a message. Exactly one field is set: either the message
@@ -40,10 +44,45 @@ type Part struct {
 	ImageURL string
 }
 
+// ToolCall is the model asking for a tool to be run. The model never runs
+// anything itself: the caller runs the tool and answers with a RoleTool
+// message whose ToolCallID is this ID.
+type ToolCall struct {
+	// ID pairs the call with its result. A model can ask for several calls in
+	// one turn, so the results must say which call each one answers.
+	ID   string
+	Name string
+	// Arguments is a JSON object written by the model. It is not guaranteed to
+	// be valid JSON or to match the schema, so the tool must check it.
+	Arguments string
+}
+
+// Tool tells the model a tool exists. It is only the declaration sent to the
+// provider; running the tool is up to the caller, which maps Name to its code.
+type Tool struct {
+	Name string
+	// Description is what the model reads to decide when to call the tool,
+	// so it is written for the model, not for people reading this code.
+	Description string
+	// Parameters is a JSON Schema object describing the arguments. It is sent
+	// verbatim, which a plain string would not be: it would go out quoted.
+	Parameters json.RawMessage
+}
+
 // Message is one turn of the conversation.
 type Message struct {
 	Role  string
 	Parts []Part
+	// ToolCalls is set on an assistant message that asked for tools. When the
+	// conversation is sent again, that message must come back with its calls,
+	// or the tool results that follow it answer nothing.
+	ToolCalls []ToolCall
+	// Reasoning is set on an assistant message from a reasoning model. In a
+	// conversation that offers tools, deepseek requires it back unchanged on
+	// every later request, and it is how the model picks up its earlier thinking.
+	Reasoning string
+	// ToolCallID is set on a RoleTool message only: the ToolCall.ID it answers.
+	ToolCallID string
 }
 
 // Text builds a text-only message, which is most of them.
@@ -54,7 +93,10 @@ func Text(role, text string) Message {
 // ChatReq is a request to the model. Fields left empty fall back to whatever
 // the provider is configured with in the admin panel.
 type ChatReq struct {
-	Messages  []Message
+	Messages []Message
+	// Tools the model may call this turn. Leave it empty to make the model
+	// answer from what it already has.
+	Tools     []Tool
 	Model     string
 	MaxTokens int
 	// Temperature is a pointer so "not set" is distinguishable from 0,
@@ -74,14 +116,18 @@ type Usage struct {
 
 // ChatResp is the model's answer.
 type ChatResp struct {
-	// Content is the answer meant for the user. It can be empty while the
-	// model is still reasoning, so never assume it is filled.
+	// Content is the answer meant for the user. When the model asks for tools
+	// it is empty or a short preamble ("let me look that up"), not an answer,
+	// and it can be empty when the whole budget went on reasoning.
 	Content string
 	// Reasoning holds the chain of thought for models that return it
 	// separately (deepseek does). Useful to show progress, never to parse.
 	Reasoning string
 	Model     string
 	Usage     Usage
+	// ToolCalls is non-empty when the model wants tools run before it answers.
+	// It, not Content, decides whether the turn is finished.
+	ToolCalls []ToolCall
 }
 
 // Client is the only thing the rest of the code knows about a chat model.
