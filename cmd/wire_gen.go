@@ -106,6 +106,7 @@ import (
 	user_external_login2 "github.com/apache/answer/internal/service/user_external_login"
 	user_notification_config2 "github.com/apache/answer/internal/service/user_notification_config"
 	"github.com/apache/answer/internal/service/vector_sync"
+	"github.com/apache/answer/internal/service/websearch"
 	"github.com/segmentfault/pacman"
 	"github.com/segmentfault/pacman/log"
 )
@@ -220,7 +221,8 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	collectionController := controller.NewCollectionController(collectionService)
 	questionController := controller.NewQuestionController(questionService, answerService, rankService, siteInfoCommonService, captchaService, rateLimitMiddleware)
 	client := llm.NewClient(siteInfoCommonService)
-	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService)
+	provider := websearch.NewProvider(serviceConf)
+	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, provider)
 	purchaseAIController := controller.NewPurchaseAIController(purchaseAIService)
 	answerController := controller.NewAnswerController(answerService, rankService, captchaService, siteInfoCommonService, rateLimitMiddleware)
 	searchParser := search_parser.NewSearchParser(tagCommonService, userCommon)

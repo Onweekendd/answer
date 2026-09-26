@@ -39,6 +39,7 @@ import (
 	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
+	"github.com/apache/answer/internal/service/websearch"
 )
 
 // PurchaseAIService orchestrates the analysis. It owns no data of its own and
@@ -50,6 +51,7 @@ type PurchaseAIService struct {
 	configService   *config.ConfigService
 	llmClient       llm.Client
 	queueService    purchaseaiqueue.Service
+	searchProvider  websearch.Provider
 }
 
 // NewPurchaseAIService new purchase ai service
@@ -60,6 +62,7 @@ func NewPurchaseAIService(
 	configService *config.ConfigService,
 	llmClient llm.Client,
 	queueService purchaseaiqueue.Service,
+	searchProvider websearch.Provider,
 ) *PurchaseAIService {
 	service := &PurchaseAIService{
 		questionCommon:  questionCommon,
@@ -68,6 +71,7 @@ func NewPurchaseAIService(
 		configService:   configService,
 		llmClient:       llmClient,
 		queueService:    queueService,
+		searchProvider:  searchProvider,
 	}
 	// the queue calls handlers with a fresh context, so an analysis outlives the
 	// request that asked for it instead of dying when that request returns
