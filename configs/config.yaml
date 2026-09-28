@@ -39,6 +39,9 @@ service_config:
   search:
     provider: bocha
     api_key: ""
+  reader:
+    provider: jina
+    api_key: ""
 ui:
   public_url: '/'
   api_url: '/'

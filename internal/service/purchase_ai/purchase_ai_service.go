@@ -40,6 +40,7 @@ import (
 	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
+	"github.com/apache/answer/internal/service/webreader"
 	"github.com/apache/answer/internal/service/websearch"
 )
 
@@ -53,6 +54,7 @@ type PurchaseAIService struct {
 	llmClient       llm.Client
 	queueService    purchaseaiqueue.Service
 	searchProvider  websearch.Provider
+	pageReader      webreader.Reader
 }
 
 // NewPurchaseAIService new purchase ai service
@@ -64,6 +66,7 @@ func NewPurchaseAIService(
 	llmClient llm.Client,
 	queueService purchaseaiqueue.Service,
 	searchProvider websearch.Provider,
+	pageReader webreader.Reader,
 ) *PurchaseAIService {
 	service := &PurchaseAIService{
 		questionCommon:  questionCommon,
@@ -73,6 +76,7 @@ func NewPurchaseAIService(
 		llmClient:       llmClient,
 		queueService:    queueService,
 		searchProvider:  searchProvider,
+		pageReader:      pageReader,
 	}
 	// the queue calls handlers with a fresh context, so an analysis outlives the
 	// request that asked for it instead of dying when that request returns
