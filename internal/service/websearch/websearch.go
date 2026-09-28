@@ -65,6 +65,8 @@ type Result struct {
 
 // Provider is the only thing the rest of the code knows about a search engine.
 // Called as websearch.Provider, which is why the name does not repeat "Search".
+// Implementations must be safe for concurrent use: the AI analysis runs the
+// searches of one round at the same time.
 type Provider interface {
 	Search(ctx context.Context, query string, opt Options) ([]Result, error)
 }

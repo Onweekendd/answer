@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,16 +31,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSearch plays a search provider and records the query it was given.
+// fakeSearch plays a search provider and records the queries it was given.
+// The loop runs tool calls concurrently, so the recording is guarded.
 type fakeSearch struct {
 	results []websearch.Result
 	err     error
-	query   string
+
+	mu      sync.Mutex
+	queries []string
 }
 
 func (f *fakeSearch) Search(_ context.Context, query string, _ websearch.Options) ([]websearch.Result, error) {
-	f.query = query
+	f.mu.Lock()
+	f.queries = append(f.queries, query)
+	f.mu.Unlock()
 	return f.results, f.err
+}
+
+func (f *fakeSearch) Queries() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.queries...)
 }
 
 func Test_formatSearchResults(t *testing.T) {
@@ -113,7 +125,7 @@ func Test_webSearch(t *testing.T) {
 			// Assert
 			require.NoError(t, err, arguments)
 			require.Contains(t, out, "query", arguments)
-			require.Empty(t, search.query, "should not search for %s", arguments)
+			require.Empty(t, search.Queries(), "should not search for %s", arguments)
 		}
 	})
 
@@ -152,7 +164,7 @@ func Test_webSearch(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, "Switch OLED", search.query)
+		require.Equal(t, []string{"Switch OLED"}, search.Queries())
 		require.Contains(t, out, "[1] 结果")
 	})
 }

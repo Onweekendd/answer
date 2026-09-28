@@ -22,7 +22,10 @@ package purchaseai
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/internal/service/websearch"
@@ -78,7 +81,7 @@ func Test_runAgent(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 		require.Equal(t, "**买**", resp.Content)
-		require.Equal(t, "Switch OLED 价格", search.query)
+		require.Equal(t, []string{"Switch OLED 价格"}, search.Queries())
 
 		require.Len(t, model.reqs, 2)
 		require.Len(t, model.reqs[0].Tools, 1)
@@ -188,4 +191,61 @@ func Test_runAgent(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 		require.Len(t, model.reqs, 1)
 	})
+}
+
+// barrierSearch holds every search until n of them are in flight, so it only
+// finishes when the calls really run at the same time. Run one after another,
+// the first call waits for the rest forever, until the test's context expires.
+type barrierSearch struct {
+	n int
+
+	mu      sync.Mutex
+	started int
+	all     chan struct{}
+}
+
+func newBarrierSearch(n int) *barrierSearch {
+	return &barrierSearch{n: n, all: make(chan struct{})}
+}
+
+func (b *barrierSearch) Search(ctx context.Context, query string, _ websearch.Options) ([]websearch.Result, error) {
+	b.mu.Lock()
+	b.started++
+	if b.started == b.n {
+		close(b.all)
+	}
+	b.mu.Unlock()
+
+	select {
+	case <-b.all:
+		return []websearch.Result{{Title: "结果-" + query, URL: "https://example.com/" + query}}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func Test_runAgent_parallelTools(t *testing.T) {
+	// Arrange
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	model := &fakeLLM{replies: []*llm.ChatResp{
+		{ToolCalls: []llm.ToolCall{searchCall("call_1", "a"), searchCall("call_2", "b"), searchCall("call_3", "c")}},
+		{Content: "done"},
+	}}
+	pas := &PurchaseAIService{llmClient: model, searchProvider: newBarrierSearch(3)}
+
+	// Act
+	resp, err := pas.runAgent(ctx, startMessages())
+
+	// Assert: all three ran at once, and each result sits after its own call
+	// in the order the model asked, whatever order they finished in
+	require.NoError(t, err)
+	require.Equal(t, "done", resp.Content)
+	second := model.reqs[1].Messages
+	require.Len(t, second, 6)
+	for i, query := range []string{"a", "b", "c"} {
+		msg := second[3+i]
+		require.Equal(t, fmt.Sprintf("call_%d", i+1), msg.ToolCallID)
+		require.Contains(t, msg.Parts[0].Text, "结果-"+query)
+	}
 }

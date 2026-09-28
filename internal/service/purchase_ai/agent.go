@@ -21,6 +21,7 @@ package purchaseai
 
 import (
 	"context"
+	"sync"
 
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/segmentfault/pacman/log"
@@ -69,14 +70,28 @@ func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Messa
 		assistantMsg.Reasoning = resp.Reasoning
 		messages = append(messages, assistantMsg)
 
-		for _, call := range resp.ToolCalls {
-			result, err := pas.runTool(ctx, byName, call)
-			if err != nil {
-				return nil, err
+		// the calls of one round were chosen together, before any result was
+		// known, so none depends on another and they can all run at once. Each
+		// goroutine writes only its own index, so the slices need no lock, and
+		// the results go back in the order the model asked for them.
+		calls := resp.ToolCalls
+		results := make([]string, len(calls))
+		errs := make([]error, len(calls))
+		var wg sync.WaitGroup
+		for i, call := range calls {
+			wg.Go(func() {
+				results[i], errs[i] = pas.runTool(ctx, byName, call)
+			})
+		}
+		wg.Wait()
+
+		for i, call := range calls {
+			if errs[i] != nil {
+				return nil, errs[i]
 			}
 			log.Debugf("purchase ai: round %d, ran %s", round, call.Name)
 
-			toolMsg := llm.Text(llm.RoleTool, result)
+			toolMsg := llm.Text(llm.RoleTool, results[i])
 			toolMsg.ToolCallID = call.ID
 			messages = append(messages, toolMsg)
 		}
