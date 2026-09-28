@@ -33,6 +33,7 @@ func Test_buildSystemPrompt(t *testing.T) {
 	// Assert
 	require.Contains(t, prompt, "今天是 2026-09-27")
 	require.Contains(t, prompt, "web_search")
+	require.Contains(t, prompt, "fetch_page")
 	require.Contains(t, prompt, "未能核实")
 	require.NotContains(t, prompt, "没有联网能力")
 }

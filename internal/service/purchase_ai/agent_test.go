@@ -84,8 +84,9 @@ func Test_runAgent(t *testing.T) {
 		require.Equal(t, []string{"Switch OLED 价格"}, search.Queries())
 
 		require.Len(t, model.reqs, 2)
-		require.Len(t, model.reqs[0].Tools, 1)
+		require.Len(t, model.reqs[0].Tools, 2)
 		require.Equal(t, "web_search", model.reqs[0].Tools[0].Name)
+		require.Equal(t, "fetch_page", model.reqs[0].Tools[1].Name)
 
 		// the second request carries the model's own turn back, then the result
 		second := model.reqs[1].Messages

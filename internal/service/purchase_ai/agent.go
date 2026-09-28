@@ -32,7 +32,11 @@ import (
 // provider again, so it bounds both the cost and the time of an analysis.
 // When the rounds run out the model gets one more call, without tools, to
 // answer from what it has.
-const maxToolRounds = 4
+//
+// The ceiling is the queue's three minute timeout per analysis: a round is
+// roughly a model call (up to ~7s) plus a page read (up to ~12s), so six rounds
+// and the closing call fit, and eight could time out and lose them all.
+const maxToolRounds = 6
 
 // outOfRoundsPrompt closes the loop when the model is still asking for tools.
 const outOfRoundsPrompt = "搜索次数已用完。请根据已有资料作答，查不到的信息直接说明未能核实。"
@@ -44,7 +48,7 @@ const outOfRoundsPrompt = "搜索次数已用完。请根据已有资料作答�
 // Only a tool's error stops the loop, and tools return one only when the
 // context is done; everything the model can act on comes back as text.
 func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Message) (*llm.ChatResp, error) {
-	tools, err := pas.agentTools()
+	tools, err := pas.newAgentRun().tools()
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +84,7 @@ func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Messa
 		var wg sync.WaitGroup
 		for i, call := range calls {
 			wg.Go(func() {
-				results[i], errs[i] = pas.runTool(ctx, byName, call)
+				results[i], errs[i] = runTool(ctx, byName, call)
 			})
 		}
 		wg.Wait()
@@ -103,7 +107,7 @@ func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Messa
 
 // runTool runs one call. A name the model made up is answered, not failed, so
 // the model can correct itself.
-func (pas *PurchaseAIService) runTool(ctx context.Context, byName map[string]agentTool, call llm.ToolCall) (string, error) {
+func runTool(ctx context.Context, byName map[string]agentTool, call llm.ToolCall) (string, error) {
 	tool, ok := byName[call.Name]
 	if !ok {
 		log.Warnf("purchase ai: model called unknown tool %q", call.Name)
