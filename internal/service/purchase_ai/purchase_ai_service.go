@@ -25,6 +25,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/apache/answer/internal/base/constant"
 	"github.com/apache/answer/internal/base/reason"
@@ -119,16 +120,11 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 	}()
 
 	messages := []llm.Message{
-		llm.Text(llm.RoleSystem, buildSystemPrompt()),
+		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now())),
 		llm.Text(llm.RoleUser, buildUserPrompt(question)),
 	}
 
-	chatReq := &llm.ChatReq{
-		Messages: messages,
-	}
-
-	resp, err := pas.llmClient.Chat(ctx, chatReq)
-
+	resp, err := pas.runAgent(ctx, messages)
 	if err != nil {
 		return err
 	}
