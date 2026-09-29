@@ -67,7 +67,8 @@ func buildSystemPrompt(now time.Time) string {
 2. 说重点，不要客套和总结段。
 3. 具体的价格、日期、参数、评测结论，只能来自搜索结果，并在后面用 Markdown 链接标出来源，例如「京东到手价 1849 元（[太平洋电脑网](https://example.com/...)）」。链接只能用搜索结果里出现过的，不要自己编。
 4. 搜不到、搜索失败或者结果对不上用户的商品时，明确说「未能核实」，不要给出一个你并不知道的数字。
-5. 不要重复用户已经写过的内容。`, now.Format("2006-01-02"))
+5. 不要重复用户已经写过的内容。
+6. 表示范围用「68～74」或「68 至 74」，不要用半角的 ~，它在 Markdown 里会被渲染成删除线。`, now.Format("2006-01-02"))
 }
 
 // buildIdentifyPrompt asks for the one product the screenshots show, as JSON.

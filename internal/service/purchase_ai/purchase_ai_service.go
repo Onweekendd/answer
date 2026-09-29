@@ -139,7 +139,7 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 		return err
 	}
 
-	originalText := resp.Content
+	originalText := fixNumberRanges(resp.Content)
 
 	if strings.TrimSpace(originalText) == "" {
 		return errors.InternalServer(reason.AIRequestFailed).
