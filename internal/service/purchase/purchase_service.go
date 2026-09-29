@@ -22,7 +22,6 @@ package purchase
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/apache/answer/internal/base/reason"
@@ -80,7 +79,19 @@ func (ps *PurchaseService) ToEntity(info *schema.PurchaseInfo) *entity.PurchaseD
 		Currency: currency,
 		Link:     info.Link,
 		Images:   string(imagesJSON),
+		Product:  productToColumn(info.Product),
 	}
+}
+
+// productToColumn is productFromColumn's reverse: nil is stored as "", the
+// column's "not recognized" value. Marshal cannot fail here, since every
+// field is a string, bool or number that itself came from JSON.
+func productToColumn(product *schema.PurchaseProduct) string {
+	if product == nil {
+		return ""
+	}
+	productJSON, _ := json.Marshal(product)
+	return string(productJSON)
 }
 
 // ToSchema maps entity -> response schema.
@@ -130,7 +141,8 @@ func (ps *PurchaseService) IsChanged(ctx context.Context, questionID string, inf
 	return incoming.Price != old.Price ||
 		incoming.Currency != old.Currency ||
 		incoming.Link != old.Link ||
-		incoming.Images != old.Images, nil
+		incoming.Images != old.Images ||
+		incoming.Product != old.Product, nil
 }
 
 // GetByQuestionID returns the purchase info for one question, or nil when absent.
@@ -190,15 +202,5 @@ func (ps *PurchaseService) BatchGetByQuestionIDs(ctx context.Context, questionID
 // product clears it: it is stored as "", the column's "not recognized" value,
 // rather than as the JSON text null.
 func (ps *PurchaseService) SaveProduct(ctx context.Context, questionID string, product *schema.PurchaseProduct) error {
-	if product == nil {
-		return ps.purchaseRepo.UpdateProduct(ctx, questionID, "")
-	}
-
-	productJSON, err := json.Marshal(product)
-	if err != nil {
-		return errors.InternalServer(reason.UnknownError).
-			WithError(fmt.Errorf("marshal purchase product: %w", err)).
-			WithStack()
-	}
-	return ps.purchaseRepo.UpdateProduct(ctx, questionID, string(productJSON))
+	return ps.purchaseRepo.UpdateProduct(ctx, questionID, productToColumn(product))
 }

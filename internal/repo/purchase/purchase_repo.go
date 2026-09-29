@@ -62,7 +62,7 @@ func (pr *purchaseRepo) UpsertWithSession(session *xorm.Session, detail *entity.
 	}
 
 	if exists {
-		_, err = session.ID(detail.QuestionID).Cols("price", "currency", "link", "images").Update(detail)
+		_, err = session.ID(detail.QuestionID).Cols("price", "currency", "link", "images", "product").Update(detail)
 	} else {
 		_, err = session.Insert(detail)
 	}

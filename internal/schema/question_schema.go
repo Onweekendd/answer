@@ -76,14 +76,17 @@ type ReopenQuestionReq struct {
 }
 
 type PurchaseInfo struct {
-	Images   []string         `json:"images" validate:"required,min=1,max=5,dive,url"`
-	Price    float64          `json:"price" validate:"gte=0"`
-	Currency string           `json:"currency" validate:"omitempty,len=3"`
-	Link     string           `json:"link" validate:"omitempty,url,lte=255"`
-	AIStatus int              `json:"ai_status"` // 只出不进，前端传了也忽略
-	// Product is what the AI read off the screenshots, nil until then. Output
-	// only for now, like AIStatus: ToEntity never copies it from a request.
-	Product *PurchaseProduct `json:"product,omitempty"`
+	// PurchaseAIIdentifyReq.Images repeats this rule; change both together
+	Images   []string `json:"images" validate:"required,min=1,max=5,dive,url"`
+	Price    float64  `json:"price" validate:"gte=0"`
+	Currency string   `json:"currency" validate:"omitempty,len=3"`
+	Link     string   `json:"link" validate:"omitempty,url,lte=255"`
+	AIStatus int      `json:"ai_status"` // 只出不进，前端传了也忽略
+	// Product is what the AI read off the screenshots, nil until then. The post
+	// form submits the reading it got from identify, so the analysis need not
+	// read the screenshots again; the fields are checked like any user input.
+	// On edit the form sends it back as well, and nil clears it.
+	Product *PurchaseProduct `json:"product,omitempty" validate:"omitempty"`
 }
 
 type QuestionAdd struct {

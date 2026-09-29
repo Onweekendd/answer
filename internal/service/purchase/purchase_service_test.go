@@ -297,4 +297,62 @@ func TestToEntityToSchemaRoundTrip(t *testing.T) {
 	require.Equal(t, info.Price, got.Price)
 	require.Equal(t, info.Link, got.Link)
 	require.Equal(t, "CNY", got.Currency, "空币种在 ToEntity 时被补成默认值")
+	require.Nil(t, got.Product, "没提交商品时读回来也是 nil")
+}
+
+func TestToEntityToSchemaRoundTrip_product(t *testing.T) {
+	// Arrange: the reading identify returned, submitted back with the post
+	ps := newServiceWithSite(t)
+	price := 6520.0
+	info := &schema.PurchaseInfo{
+		Images: []string{testSiteURL + "/uploads/post/a.png"},
+		Product: &schema.PurchaseProduct{
+			Name: "Apple iPhone 17 512GB", Tags: []string{"数码", "手机"},
+			Specs: []string{"512GB"}, Promotions: []string{}, Price: &price, Confidence: 0.72,
+		},
+	}
+
+	// Act
+	got := ps.ToSchema(ps.ToEntity(info))
+
+	// Assert
+	require.Equal(t, info.Product, got.Product)
+}
+
+// storedRepo answers GetByQuestionID with one stored detail.
+type storedRepo struct {
+	PurchaseRepo
+	detail *entity.PurchaseDetail
+}
+
+func (r *storedRepo) GetByQuestionID(_ context.Context, _ string) (*entity.PurchaseDetail, bool, error) {
+	return r.detail, true, nil
+}
+
+func TestIsChanged_product(t *testing.T) {
+	stored := &schema.PurchaseProduct{Name: "Apple iPhone 17 512GB", Tags: []string{"数码", "手机"}}
+	info := func(product *schema.PurchaseProduct) *schema.PurchaseInfo {
+		return &schema.PurchaseInfo{Images: []string{"a.png"}, Price: 1, Product: product}
+	}
+	ps := NewPurchaseService(&storedRepo{detail: NewPurchaseService(nil, nil).ToEntity(info(stored))}, nil)
+
+	tests := []struct {
+		name    string
+		product *schema.PurchaseProduct
+		want    bool
+	}{
+		{name: "原样带回来", product: &schema.PurchaseProduct{Name: "Apple iPhone 17 512GB", Tags: []string{"数码", "手机"}}, want: false},
+		{name: "改了商品", product: &schema.PurchaseProduct{Name: "Apple iPhone 17 256GB", Tags: []string{"数码", "手机"}}, want: true},
+		{name: "去掉了商品", product: nil, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Act
+			changed, err := ps.IsChanged(context.Background(), "q1", info(tt.product))
+
+			// Assert
+			require.NoError(t, err)
+			require.Equal(t, tt.want, changed)
+		})
+	}
 }

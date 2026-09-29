@@ -258,26 +258,49 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 		require.Equal(t, "", detail.Product)
 	})
 
-	t.Run("编辑帖子不会冲掉已识别的商品", func(t *testing.T) {
-		// Arrange
-		require.NoError(t, purchaseRepo.UpdateProduct(ctx, question.ID, product))
-
-		// Act: the edit path, whose detail comes from the form and has no product
-		err := withSession(t, func(session *xorm.Session) error {
+	// The edit form sends the product back with the rest, so an edit writes
+	// whatever it carries: the form is the one source of the product.
+	editWith := func(t *testing.T, product string) error {
+		t.Helper()
+		return withSession(t, func(session *xorm.Session) error {
 			return purchaseRepo.UpsertWithSession(session, &entity.PurchaseDetail{
 				QuestionID: question.ID,
 				Price:      4999,
 				Currency:   "CNY",
 				Images:     `["a.png"]`,
+				Product:    product,
 			})
 		})
+	}
+
+	t.Run("编辑帖子时带着的商品会写进去", func(t *testing.T) {
+		// Arrange
+		require.NoError(t, purchaseRepo.UpdateProduct(ctx, question.ID, product))
+		const edited = `{"name":"任天堂 Switch OLED 日版"}`
+
+		// Act
+		err := editWith(t, edited)
 
 		// Assert
 		require.NoError(t, err)
 		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
 		require.Equal(t, 4999.0, detail.Price)
-		require.Equal(t, product, detail.Product)
+		require.Equal(t, edited, detail.Product)
+	})
+
+	t.Run("编辑帖子时没带商品就清空，比如用户点了「不对」", func(t *testing.T) {
+		// Arrange
+		require.NoError(t, purchaseRepo.UpdateProduct(ctx, question.ID, product))
+
+		// Act
+		err := editWith(t, "")
+
+		// Assert
+		require.NoError(t, err)
+		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
+		require.NoError(t, err)
+		require.Equal(t, "", detail.Product)
 	})
 }
 
