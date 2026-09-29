@@ -21,6 +21,7 @@ package purchaseai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -29,7 +30,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/uploader"
 	"github.com/stretchr/testify/require"
 )
@@ -277,5 +280,127 @@ func Test_identifyProduct(t *testing.T) {
 		require.Nil(t, p)
 		require.ErrorContains(t, err, "not a valid JSON", "a parse error, not the fake running out of replies")
 		require.Len(t, model.reqs, maxIdentifyAttempts)
+	})
+}
+
+// fakePurchaseRepo records the products written through SaveProduct. Only
+// UpdateProduct is implemented; the embedded interface covers the rest.
+type fakePurchaseRepo struct {
+	purchase.PurchaseRepo
+	saved []string
+	err   error
+}
+
+func (f *fakePurchaseRepo) UpdateProduct(_ context.Context, _, product string) error {
+	f.saved = append(f.saved, product)
+	return f.err
+}
+
+// newProductForService builds a service whose screenshot "u" is readable, so a
+// test only has to script the model and, if it cares, the repo.
+func newProductForService(t *testing.T, model *fakeLLM, repo *fakePurchaseRepo) *PurchaseAIService {
+	t.Helper()
+	return &PurchaseAIService{
+		llmClient:       model,
+		uploaderService: fakeUploader{paths: map[string]string{"u": writePNG(t)}},
+		purchaseService: purchase.NewPurchaseService(repo, nil),
+	}
+}
+
+func Test_productFor(t *testing.T) {
+	t.Run("已经有商品时直接用，不调模型也不存库", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{}
+		repo := &fakePurchaseRepo{}
+		pas := newProductForService(t, model, repo)
+		stored := &schema.PurchaseProduct{Name: "用户确认过的商品"}
+
+		// Act
+		got := pas.productFor(context.Background(), "q1",
+			&schema.PurchaseInfo{Images: []string{"u"}, Product: stored})
+
+		// Assert
+		require.Same(t, stored, got)
+		require.Empty(t, model.reqs)
+		require.Empty(t, repo.saved)
+	})
+
+	t.Run("帖子没有 purchase 时返回 nil，不调模型", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{}
+		repo := &fakePurchaseRepo{}
+		pas := newProductForService(t, model, repo)
+
+		// Act
+		got := pas.productFor(context.Background(), "q1", nil)
+
+		// Assert
+		require.Nil(t, got)
+		require.Empty(t, model.reqs)
+		require.Empty(t, repo.saved)
+	})
+
+	t.Run("识别成功时返回商品并存库", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{{Content: switchJSON}}}
+		repo := &fakePurchaseRepo{}
+		pas := newProductForService(t, model, repo)
+
+		// Act
+		got := pas.productFor(context.Background(), "q1",
+			&schema.PurchaseInfo{Images: []string{"u"}})
+
+		// Assert
+		require.NotNil(t, got)
+		require.Equal(t, "任天堂 Switch OLED 国行 白色", got.Name)
+		require.Len(t, repo.saved, 1)
+		require.Contains(t, repo.saved[0], "任天堂 Switch OLED 国行 白色")
+	})
+
+	t.Run("模型调用失败时返回 nil，不存库", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{err: errors.New("provider down")}
+		repo := &fakePurchaseRepo{}
+		pas := newProductForService(t, model, repo)
+
+		// Act
+		got := pas.productFor(context.Background(), "q1",
+			&schema.PurchaseInfo{Images: []string{"u"}})
+
+		// Assert
+		require.Nil(t, got)
+		require.Len(t, model.reqs, 1, "a provider error is not retried")
+		require.Empty(t, repo.saved)
+	})
+
+	t.Run("截图里没有商品时返回 nil，不存库", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{{Content: `{"name":"","confidence":0,"notes":"这是一张风景照"}`}}}
+		repo := &fakePurchaseRepo{}
+		pas := newProductForService(t, model, repo)
+
+		// Act
+		got := pas.productFor(context.Background(), "q1",
+			&schema.PurchaseInfo{Images: []string{"u"}})
+
+		// Assert: nothing is stored, so the next analysis may try again
+		require.Nil(t, got)
+		require.Empty(t, repo.saved)
+	})
+
+	t.Run("存库失败时仍然返回识别到的商品", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{{Content: switchJSON}}}
+		repo := &fakePurchaseRepo{err: errors.New("database down")}
+		pas := newProductForService(t, model, repo)
+
+		// Act
+		got := pas.productFor(context.Background(), "q1",
+			&schema.PurchaseInfo{Images: []string{"u"}})
+
+		// Assert: this analysis still uses the reading it paid for
+		require.Len(t, repo.saved, 1, "the save was attempted")
+		require.NotNil(t, got)
+		require.Equal(t, "Switch OLED", got.Model)
 	})
 }
