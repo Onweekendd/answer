@@ -83,6 +83,7 @@ func buildIdentifyPrompt() string {
   "name": "任天堂 Switch OLED 国行 白色",
   "brand": "任天堂",
   "model": "Switch OLED",
+  "tags": ["数码", "游戏机"],
   "specs": ["国行", "白色"],
   "platform": "京东",
   "shop": "任天堂京东自营旗舰店",
@@ -97,6 +98,7 @@ func buildIdentifyPrompt() string {
 各字段：
 - name：完整商品名，去掉「官方正品」「限时特惠」这类营销词。
 - brand、model：品牌和型号。型号要具体，比如「Switch OLED」，不要写「游戏机」。
+- tags：商品的分类，1 到 3 个，从大类到小类，比如 ["数码", "游戏机"]、["食品", "牛肉"]。每个都要简短，用社区里大家会用来分类的常用词，比如「手机」「耳机」，不要写「智能手机」「真无线蓝牙耳机」。
 - specs：用户选中的规格，每项一个字符串。
 - platform：只能是 淘宝、天猫、京东、拼多多、其他 之一。
 - shop：店铺名。
@@ -108,7 +110,7 @@ func buildIdentifyPrompt() string {
 - notes：看不清、有歧义或者不确定的地方，一句话说明。
 
 规则：
-1. 只填截图里能看到的信息。看不到的：price、list_price、official 填 null，文字填 ""，列表填 []。即使你认识这个商品，也不要凭印象补上价格或规格。
+1. 只填截图里能看到的信息。看不到的：price、list_price、official 填 null，文字填 ""，列表填 []。即使你认识这个商品，也不要凭印象补上价格或规格。只有 tags 例外：它是你根据商品做的判断，截图里不需要出现这几个字。
 2. 页面上有多个价格时，price 填用户最终要付的那个；分不清时在 notes 里说明。
 3. 截图里有多个商品（比如推荐列表、购物车）时，只识别用户选中的或者最突出的那一个。
 4. 截图和购物无关时，name 填 ""，confidence 填 0，在 notes 里说明截图是什么内容。`

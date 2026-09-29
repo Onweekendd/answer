@@ -21,6 +21,7 @@ package controller
 
 import (
 	"github.com/apache/answer/internal/base/handler"
+	"github.com/apache/answer/internal/base/middleware"
 	"github.com/apache/answer/internal/schema"
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
 	"github.com/gin-gonic/gin"
@@ -60,4 +61,28 @@ func (pac *PurchaseAIController) Analyze(ctx *gin.Context) {
 	// purchase.ai_status to find out how it went.
 	pac.purchaseAIService.Enqueue(ctx, req.QuestionID)
 	handler.HandleResponse(ctx, nil, nil)
+}
+
+// Identify read the product off just-uploaded screenshots
+// @Summary read the product off just-uploaded screenshots
+// @Description ask the vision model what product the screenshots show, so the post form can fill in the price and tags; product is null when they show none
+// @Tags PurchaseAI
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param data body schema.PurchaseAIIdentifyReq true "uploaded screenshot urls"
+// @Success 200 {object} handler.RespBody{data=schema.PurchaseAIIdentifyResp}
+// @Router /answer/api/v1/purchase/ai/identify [post]
+func (pac *PurchaseAIController) Identify(ctx *gin.Context) {
+	req := &schema.PurchaseAIIdentifyReq{}
+	if handler.BindAndCheck(ctx, req) {
+		return
+	}
+	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
+
+	// unlike Analyze this waits for the result: it is one vision call of a few
+	// seconds, and the form needs it. The request's context goes along, so the
+	// call stops when the user removes the screenshots and the form cancels.
+	resp, err := pac.purchaseAIService.Identify(ctx, req)
+	handler.HandleResponse(ctx, err, resp)
 }

@@ -282,6 +282,7 @@ func (a *AnswerAPIRouter) RegisterAnswerAPIRouter(r *gin.RouterGroup) {
 
 	// purchase ai
 	r.POST("/purchase/ai/analyze", a.purchaseAIController.Analyze)
+	r.POST("/purchase/ai/identify", a.purchaseAIController.Identify)
 
 	// answer
 	r.POST("/answer", a.answerController.AddAnswer)

@@ -30,9 +30,13 @@ type PurchaseAIAnalyzeReq struct {
 // post: the one product the post is about. Anything the screenshots do not
 // show is left empty rather than guessed.
 type PurchaseProduct struct {
-	Name     string   `json:"name"`
-	Brand    string   `json:"brand"`
-	Model    string   `json:"model"`
+	Name  string `json:"name"`
+	Brand string `json:"brand"`
+	Model string `json:"model"`
+	// Tags are 1 to 3 short categories, broad to narrow, such as 数码 and
+	// 游戏机. Unlike the other fields they are the model's judgement rather
+	// than text read off the screenshots; the post form offers them as tags.
+	Tags     []string `json:"tags"`
 	Specs    []string `json:"specs"`
 	Platform string   `json:"platform"`
 	Shop     string   `json:"shop"`
@@ -51,4 +55,19 @@ type PurchaseProduct struct {
 	// Notes says what the model could not read or was unsure of, such as a
 	// price hidden behind a popup.
 	Notes string `json:"notes"`
+}
+
+// PurchaseAIIdentifyReq asks what product some just-uploaded screenshots show,
+// before the post exists.
+type PurchaseAIIdentifyReq struct {
+	// same rule as PurchaseInfo.Images: identify must accept whatever a post can hold
+	Images []string `json:"images" validate:"required,min=1,max=5,dive,url"`
+	// UserID is filled by the controller, never by the client.
+	UserID string `json:"-"`
+}
+
+// PurchaseAIIdentifyResp is the reading. Product is null when the screenshots
+// show no product, which is an answer rather than an error.
+type PurchaseAIIdentifyResp struct {
+	Product *PurchaseProduct `json:"product"`
 }

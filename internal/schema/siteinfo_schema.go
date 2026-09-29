@@ -548,7 +548,9 @@ var (
 		constant.RankQuestionVoteDownKey:          {125, 125, 125},
 		constant.RankAnswerVoteDownKey:            {125, 125, 125},
 		constant.RankInviteSomeoneToAnswerKey:     {1, 500, 1000},
-		constant.RankTagAddKey:                    {1, 750, 1500},
+		// creating a category is not a privilege here: identify suggests tags
+		// that may not exist yet, and a new user must be able to accept them
+		constant.RankTagAddKey:                    {1, 1, 1},
 		constant.RankTagEditKey:                   {1, 50, 100},
 		constant.RankQuestionEditKey:              {1, 100, 200},
 		constant.RankAnswerEditKey:                {1, 100, 200},

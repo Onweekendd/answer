@@ -161,7 +161,11 @@ func Test_parseProduct(t *testing.T) {
 	t.Run("过长的文字截断，列表去掉空项并限制条数", func(t *testing.T) {
 		// Arrange
 		long := strings.Repeat("长", maxProductNameRunes+50)
-		specs := `" 国行 ","",` + strings.Repeat(`"x",`, maxProductListItems+5) + `"y"`
+		// distinct items, so the cap is what cuts them rather than dedup
+		specs := `" 国行 ",""`
+		for i := range maxProductListItems + 5 {
+			specs += fmt.Sprintf(`,"规格%d"`, i)
+		}
 
 		// Act
 		p, err := parseProduct(`{"name":"` + long + `","specs":[` + specs + `],"confidence":0.5}`)
@@ -173,6 +177,21 @@ func Test_parseProduct(t *testing.T) {
 		require.Equal(t, "国行", p.Specs[0])
 	})
 
+	t.Run("标签最多 3 个，每个不超过 35 字，去掉空的和重复的", func(t *testing.T) {
+		// Arrange
+		long := strings.Repeat("长", maxProductTagRunes+5)
+
+		// Act
+		p, err := parseProduct(`{"name":"x","confidence":0.5,"tags":[" 数码 ","","数码","` + long + `","手机","多余"]}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.Len(t, p.Tags, maxProductTags)
+		require.Equal(t, "数码", p.Tags[0])
+		require.Equal(t, maxProductTagRunes, len([]rune(p.Tags[1])))
+		require.Equal(t, "手机", p.Tags[2])
+	})
+
 	t.Run("缺少列表时给空列表，存进去是 [] 而不是 null", func(t *testing.T) {
 		// Act
 		p, err := parseProduct(`{"name":"x","confidence":0.5}`)
@@ -181,6 +200,7 @@ func Test_parseProduct(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, p.Specs)
 		require.NotNil(t, p.Promotions)
+		require.NotNil(t, p.Tags)
 	})
 }
 

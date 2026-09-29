@@ -25,9 +25,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/pkg/imgprep"
+	"github.com/segmentfault/pacman/errors"
 	"github.com/segmentfault/pacman/log"
 )
 
@@ -39,6 +41,10 @@ const (
 	maxProductNotesRunes = 300
 	maxProductListItems  = 10
 	maxIdentifyAttempts  = 2
+	maxProductTags       = 3
+	// TagItem.DisplayName is lte=35, so a longer tag would be rejected when
+	// the post is submitted
+	maxProductTagRunes = 35
 )
 
 // imageParts reads the post's screenshots from disk into image parts for the
@@ -93,6 +99,21 @@ func (pas *PurchaseAIService) productFor(ctx context.Context, questionID string,
 		log.Warnf("purchase ai: save product failed, questionID: %s, err: %v", questionID, err)
 	}
 	return product
+}
+
+// Identify reads the product off screenshots the user has just uploaded, so
+// the post form can offer to fill in the price and tags. Nothing is saved: the
+// post does not exist yet, and the form submits the reading along with it.
+func (pas *PurchaseAIService) Identify(ctx context.Context, req *schema.PurchaseAIIdentifyReq) (*schema.PurchaseAIIdentifyResp, error) {
+	product, err := pas.identifyProduct(ctx, req.Images)
+
+	if err != nil {
+		return nil, errors.InternalServer(reason.AIRequestFailed).WithError(err).WithStack()
+	}
+
+	return &schema.PurchaseAIIdentifyResp{
+		Product: product,
+	}, nil
 }
 
 func (pas *PurchaseAIService) identifyProduct(ctx context.Context, imageURLs []string) (*schema.PurchaseProduct, error) {
@@ -160,8 +181,9 @@ func parseProduct(content string) (*schema.PurchaseProduct, error) {
 	p.Model = clipRunes(strings.TrimSpace(p.Model), maxProductFieldRunes)
 	p.Shop = clipRunes(strings.TrimSpace(p.Shop), maxProductFieldRunes)
 	p.Notes = clipRunes(strings.TrimSpace(p.Notes), maxProductNotesRunes)
-	p.Specs = cleanList(p.Specs)
-	p.Promotions = cleanList(p.Promotions)
+	p.Specs = cleanList(p.Specs, maxProductListItems, maxProductFieldRunes)
+	p.Tags = cleanList(p.Tags, maxProductTags, maxProductTagRunes)
+	p.Promotions = cleanList(p.Promotions, maxProductListItems, maxProductFieldRunes)
 
 	p.Platform = strings.TrimSpace(p.Platform)
 	if p.Platform != "" && !productPlatforms[p.Platform] {
@@ -186,18 +208,22 @@ func stripCodeFence(s string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "```"))
 }
 
-// cleanList trims each item, drops empty ones and keeps at most
-// maxProductListItems. It never returns nil, so the stored JSON says [] rather
-// than null.
-func cleanList(items []string) []string {
-	out := make([]string, 0, len(items))
+// cleanList trims each item, cuts it to maxRunes, drops empty and repeated
+// ones and keeps at most maxItems. It never returns nil, so the stored JSON
+// says [] rather than null.
+func cleanList(items []string, maxItems, maxRunes int) []string {
+	out := make([]string, 0, min(len(items), maxItems))
+	seen := make(map[string]bool, len(items))
 	for _, item := range items {
-		if item = clipRunes(strings.TrimSpace(item), maxProductFieldRunes); item != "" {
-			out = append(out, item)
-		}
-		if len(out) == maxProductListItems {
+		if len(out) == maxItems {
 			break
 		}
+		item = clipRunes(strings.TrimSpace(item), maxRunes)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
 	}
 	return out
 }
