@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { FC } from 'react';
+import { FC, ReactNode } from 'react';
 import { Form, InputGroup } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 
@@ -35,6 +35,8 @@ interface Props {
   onImagesChange: (images: string[]) => void;
   onPriceChange: (price: string) => void;
   onLinkChange: (link: string) => void;
+  /** shown right under the screenshots, where identify reads from */
+  identifyNotice?: ReactNode;
 }
 
 /**
@@ -49,6 +51,7 @@ const PurchaseFields: FC<Props> = ({
   onImagesChange,
   onPriceChange,
   onLinkChange,
+  identifyNotice,
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'ask.form.fields' });
 
@@ -99,6 +102,7 @@ const PurchaseFields: FC<Props> = ({
           )}
         </div>
         <Form.Text className="d-block">{t('images.hint')}</Form.Text>
+        {identifyNotice}
         {/* hidden control so react-bootstrap renders the feedback below */}
         <Form.Control type="text" isInvalid={images.isInvalid} hidden />
         <Form.Control.Feedback type="invalid">

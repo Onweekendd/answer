@@ -53,6 +53,8 @@ import { useCaptchaPlugin } from '@/utils/pluginKit';
 
 import SearchQuestion from './components/SearchQuestion';
 import PurchaseFields from './components/PurchaseFields';
+import IdentifyNotice from './components/PurchaseFields/IdentifyNotice';
+import { usePurchaseIdentify } from './components/PurchaseFields/usePurchaseIdentify';
 
 interface FormDataItem {
   title: Type.FormValue<string>;
@@ -63,9 +65,44 @@ interface FormDataItem {
   images: Type.FormValue<string[]>;
   price: Type.FormValue<string>;
   link: Type.FormValue<string>;
+  product: Type.FormValue<Type.PurchaseProduct | null>;
+}
+
+/** What identify put into the form last time, so 不对 can take back exactly that. */
+interface AutoFilled {
+  price?: string;
+  tags?: Type.Tag[];
 }
 
 const saveDraft = new SaveDraft({ type: 'question' });
+
+const slugsOf = (tags: Type.Tag[]) =>
+  tags.map((tag) => tag.slug_name.toLowerCase());
+
+/**
+ * Turns the tag names identify suggested into tags the selector can hold: the
+ * site's own tag where one exists, so its display name and id come along, and
+ * a new tag otherwise, which the server creates on submit.
+ */
+const tagsFromNames = async (names: string[]): Promise<Type.Tag[]> => {
+  const existing = await getTagsBySlugName(names.join(',')).catch(() => []);
+  return names.map((name) => {
+    const found = (existing || []).find(
+      (tag) =>
+        tag.slug_name.toLowerCase() === name.toLowerCase() ||
+        tag.display_name === name,
+    );
+    if (found) {
+      return { ...found, original_text: '', parsed_text: '' };
+    }
+    return {
+      slug_name: name,
+      display_name: name,
+      original_text: '',
+      parsed_text: '',
+    };
+  });
+};
 
 const Ask = () => {
   const initFormData = {
@@ -109,9 +146,19 @@ const Ask = () => {
       isInvalid: false,
       errorMsg: '',
     },
+    product: {
+      value: null,
+      isInvalid: false,
+      errorMsg: '',
+    },
   };
   const { t } = useTranslation('translation', { keyPrefix: 'ask' });
   const [formData, setFormData] = useState<FormDataItem>(initFormData);
+  // identify answers seconds after it was asked, so its handler reads the
+  // form as it is then, not as it was when the request started
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const [autoFilled, setAutoFilled] = useState<AutoFilled>({});
   const [immData, setImmData] = useState<FormDataItem>(initFormData);
   const [checked, setCheckState] = useState(false);
   const [blockState, setBlockState] = useState(false);
@@ -119,6 +166,7 @@ const Ask = () => {
   const [hasDraft, setHasDraft] = useState(false);
   const resetForm = () => {
     setFormData(initFormData);
+    setAutoFilled({});
     setCheckState(false);
     setForceType('');
   };
@@ -184,6 +232,7 @@ const Ask = () => {
           formData.images.value = draft.images || [];
           formData.price.value = draft.price || '';
           formData.link.value = draft.link || '';
+          formData.product.value = draft.product || null;
           setCheckState(Boolean(draft.answer_content));
           setHasDraft(true);
         }
@@ -199,8 +248,16 @@ const Ask = () => {
   }, [qid]);
 
   useEffect(() => {
-    const { title, tags, content, answer_content, images, price, link } =
-      formData;
+    const {
+      title,
+      tags,
+      content,
+      answer_content,
+      images,
+      price,
+      link,
+      product,
+    } = formData;
     const {
       title: editTitle,
       tags: editTags,
@@ -208,6 +265,7 @@ const Ask = () => {
       images: editImages,
       price: editPrice,
       link: editLink,
+      product: editProduct,
     } = immData;
 
     // edited
@@ -221,7 +279,8 @@ const Ask = () => {
         ) ||
         !isEqual(editImages.value, images.value) ||
         editPrice.value !== price.value ||
-        editLink.value !== link.value
+        editLink.value !== link.value ||
+        !isEqual(editProduct.value, product.value)
       ) {
         setBlockState(true);
       } else {
@@ -249,6 +308,7 @@ const Ask = () => {
           images: images.value,
           price: price.value,
           link: link.value,
+          product: product.value,
         },
         callback: () => setHasDraft(true),
       });
@@ -284,6 +344,8 @@ const Ask = () => {
         ? String(res.purchase.price)
         : '';
       formData.link.value = res.purchase?.link || '';
+      // kept so the edit sends it back: a product left out is cleared
+      formData.product.value = res.purchase?.product || null;
       setImmData({ ...formData });
       setFormData({ ...formData });
     });
@@ -343,6 +405,74 @@ const Ask = () => {
       ...prev,
       link: { value, errorMsg: '', isInvalid: false },
     }));
+
+  // A reading fills the price and tags only where the user has not: a field
+  // counts as the user's once it is neither empty nor what identify put there.
+  const handleIdentified = async (product: Type.PurchaseProduct | null) => {
+    if (!product) {
+      return;
+    }
+    const suggestedTags =
+      product.tags.length > 0 ? await tagsFromNames(product.tags) : [];
+
+    const prev = formDataRef.current;
+    const next: FormDataItem = {
+      ...prev,
+      product: { value: product, errorMsg: '', isInvalid: false },
+    };
+    const filled: AutoFilled = {};
+
+    const isOurs = (value: string) => !value || value === autoFilled.price;
+    if (product.price !== null && isOurs(prev.price.value)) {
+      filled.price = String(product.price);
+      next.price = { value: filled.price, errorMsg: '', isInvalid: false };
+    }
+
+    const tagsAreOurs =
+      prev.tags.value.length === 0 ||
+      (autoFilled.tags !== undefined &&
+        isEqual(slugsOf(prev.tags.value), slugsOf(autoFilled.tags)));
+    if (suggestedTags.length > 0 && tagsAreOurs) {
+      filled.tags = suggestedTags;
+      next.tags = { value: suggestedTags, errorMsg: '', isInvalid: false };
+    }
+
+    setFormData(next);
+    setAutoFilled(filled);
+  };
+
+  const identify = usePurchaseIdentify({
+    images: formData.images.value,
+    hasProduct: formData.product.value !== null,
+    auto: !isEdit,
+    onIdentified: handleIdentified,
+  });
+
+  // 不对: drop the reading and take back what it filled in, unless the user
+  // has changed that field since
+  const handleDismissProduct = () => {
+    setFormData((prev) => {
+      const next: FormDataItem = {
+        ...prev,
+        product: { value: null, errorMsg: '', isInvalid: false },
+      };
+      if (
+        autoFilled.price !== undefined &&
+        prev.price.value === autoFilled.price
+      ) {
+        next.price = { value: '', errorMsg: '', isInvalid: false };
+      }
+      if (
+        autoFilled.tags !== undefined &&
+        isEqual(slugsOf(prev.tags.value), slugsOf(autoFilled.tags))
+      ) {
+        next.tags = { value: [], errorMsg: '', isInvalid: false };
+      }
+      return next;
+    });
+    setAutoFilled({});
+    identify.reset();
+  };
 
   const handleSummaryChange = (evt: React.ChangeEvent<HTMLInputElement>) =>
     setFormData({
@@ -452,6 +582,7 @@ const Ask = () => {
         images: formData.images.value,
         price: Number(formData.price.value) || 0,
         link: formData.link.value.trim(),
+        product: formData.product.value,
       },
     };
 
@@ -490,6 +621,13 @@ const Ask = () => {
   usePageTags({
     title: pageTitle,
   });
+
+  // the title is the user's own question, so a reading only suggests one
+  const titlePlaceholder = formData.product.value
+    ? t('form.fields.title.placeholder_product', {
+        name: formData.product.value.name,
+      })
+    : t('form.fields.title.placeholder');
 
   const handleContentHint = () => {
     if (
@@ -540,7 +678,7 @@ const Ask = () => {
                 value={formData.title.value}
                 isInvalid={formData.title.isInvalid}
                 onChange={handleTitleChange}
-                placeholder={t('form.fields.title.placeholder')}
+                placeholder={titlePlaceholder}
                 autoFocus
                 contentEditable
               />
@@ -556,6 +694,21 @@ const Ask = () => {
               onImagesChange={handleImagesChange}
               onPriceChange={handlePriceChange}
               onLinkChange={handleLinkChange}
+              identifyNotice={
+                <IdentifyNotice
+                  status={identify.status}
+                  product={formData.product.value}
+                  stale={identify.stale}
+                  manual={identify.manual}
+                  hasImages={formData.images.value.length > 0}
+                  filled={{
+                    price: autoFilled.price !== undefined,
+                    tags: autoFilled.tags !== undefined,
+                  }}
+                  onIdentify={identify.identify}
+                  onDismiss={handleDismissProduct}
+                />
+              }
             />
             <Form.Group controlId="content">
               <Form.Label>{t('form.fields.body.label')}</Form.Label>

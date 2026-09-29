@@ -1157,6 +1157,7 @@ ui:
         title:
           label: 标题
           placeholder: 你的主题是什么？请具体说明。
+          placeholder_product: 比如：{{name}} 值得买吗？
           msg:
             empty: 标题不能为空。
             range: 标题最多 150 个字符
@@ -1177,6 +1178,19 @@ ui:
           cover: 封面
           msg:
             empty: 至少上传一张截图。
+          identify:
+            start: 识别截图里的商品
+            loading: 正在识别截图…
+            result: 识别为：{{name}}
+            result_filled: 识别为：{{name}}，{{filled}}
+            filled_price: 已填入价格
+            filled_tags: 已填入标签
+            filled_both: 已填入价格和标签
+            dismiss: 不对
+            stale: 截图有变化
+            retry: 重新识别
+            failed: 识别失败
+            none: 没有从截图里认出商品
         price:
           label: 价格
           placeholder: 选填，单位：元

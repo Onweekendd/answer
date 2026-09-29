@@ -78,12 +78,41 @@ export interface TagInfo extends TagBase {
   excerpt?;
   status: string;
 }
+/**
+ * What the vision model read off a post's screenshots. Anything the
+ * screenshots did not show is empty; `price`, `list_price` and `official`
+ * are null then, since 0 or false would be a real answer.
+ */
+export interface PurchaseProduct {
+  name: string;
+  brand: string;
+  model: string;
+  /** 1 to 3 categories, broad to narrow; the model's judgement, not page text */
+  tags: string[];
+  specs: string[];
+  platform: string;
+  shop: string;
+  official: boolean | null;
+  price: number | null;
+  list_price: number | null;
+  promotions: string[];
+  confidence: number;
+  notes: string;
+}
+
+export interface PurchaseIdentifyResp {
+  /** null when the screenshots show no product */
+  product: PurchaseProduct | null;
+}
+
 export interface PurchaseInfo {
   images: string[];
   price: number;
   currency?: string;
   link?: string;
   ai_status?: number;
+  /** sent back on edit as it was loaded; leaving it out clears it */
+  product?: PurchaseProduct | null;
 }
 
 export interface QuestionParams extends ImgCodeReq {

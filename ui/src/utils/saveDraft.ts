@@ -24,6 +24,7 @@ import {
   DRAFT_ANSWER_STORAGE_KEY,
 } from '@/common/constants';
 import { storageExpires as storage } from '@/utils';
+import type { PurchaseProduct } from '@/common/interface';
 
 export type QuestionDraft = {
   params: {
@@ -34,6 +35,7 @@ export type QuestionDraft = {
     images?: string[];
     price?: string;
     link?: string;
+    product?: PurchaseProduct | null;
   };
   callback?: () => void;
 };

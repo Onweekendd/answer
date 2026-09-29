@@ -1176,6 +1176,7 @@ ui:
         title:
           label: Title
           placeholder: What's your topic? Be specific.
+          placeholder_product: "For example: is the {{name}} worth buying?"
           msg:
             empty: Title cannot be empty.
             range: Title up to 150 characters
@@ -1196,6 +1197,19 @@ ui:
           cover: Cover
           msg:
             empty: Upload at least one screenshot.
+          identify:
+            start: Recognize the product in the screenshots
+            loading: Reading the screenshots…
+            result: "Looks like: {{name}}"
+            result_filled: "Looks like: {{name}}. {{filled}}"
+            filled_price: Price filled in.
+            filled_tags: Tags filled in.
+            filled_both: Price and tags filled in.
+            dismiss: Not right
+            stale: Screenshots changed
+            retry: Read again
+            failed: Could not read the screenshots
+            none: No product found in the screenshots
         price:
           label: Price
           placeholder: Optional, in CNY
