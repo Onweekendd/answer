@@ -70,10 +70,57 @@ func buildSystemPrompt(now time.Time) string {
 5. 不要重复用户已经写过的内容。`, now.Format("2006-01-02"))
 }
 
+// buildIdentifyPrompt asks for the one product the screenshots show, as JSON.
+// The rule that matters is the one against guessing: a model that knows the
+// product fills in a plausible price the screenshot never showed.
+func buildIdentifyPrompt() string {
+	return `你的任务是从用户上传的购物截图里识别出一个商品的信息。截图来自淘宝、天猫、京东、拼多多等购物 App 或网页。有多张截图时，它们是同一个商品的不同页面（商品页、规格选择、优惠券、下单页等），请合起来看。
+
+只输出一个 JSON 对象，不要有任何其他文字，也不要用代码块包起来。格式和例子：
+
+{
+  "name": "任天堂 Switch OLED 国行 白色",
+  "brand": "任天堂",
+  "model": "Switch OLED",
+  "specs": ["国行", "白色"],
+  "platform": "京东",
+  "shop": "任天堂京东自营旗舰店",
+  "official": true,
+  "price": 2099,
+  "list_price": 2599,
+  "promotions": ["满2000减100", "国家补贴"],
+  "confidence": 0.9,
+  "notes": ""
+}
+
+各字段：
+- name：完整商品名，去掉「官方正品」「限时特惠」这类营销词。
+- brand、model：品牌和型号。型号要具体，比如「Switch OLED」，不要写「游戏机」。
+- specs：用户选中的规格，每项一个字符串。
+- platform：只能是 淘宝、天猫、京东、拼多多、其他 之一。
+- shop：店铺名。
+- official：自营或品牌官方旗舰店填 true，明确是普通第三方店填 false。
+- price：用户实际要付的价格（到手价、券后价），只写数字，不带单位。
+- list_price：划线价或原价，只写数字。
+- promotions：页面上的优惠，每条一项。
+- confidence：0 到 1 之间的小数，表示你对整个识别结果的把握。截图清晰、信息完整时接近 1；模糊、残缺或者看不出是什么商品时低于 0.5。
+- notes：看不清、有歧义或者不确定的地方，一句话说明。
+
+规则：
+1. 只填截图里能看到的信息。看不到的：price、list_price、official 填 null，文字填 ""，列表填 []。即使你认识这个商品，也不要凭印象补上价格或规格。
+2. 页面上有多个价格时，price 填用户最终要付的那个；分不清时在 notes 里说明。
+3. 截图里有多个商品（比如推荐列表、购物车）时，只识别用户选中的或者最突出的那一个。
+4. 截图和购物无关时，name 填 ""，confidence 填 0，在 notes 里说明截图是什么内容。`
+}
+
 // buildUserPrompt lays out what is known about this one post. Fields the author
 // left empty are omitted rather than sent as zero values: a line reading
 // "价格：0.00 CNY" would tell the model the item is free.
-func buildUserPrompt(question *schema.QuestionInfoResp) string {
+//
+// product is what was read off the screenshots, nil when nothing was. It comes
+// after what the author typed and is marked as secondary, because a reading
+// can be wrong while the author knows what they are buying.
+func buildUserPrompt(question *schema.QuestionInfoResp, product *schema.PurchaseProduct) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "标题：%s\n", question.Title)
@@ -95,11 +142,66 @@ func buildUserPrompt(question *schema.QuestionInfoResp) string {
 		fmt.Fprintf(&b, "品类：%s\n", strings.Join(names, "、"))
 	}
 
+	if product != nil {
+		writeProduct(&b, product)
+	}
+
 	if content := strings.TrimSpace(question.Content); content != "" {
 		fmt.Fprintf(&b, "\n用户的描述：\n%s\n", truncateRunes(content, maxContentRunes))
 	}
 
 	return b.String()
+}
+
+// lowProductConfidence is the confidence below which the prompt warns that the
+// reading is shaky. The model's own number is a rough hint, so this is too.
+const lowProductConfidence = 0.6
+
+// writeProduct adds the screenshot reading. Like the author's fields, anything
+// the screenshots did not show is left out rather than written as empty.
+func writeProduct(b *strings.Builder, p *schema.PurchaseProduct) {
+	b.WriteString("\n截图识别出的商品（由 AI 从用户的截图里读出，可能有误；和上面用户填写的信息不一致时，以用户填写的为准）：\n")
+
+	if p.Name != "" {
+		fmt.Fprintf(b, "- 名称：%s\n", p.Name)
+	}
+	if p.Brand != "" {
+		fmt.Fprintf(b, "- 品牌：%s\n", p.Brand)
+	}
+	if p.Model != "" {
+		fmt.Fprintf(b, "- 型号：%s\n", p.Model)
+	}
+	if len(p.Specs) > 0 {
+		fmt.Fprintf(b, "- 规格：%s\n", strings.Join(p.Specs, "、"))
+	}
+	if p.Platform != "" {
+		fmt.Fprintf(b, "- 平台：%s\n", p.Platform)
+	}
+	if p.Shop != "" {
+		fmt.Fprintf(b, "- 店铺：%s\n", p.Shop)
+	}
+	if p.Official != nil {
+		if *p.Official {
+			b.WriteString("- 官方店：是\n")
+		} else {
+			b.WriteString("- 官方店：否\n")
+		}
+	}
+	if p.Price != nil {
+		fmt.Fprintf(b, "- 截图里的到手价：%.2f 元\n", *p.Price)
+	}
+	if p.ListPrice != nil {
+		fmt.Fprintf(b, "- 截图里的原价：%.2f 元\n", *p.ListPrice)
+	}
+	if len(p.Promotions) > 0 {
+		fmt.Fprintf(b, "- 优惠：%s\n", strings.Join(p.Promotions, "、"))
+	}
+	if p.Notes != "" {
+		fmt.Fprintf(b, "- 识别备注：%s\n", p.Notes)
+	}
+	if p.Confidence < lowProductConfidence {
+		b.WriteString("- 注意：这次识别把握不大，以上信息只作参考，请以标题和用户的描述为准。\n")
+	}
 }
 
 func tagNames(tags []*schema.TagResp) []string {

@@ -22,6 +22,7 @@ package purchase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/apache/answer/internal/base/reason"
@@ -95,7 +96,24 @@ func (ps *PurchaseService) ToSchema(detail *entity.PurchaseDetail) *schema.Purch
 		Currency: detail.Currency,
 		Link:     detail.Link,
 		AIStatus: detail.AIStatus,
+		Product:  productFromColumn(detail.QuestionID, detail.Product),
 	}
+}
+
+// productFromColumn reads the product column. "" means nothing was recognized
+// and is not JSON, so it is checked before decoding rather than logged as a
+// failure on every post without a product.
+func productFromColumn(questionID, column string) *schema.PurchaseProduct {
+	if column == "" {
+		return nil
+	}
+
+	var product schema.PurchaseProduct
+	if err := json.Unmarshal([]byte(column), &product); err != nil {
+		log.Warnf("unmarshal purchase product failed, questionID: %s, err: %v", questionID, err)
+		return nil
+	}
+	return &product
 }
 
 // IsChanged reports whether the incoming purchase info differs from what is stored.
@@ -166,4 +184,21 @@ func (ps *PurchaseService) BatchGetByQuestionIDs(ctx context.Context, questionID
 	}
 
 	return result, nil
+}
+
+// SaveProduct stores the product recognized from the post's screenshots. A nil
+// product clears it: it is stored as "", the column's "not recognized" value,
+// rather than as the JSON text null.
+func (ps *PurchaseService) SaveProduct(ctx context.Context, questionID string, product *schema.PurchaseProduct) error {
+	if product == nil {
+		return ps.purchaseRepo.UpdateProduct(ctx, questionID, "")
+	}
+
+	productJSON, err := json.Marshal(product)
+	if err != nil {
+		return errors.InternalServer(reason.UnknownError).
+			WithError(fmt.Errorf("marshal purchase product: %w", err)).
+			WithStack()
+	}
+	return ps.purchaseRepo.UpdateProduct(ctx, questionID, string(productJSON))
 }

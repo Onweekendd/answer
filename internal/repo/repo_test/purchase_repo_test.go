@@ -209,6 +209,78 @@ func Test_purchaseRepo_BatchGetByQuestionIDs(t *testing.T) {
 	})
 }
 
+func Test_purchaseRepo_UpdateProduct(t *testing.T) {
+	purchaseRepo, questionRepo := newPurchaseRepos(t)
+	ctx := context.TODO()
+
+	// Arrange: one question with a purchase detail and no product yet
+	question := newTestQuestion("update product test")
+	err := questionRepo.AddQuestionWithPurchase(ctx, question, newTestDetail(5999, `["a.png"]`))
+	require.NoError(t, err)
+
+	const product = `{"name":"任天堂 Switch OLED","price":2099}`
+
+	t.Run("写进去能原样读出来", func(t *testing.T) {
+		// Act
+		err := purchaseRepo.UpdateProduct(ctx, question.ID, product)
+
+		// Assert
+		require.NoError(t, err)
+		detail, exist, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
+		require.NoError(t, err)
+		require.True(t, exist)
+		require.Equal(t, product, detail.Product)
+	})
+
+	t.Run("只改 product 列，价格和图片不变", func(t *testing.T) {
+		// Act
+		err := purchaseRepo.UpdateProduct(ctx, question.ID, product)
+
+		// Assert
+		require.NoError(t, err)
+		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
+		require.NoError(t, err)
+		require.Equal(t, 5999.0, detail.Price)
+		require.Equal(t, `["a.png"]`, detail.Images)
+	})
+
+	t.Run("能清空成空字符串", func(t *testing.T) {
+		// Arrange
+		require.NoError(t, purchaseRepo.UpdateProduct(ctx, question.ID, product))
+
+		// Act: "" is a zero value, which xorm skips on Update unless Cols names it
+		err := purchaseRepo.UpdateProduct(ctx, question.ID, "")
+
+		// Assert
+		require.NoError(t, err)
+		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
+		require.NoError(t, err)
+		require.Equal(t, "", detail.Product)
+	})
+
+	t.Run("编辑帖子不会冲掉已识别的商品", func(t *testing.T) {
+		// Arrange
+		require.NoError(t, purchaseRepo.UpdateProduct(ctx, question.ID, product))
+
+		// Act: the edit path, whose detail comes from the form and has no product
+		err := withSession(t, func(session *xorm.Session) error {
+			return purchaseRepo.UpsertWithSession(session, &entity.PurchaseDetail{
+				QuestionID: question.ID,
+				Price:      4999,
+				Currency:   "CNY",
+				Images:     `["a.png"]`,
+			})
+		})
+
+		// Assert
+		require.NoError(t, err)
+		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
+		require.NoError(t, err)
+		require.Equal(t, 4999.0, detail.Price)
+		require.Equal(t, product, detail.Product)
+	})
+}
+
 func Test_questionRepo_AddQuestionWithPurchase_Rollback(t *testing.T) {
 	// The whole point of the extension table: if the detail cannot be written,
 	// the question must not be left behind either.

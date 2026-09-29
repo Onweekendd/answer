@@ -202,6 +202,82 @@ func TestToSchema(t *testing.T) {
 		require.NotNil(t, got)
 		require.Empty(t, got.Images)
 	})
+
+	t.Run("product 为空字符串时是 nil，表示还没识别", func(t *testing.T) {
+		ps := newServiceWithSite(t)
+
+		got := ps.ToSchema(&entity.PurchaseDetail{Images: `[]`, Product: ""})
+
+		require.Nil(t, got.Product)
+	})
+
+	t.Run("product 的 JSON 解析成结构体", func(t *testing.T) {
+		ps := newServiceWithSite(t)
+
+		got := ps.ToSchema(&entity.PurchaseDetail{
+			Images:  `[]`,
+			Product: `{"name":"任天堂 Switch OLED","price":2099,"list_price":null}`,
+		})
+
+		require.NotNil(t, got.Product)
+		require.Equal(t, "任天堂 Switch OLED", got.Product.Name)
+		require.Equal(t, 2099.0, *got.Product.Price)
+		require.Nil(t, got.Product.ListPrice)
+	})
+
+	t.Run("product 不是合法 JSON 时是 nil 而不 panic", func(t *testing.T) {
+		ps := newServiceWithSite(t)
+
+		got := ps.ToSchema(&entity.PurchaseDetail{Images: `[]`, Product: "not json"})
+
+		require.Nil(t, got.Product)
+	})
+}
+
+// recordingRepo keeps the last product written. Embedding the interface
+// satisfies the methods these tests never call.
+type recordingRepo struct {
+	PurchaseRepo
+	questionID string
+	product    string
+}
+
+func (r *recordingRepo) UpdateProduct(_ context.Context, questionID, product string) error {
+	r.questionID = questionID
+	r.product = product
+	return nil
+}
+
+func TestSaveProduct(t *testing.T) {
+	t.Run("存成 JSON，读回来和原来一样", func(t *testing.T) {
+		// Arrange
+		repo := &recordingRepo{}
+		ps := NewPurchaseService(repo, nil)
+		price := 2099.0
+		product := &schema.PurchaseProduct{Name: "任天堂 Switch OLED", Price: &price, Specs: []string{"国行"}}
+
+		// Act
+		err := ps.SaveProduct(context.Background(), "q1", product)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, "q1", repo.questionID)
+		got := ps.ToSchema(&entity.PurchaseDetail{Images: `[]`, Product: repo.product})
+		require.Equal(t, product, got.Product)
+	})
+
+	t.Run("nil 存成空字符串，而不是 JSON 的 null", func(t *testing.T) {
+		// Arrange
+		repo := &recordingRepo{product: "old"}
+		ps := NewPurchaseService(repo, nil)
+
+		// Act
+		err := ps.SaveProduct(context.Background(), "q1", nil)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, "", repo.product)
+	})
 }
 
 func TestToEntityToSchemaRoundTrip(t *testing.T) {

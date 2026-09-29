@@ -40,6 +40,7 @@ import (
 	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
+	"github.com/apache/answer/internal/service/uploader"
 	"github.com/apache/answer/internal/service/webreader"
 	"github.com/apache/answer/internal/service/websearch"
 )
@@ -55,6 +56,7 @@ type PurchaseAIService struct {
 	queueService    purchaseaiqueue.Service
 	searchProvider  websearch.Provider
 	pageReader      webreader.Reader
+	uploaderService uploader.UploaderService
 }
 
 // NewPurchaseAIService new purchase ai service
@@ -67,6 +69,7 @@ func NewPurchaseAIService(
 	queueService purchaseaiqueue.Service,
 	searchProvider websearch.Provider,
 	pageReader webreader.Reader,
+	uploaderService uploader.UploaderService,
 ) *PurchaseAIService {
 	service := &PurchaseAIService{
 		questionCommon:  questionCommon,
@@ -77,6 +80,7 @@ func NewPurchaseAIService(
 		queueService:    queueService,
 		searchProvider:  searchProvider,
 		pageReader:      pageReader,
+		uploaderService: uploaderService,
 	}
 	// the queue calls handlers with a fresh context, so an analysis outlives the
 	// request that asked for it instead of dying when that request returns
@@ -123,9 +127,11 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 		}
 	}()
 
+	product := pas.productFor(ctx, questionID, question.Purchase)
+
 	messages := []llm.Message{
 		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now())),
-		llm.Text(llm.RoleUser, buildUserPrompt(question)),
+		llm.Text(llm.RoleUser, buildUserPrompt(question, product)),
 	}
 
 	resp, err := pas.runAgent(ctx, messages)

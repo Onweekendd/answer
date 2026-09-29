@@ -126,3 +126,13 @@ func (pr *purchaseRepo) UpdateAIStatus(ctx context.Context, questionID string, s
 
 	return dbError(err)
 }
+
+func (pr *purchaseRepo) UpdateProduct(ctx context.Context, questionID, product string) (err error) {
+	questionID = uid.DeShortID(questionID)
+
+	_, err = pr.data.DB.Context(ctx).ID(questionID).Cols("product").Update(&entity.PurchaseDetail{
+		Product: product,
+	})
+
+	return dbError(err)
+}

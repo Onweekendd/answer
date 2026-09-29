@@ -76,11 +76,14 @@ type ReopenQuestionReq struct {
 }
 
 type PurchaseInfo struct {
-	Images   []string `json:"images" validate:"required,min=1,max=5,dive,url"`
-	Price    float64  `json:"price" validate:"gte=0"`
-	Currency string   `json:"currency" validate:"omitempty,len=3"`
-	Link     string   `json:"link" validate:"omitempty,url,lte=255"`
-	AIStatus int      `json:"ai_status"` // 只出不进，前端传了也忽略
+	Images   []string         `json:"images" validate:"required,min=1,max=5,dive,url"`
+	Price    float64          `json:"price" validate:"gte=0"`
+	Currency string           `json:"currency" validate:"omitempty,len=3"`
+	Link     string           `json:"link" validate:"omitempty,url,lte=255"`
+	AIStatus int              `json:"ai_status"` // 只出不进，前端传了也忽略
+	// Product is what the AI read off the screenshots, nil until then. Output
+	// only for now, like AIStatus: ToEntity never copies it from a request.
+	Product *PurchaseProduct `json:"product,omitempty"`
 }
 
 type QuestionAdd struct {

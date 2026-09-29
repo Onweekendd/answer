@@ -21,6 +21,7 @@ package uploader
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -71,6 +72,7 @@ type UploaderService interface {
 	UploadPostAttachment(ctx *gin.Context, userID string) (url string, err error)
 	UploadBrandingFile(ctx *gin.Context, userID string) (url string, err error)
 	AvatarThumbFile(ctx *gin.Context, fileName string, size int) (url string, err error)
+	PostImagePath(ctx context.Context, imageURL string) (localPath string, err error)
 }
 
 // uploaderService uploader service

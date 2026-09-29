@@ -40,4 +40,7 @@ type PurchaseRepo interface {
 	// UpdateAIStatus writes the ai_status column only. It does not report whether a
 	// row matched: the affected count means different things on mysql and postgres.
 	UpdateAIStatus(ctx context.Context, questionID string, status int) (err error)
+	// UpdateProduct writes the product column only. product is the recognized
+	// product as JSON; "" means not recognized yet.
+	UpdateProduct(ctx context.Context, questionID string, product string) (err error)
 }

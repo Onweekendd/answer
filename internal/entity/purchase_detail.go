@@ -33,6 +33,7 @@ type PurchaseDetail struct {
 	QuestionID string    `xorm:"not null pk BIGINT(20) question_id"`
 	CreatedAt  time.Time `xorm:"created not null default CURRENT_TIMESTAMP TIMESTAMP created_at"`
 	UpdatedAt  time.Time `xorm:"updated TIMESTAMP updated_at"`
+	Product    string    `xorm:"not null default '' TEXT product"`
 	Price      float64   `xorm:"not null default 0.00 DECIMAL(10,2) price"`
 	Link       string    `xorm:"not null default '' VARCHAR(255) link"`
 	Images     string    `xorm:"not null default '' TEXT images"`
