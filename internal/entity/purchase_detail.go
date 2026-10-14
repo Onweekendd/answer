@@ -28,6 +28,12 @@ const (
 	PurchaseAIStatusFailed     = 3
 )
 
+const (
+	PurchaseVoteBuy  = 1
+	PurchaseVoteWait = 2
+	PurchaseVoteSkip = 3
+)
+
 // PurchaseDetail purchase detail
 type PurchaseDetail struct {
 	QuestionID string    `xorm:"not null pk BIGINT(20) question_id"`
@@ -39,6 +45,10 @@ type PurchaseDetail struct {
 	Images     string    `xorm:"not null default '' TEXT images"`
 	Currency   string    `xorm:"not null default '' VARCHAR(10) currency"`
 	AIStatus   int       `xorm:"not null default 0 SMALLINT ai_status"`
+	BuyCount   int       `xorm:"not null default 0 INT buy_count"`
+	WaitCount  int       `xorm:"not null default 0 INT wait_count"`
+	SkipCount  int       `xorm:"not null default 0 INT skip_count"`
+	VoteClosed bool      `xorm:"not null default false BOOL vote_closed"`
 }
 
 // TableName purchase detail table name

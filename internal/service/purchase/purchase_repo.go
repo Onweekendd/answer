@@ -21,9 +21,17 @@ package purchase
 
 import (
 	"context"
+	"errors"
 
 	"github.com/apache/answer/internal/entity"
 	"xorm.io/xorm"
+)
+
+// Errors PurchaseRepo.Vote returns as they are, so the service can tell them
+// apart with errors.Is and turn them into a reason for the user.
+var (
+	ErrPurchaseNotFound = errors.New("purchase not found")
+	ErrVoteClosed       = errors.New("purchase vote closed")
 )
 
 // PurchaseRepo purchase detail repository.
@@ -43,4 +51,12 @@ type PurchaseRepo interface {
 	// UpdateProduct writes the product column only. product is the recognized
 	// product as JSON; "" means not recognized yet.
 	UpdateProduct(ctx context.Context, questionID string, product string) (err error)
+	// Vote records userID's buy / wait / skip choice on a purchase post, one
+	// vote per user: voting again changes the choice, and the same choice
+	// again changes nothing. Counts are updated in the same transaction while
+	// the post row is locked. justClosed is true only for the vote that brings
+	// the total to closeAt and closes voting. Returns ErrPurchaseNotFound when
+	// the post has no purchase detail and ErrVoteClosed once voting is closed.
+	Vote(ctx context.Context, questionID, userID string, choice, closeAt int) (
+		detail *entity.PurchaseDetail, justClosed bool, err error)
 }

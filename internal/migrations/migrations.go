@@ -112,6 +112,7 @@ var migrations = []Migration{
 	NewMigration("v2.0.3", "add require email verification login setting", addRequireEmailVerification, true),
 	NewMigration("v2.0.4", "add purchase detail table", addPurchaseDetail, true),
 	NewMigration("v2.0.5", "add purchase product column", addPurchaseProduct, true),
+	NewMigration("v2.0.6", "add purchase vote", addPurchaseVote, true),
 }
 
 func GetMigrations() []Migration {

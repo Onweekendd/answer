@@ -21,6 +21,7 @@ package purchase
 
 import (
 	"context"
+	stderrors "errors"
 
 	"github.com/apache/answer/internal/base/data"
 	"github.com/apache/answer/internal/base/reason"
@@ -135,4 +136,124 @@ func (pr *purchaseRepo) UpdateProduct(ctx context.Context, questionID, product s
 	})
 
 	return dbError(err)
+}
+
+// Vote implements [purchase.PurchaseRepo].
+func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID string, choice int, closeAt int) (detail *entity.PurchaseDetail, justClosed bool, err error) {
+	questionID = uid.DeShortID(questionID)
+	detail = &entity.PurchaseDetail{}
+
+	// ① 开事务
+	_, err = pr.data.DB.Transaction(func(session *xorm.Session) (any, error) {
+		session = session.Context(ctx)
+		//② FOR UPDATE 锁住帖子
+		exist, err := session.ID(questionID).ForUpdate().Get(detail)
+		if err != nil {
+			return nil, err
+		}
+
+		if !exist {
+			return nil, purchase.ErrPurchaseNotFound
+		}
+		//   已关闭 → 返回错误（自动回滚）
+		if detail.VoteClosed {
+			return nil, purchase.ErrVoteClosed
+		}
+		//③ 查这个人原来的票
+
+		oldVote := &entity.PurchaseVote{}
+		voted, err := session.Where("question_id = ? AND user_id = ?", questionID, userID).Get(oldVote)
+		if err != nil {
+			return nil, err
+		}
+
+		prevChoice := oldVote.Choice
+
+		if voted && prevChoice == choice {
+			return nil, nil
+		}
+
+		//④ 写票（插入或更新 choice）
+		if voted {
+			oldVote.Choice = choice
+			_, err = session.Where("question_id = ? AND user_id = ?", questionID, userID).Cols("choice").Update(oldVote)
+
+			if err != nil {
+				return nil, err
+			}
+
+			_, err = session.ID(questionID).Decr(voteCountColumn(prevChoice)).Update(&entity.PurchaseDetail{})
+			if err != nil {
+				return nil, err
+			}
+
+		} else {
+			oldVote.QuestionID = questionID
+			oldVote.UserID = userID
+			oldVote.Choice = choice
+
+			_, err = session.Insert(oldVote)
+
+			if err != nil {
+				return nil, err
+			}
+
+		}
+		//⑤ Incr / Decr 改计数
+		_, err = session.ID(questionID).Incr(voteCountColumn(choice)).Update(&entity.PurchaseDetail{})
+		if err != nil {
+			return nil, err
+		}
+
+		//⑥ CAS 关闭：UPDATE ... WHERE vote_closed = false AND 总票数 >= 10
+		affected, err := session.
+			Where("question_id = ? AND vote_closed = ? AND buy_count + wait_count + skip_count >= ?",
+				questionID, false, closeAt).
+			Cols("vote_closed").
+			Update(&entity.PurchaseDetail{VoteClosed: true})
+
+		if err != nil {
+			return nil, err
+		}
+
+		//   受影响行数 == 1 → justClosed
+		if affected == 1 {
+			justClosed = true
+		}
+		//⑦ 返回最新票数；事务结束，锁释放
+
+		fresh := &entity.PurchaseDetail{}
+		_, err = session.ID(questionID).Get(fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		detail = fresh
+
+		return nil, nil
+	})
+
+	if err != nil {
+		// 哨兵错误原样返回，service 才能用 errors.Is 认出来
+		if stderrors.Is(err, purchase.ErrPurchaseNotFound) || stderrors.Is(err, purchase.ErrVoteClosed) {
+			return nil, false, err
+		}
+		return nil, false, dbError(err)
+	}
+
+	return detail, justClosed, nil
+}
+
+// voteCountColumn maps a vote choice to its counter column on purchase_detail.
+func voteCountColumn(choice int) string {
+	switch choice {
+	case entity.PurchaseVoteBuy:
+		return "buy_count"
+	case entity.PurchaseVoteWait:
+		return "wait_count"
+	case entity.PurchaseVoteSkip:
+		return "skip_count"
+	}
+
+	return ""
 }

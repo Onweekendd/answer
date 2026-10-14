@@ -58,6 +58,7 @@ var (
 		&entity.Revision{},
 		&entity.SiteInfo{},
 		&entity.PurchaseDetail{},
+		&entity.PurchaseVote{},
 		&entity.Tag{},
 		&entity.TagRel{},
 		&entity.Uniqid{},
