@@ -85,6 +85,7 @@ import (
 	"github.com/apache/answer/internal/service/plugin_common"
 	purchase2 "github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/purchase_ai"
+	"github.com/apache/answer/internal/service/purchase_vote"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	"github.com/apache/answer/internal/service/question_common"
 	rank2 "github.com/apache/answer/internal/service/rank"
@@ -225,8 +226,10 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	provider := websearch.NewProvider(serviceConf)
 	reader := webreader.NewReader(serviceConf)
 	uploaderService := uploader.NewUploaderService(serviceConf, siteInfoCommonService, fileRecordService)
-	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, provider, reader, uploaderService)
+	purchaseVoteService := purchasevote.NewPurchaseVoteService(purchaseRepo, questionRepo, noticequeueService)
+	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, provider, reader, uploaderService, purchaseVoteService)
 	purchaseAIController := controller.NewPurchaseAIController(purchaseAIService)
+	purchaseVoteController := controller.NewPurchaseVoteController(purchaseVoteService)
 	answerController := controller.NewAnswerController(answerService, rankService, captchaService, siteInfoCommonService, rateLimitMiddleware)
 	searchParser := search_parser.NewSearchParser(tagCommonService, userCommon)
 	searchRepo := search_common.NewSearchRepo(dataData, uniqueIDRepo, userCommon, tagCommonService)
@@ -288,7 +291,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	aiController := controller.NewAIController(searchService, siteInfoCommonService, tagCommonService, questionCommon, commentRepo, userCommon, answerRepo, mcpController, aiConversationService, featureToggleService)
 	aiConversationController := controller.NewAIConversationController(aiConversationService, featureToggleService)
 	aiConversationAdminController := controller_admin.NewAIConversationAdminController(aiConversationService, featureToggleService)
-	answerAPIRouter := router.NewAnswerAPIRouter(langController, userController, commentController, reportController, voteController, tagController, followController, collectionController, questionController, purchaseAIController, answerController, searchController, revisionController, rankController, userAdminController, reasonController, themeController, siteInfoController, controllerSiteInfoController, notificationController, dashboardController, uploadController, activityController, roleController, pluginController, permissionController, userPluginController, reviewController, metaController, badgeController, controller_adminBadgeController, adminAPIKeyController, aiController, aiConversationController, aiConversationAdminController, mcpController)
+	answerAPIRouter := router.NewAnswerAPIRouter(langController, userController, commentController, reportController, voteController, tagController, followController, collectionController, questionController, purchaseAIController, purchaseVoteController, answerController, searchController, revisionController, rankController, userAdminController, reasonController, themeController, siteInfoController, controllerSiteInfoController, notificationController, dashboardController, uploadController, activityController, roleController, pluginController, permissionController, userPluginController, reviewController, metaController, badgeController, controller_adminBadgeController, adminAPIKeyController, aiController, aiConversationController, aiConversationAdminController, mcpController)
 	swaggerRouter := router.NewSwaggerRouter(swaggerConf)
 	uiRouter := router.NewUIRouter(controllerSiteInfoController, siteInfoCommonService)
 	authUserMiddleware := middleware.NewAuthUserMiddleware(authService, siteInfoCommonService)

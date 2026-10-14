@@ -356,3 +356,69 @@ func TestIsChanged_product(t *testing.T) {
 		})
 	}
 }
+
+// choicesRepo answers GetVoteChoices from a fixed map, keeping only the IDs asked for.
+type choicesRepo struct {
+	PurchaseRepo
+	stored map[string]int
+	asked  []string
+}
+
+func (r *choicesRepo) GetVoteChoices(_ context.Context, _ string, userIDs []string) (map[string]int, error) {
+	r.asked = userIDs
+	choices := make(map[string]int)
+	for _, id := range userIDs {
+		if c, ok := r.stored[id]; ok {
+			choices[id] = c
+		}
+	}
+	return choices, nil
+}
+
+func TestToSchema_voteTally(t *testing.T) {
+	// Arrange
+	ps := NewPurchaseService(nil, nil)
+	detail := &entity.PurchaseDetail{Images: `[]`, BuyCount: 6, WaitCount: 3, SkipCount: 1, VoteClosed: true}
+
+	// Act
+	info := ps.ToSchema(detail)
+
+	// Assert
+	require.Equal(t, 6, info.BuyCount)
+	require.Equal(t, 3, info.WaitCount)
+	require.Equal(t, 1, info.SkipCount)
+	require.True(t, info.VoteClosed)
+}
+
+func TestFillVoteChoices(t *testing.T) {
+	ctx := context.TODO()
+
+	t.Run("登录用户和机器人都投过", func(t *testing.T) {
+		// Arrange
+		repo := &choicesRepo{stored: map[string]int{"7": entity.PurchaseVoteWait, "99": entity.PurchaseVoteBuy}}
+		info := &schema.PurchaseInfo{}
+
+		// Act
+		err := NewPurchaseService(repo, nil).FillVoteChoices(ctx, info, "1", "7", "99")
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, entity.PurchaseVoteWait, info.MyVote)
+		require.Equal(t, entity.PurchaseVoteBuy, info.AIVote)
+		require.Equal(t, []string{"7", "99"}, repo.asked, "one lookup for both")
+	})
+
+	t.Run("游客看帖子，MyVote 是 0", func(t *testing.T) {
+		// Arrange
+		repo := &choicesRepo{stored: map[string]int{"99": entity.PurchaseVoteSkip}}
+		info := &schema.PurchaseInfo{}
+
+		// Act
+		err := NewPurchaseService(repo, nil).FillVoteChoices(ctx, info, "1", "", "99")
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, 0, info.MyVote)
+		require.Equal(t, entity.PurchaseVoteSkip, info.AIVote)
+	})
+}

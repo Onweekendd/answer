@@ -49,6 +49,8 @@ const (
 	QuestionContentCannotEmpty       = "error.question.content_cannot_empty"
 	QuestionContentLessThanMinimum   = "error.question.content_less_than_minimum"
 	PurchaseImageNotFromSite         = "error.purchase.image_not_from_site"
+	PurchaseVoteOwnPost              = "error.purchase.vote_own_post"
+	PurchaseVoteClosed               = "error.purchase.vote_closed"
 	AINotConfigured                  = "error.ai.not_configured"
 	AIRequestFailed                  = "error.ai.request_failed"
 	AnswerNotFound                   = "error.answer.not_found"

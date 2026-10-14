@@ -345,6 +345,16 @@ func (qs *QuestionCommon) Info(ctx context.Context, questionID string, loginUser
 	if err != nil {
 		return nil, err
 	}
+	if resp.Purchase != nil {
+		// the ratio bar lights the viewer's own button and marks the bot's vote
+		botID, err := qs.configService.GetStringValue(ctx, constant.AIBotUserIDKey)
+		if err != nil {
+			return nil, err
+		}
+		if err = qs.purchaseService.FillVoteChoices(ctx, resp.Purchase, questionInfo.ID, loginUserID, botID); err != nil {
+			return nil, err
+		}
+	}
 
 	if len(loginUserID) == 0 {
 		return resp, nil

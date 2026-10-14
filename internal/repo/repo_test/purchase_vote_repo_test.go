@@ -159,3 +159,34 @@ func Test_purchaseRepo_Vote(t *testing.T) {
 
 	})
 }
+
+func Test_purchaseRepo_GetVoteChoices(t *testing.T) {
+	purchaseRepo, _ := newPurchaseRepos(t)
+	ctx := context.TODO()
+
+	// Arrange: user 101 buys, user 102 skips, user 103 never votes
+	questionID := newVoteQuestion(t, "vote choices")
+	_, _, err := purchaseRepo.Vote(ctx, questionID, "101", entity.PurchaseVoteBuy, voteCloseAt)
+	require.NoError(t, err)
+	_, _, err = purchaseRepo.Vote(ctx, questionID, "102", entity.PurchaseVoteSkip, voteCloseAt)
+	require.NoError(t, err)
+
+	t.Run("每个人投的选项，没投的人不在 map 里", func(t *testing.T) {
+		// Act
+		choices, err := purchaseRepo.GetVoteChoices(ctx, questionID, []string{"101", "102", "103"})
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, map[string]int{"101": entity.PurchaseVoteBuy, "102": entity.PurchaseVoteSkip}, choices)
+	})
+
+	t.Run("空 ID 被跳过，全是空的就不查库", func(t *testing.T) {
+		// Act: a guest viewer and no configured bot
+		choices, err := purchaseRepo.GetVoteChoices(ctx, questionID, []string{"", ""})
+
+		// Assert
+		require.NoError(t, err)
+		require.NotNil(t, choices)
+		require.Empty(t, choices)
+	})
+}

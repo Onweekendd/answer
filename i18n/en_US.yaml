@@ -240,6 +240,10 @@ backend:
     purchase:
       image_not_from_site:
         other: Images must be uploaded to this site first.
+      vote_own_post:
+        other: You cannot vote on your own post.
+      vote_closed:
+        other: Voting on this post is closed.
     ai:
       not_configured:
         other: The AI feature is not configured yet. Please contact an administrator.
@@ -490,6 +494,8 @@ backend:
         other: invited you to answer
       earned_badge:
         other: You've earned the "{{.BadgeName}}" badge
+      purchase_vote_closed:
+        other: "'s post has closed voting:"
   email_tpl:
     change_email:
       title:
@@ -1236,6 +1242,17 @@ ui:
     open_link: Open product page
     no_price: Not provided
     images_count: "{{ count }} screenshots"
+    vote:
+      title: What do people think
+      buy: Buy
+      wait: Wait
+      skip: Skip
+      empty: No votes yet
+      total: "{{ count }} votes, voting closes at {{ limit }}"
+      closed: "Voting closed with {{ count }} votes"
+      ai_voted: The AI assistant voted for this
+      my_vote: "You voted \"{{ choice }}\"; you can change it until voting closes"
+      author_hint: This is your post. You can see how people vote, but you cannot vote on it
   tag_selector:
     add_btn: Add tag
     create_btn: Create new tag

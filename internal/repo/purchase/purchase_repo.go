@@ -138,6 +138,32 @@ func (pr *purchaseRepo) UpdateProduct(ctx context.Context, questionID, product s
 	return dbError(err)
 }
 
+// GetVoteChoices implements [purchase.PurchaseRepo].
+func (pr *purchaseRepo) GetVoteChoices(ctx context.Context, questionID string, userIDs []string) (
+	choices map[string]int, err error) {
+	choices = make(map[string]int, len(userIDs))
+	ids := make([]string, 0, len(userIDs))
+	for _, id := range userIDs {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return choices, nil
+	}
+
+	votes := make([]*entity.PurchaseVote, 0, len(ids))
+	err = pr.data.DB.Context(ctx).Where("question_id = ?", uid.DeShortID(questionID)).
+		In("user_id", ids).Find(&votes)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	for _, v := range votes {
+		choices[v.UserID] = v.Choice
+	}
+	return choices, nil
+}
+
 // Vote implements [purchase.PurchaseRepo].
 func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID string, choice int, closeAt int) (detail *entity.PurchaseDetail, justClosed bool, err error) {
 	questionID = uid.DeShortID(questionID)

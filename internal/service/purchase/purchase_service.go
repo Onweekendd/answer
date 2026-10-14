@@ -108,6 +108,11 @@ func (ps *PurchaseService) ToSchema(detail *entity.PurchaseDetail) *schema.Purch
 		Link:     detail.Link,
 		AIStatus: detail.AIStatus,
 		Product:  productFromColumn(detail.QuestionID, detail.Product),
+
+		BuyCount:   detail.BuyCount,
+		WaitCount:  detail.WaitCount,
+		SkipCount:  detail.SkipCount,
+		VoteClosed: detail.VoteClosed,
 	}
 }
 
@@ -158,6 +163,23 @@ func (ps *PurchaseService) GetByQuestionID(ctx context.Context, questionID strin
 	}
 
 	return ps.ToSchema(detail), nil
+}
+
+// FillVoteChoices sets info.MyVote and info.AIVote from the stored votes of the
+// viewer and the bot. Either ID may be empty (a guest, or no bot configured).
+func (ps *PurchaseService) FillVoteChoices(ctx context.Context, info *schema.PurchaseInfo,
+	questionID, viewerID, botID string) error {
+	choices, err := ps.purchaseRepo.GetVoteChoices(ctx, questionID, []string{viewerID, botID})
+	if err != nil {
+		return err
+	}
+	if viewerID != "" {
+		info.MyVote = choices[viewerID]
+	}
+	if botID != "" {
+		info.AIVote = choices[botID]
+	}
+	return nil
 }
 
 // The three Mark* methods below are the only way the ai_status column is written.

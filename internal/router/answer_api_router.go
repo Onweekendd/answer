@@ -37,6 +37,7 @@ type AnswerAPIRouter struct {
 	collectionController          *controller.CollectionController
 	questionController            *controller.QuestionController
 	purchaseAIController          *controller.PurchaseAIController
+	purchaseVoteController        *controller.PurchaseVoteController
 	answerController              *controller.AnswerController
 	searchController              *controller.SearchController
 	revisionController            *controller.RevisionController
@@ -76,6 +77,7 @@ func NewAnswerAPIRouter(
 	collectionController *controller.CollectionController,
 	questionController *controller.QuestionController,
 	purchaseAIController *controller.PurchaseAIController,
+	purchaseVoteController *controller.PurchaseVoteController,
 	answerController *controller.AnswerController,
 	searchController *controller.SearchController,
 	revisionController *controller.RevisionController,
@@ -114,6 +116,7 @@ func NewAnswerAPIRouter(
 		collectionController:          collectionController,
 		questionController:            questionController,
 		purchaseAIController:          purchaseAIController,
+		purchaseVoteController:        purchaseVoteController,
 		answerController:              answerController,
 		searchController:              searchController,
 		revisionController:            revisionController,
@@ -283,6 +286,9 @@ func (a *AnswerAPIRouter) RegisterAnswerAPIRouter(r *gin.RouterGroup) {
 	// purchase ai
 	r.POST("/purchase/ai/analyze", a.purchaseAIController.Analyze)
 	r.POST("/purchase/ai/identify", a.purchaseAIController.Identify)
+
+	// purchase vote
+	r.POST("/purchase/vote", a.purchaseVoteController.Vote)
 
 	// answer
 	r.POST("/answer", a.answerController.AddAnswer)

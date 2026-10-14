@@ -87,6 +87,17 @@ type PurchaseInfo struct {
 	// read the screenshots again; the fields are checked like any user input.
 	// On edit the form sends it back as well, and nil clears it.
 	Product *PurchaseProduct `json:"product,omitempty" validate:"omitempty"`
+
+	// The vote tally is output only, like AIStatus: ToEntity never copies it,
+	// and only PurchaseRepo.Vote changes it.
+	BuyCount   int  `json:"buy_count"`
+	WaitCount  int  `json:"wait_count"`
+	SkipCount  int  `json:"skip_count"`
+	VoteClosed bool `json:"vote_closed"`
+	// MyVote is the viewer's choice and AIVote the bot's, filled on the detail
+	// page only (QuestionCommon.Info); 0 means no vote.
+	MyVote int `json:"my_vote"`
+	AIVote int `json:"ai_vote"`
 }
 
 type QuestionAdd struct {

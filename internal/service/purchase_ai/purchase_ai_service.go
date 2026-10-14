@@ -33,11 +33,13 @@ import (
 	"github.com/apache/answer/pkg/converter"
 	"github.com/apache/answer/pkg/uid"
 	"github.com/segmentfault/pacman/errors"
+	"github.com/segmentfault/pacman/log"
 
 	"github.com/apache/answer/internal/service/comment"
 	"github.com/apache/answer/internal/service/config"
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/internal/service/purchase"
+	purchasevote "github.com/apache/answer/internal/service/purchase_vote"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/uploader"
@@ -57,6 +59,7 @@ type PurchaseAIService struct {
 	searchProvider  websearch.Provider
 	pageReader      webreader.Reader
 	uploaderService uploader.UploaderService
+	voteService     *purchasevote.PurchaseVoteService
 }
 
 // NewPurchaseAIService new purchase ai service
@@ -70,6 +73,7 @@ func NewPurchaseAIService(
 	searchProvider websearch.Provider,
 	pageReader webreader.Reader,
 	uploaderService uploader.UploaderService,
+	voteService *purchasevote.PurchaseVoteService,
 ) *PurchaseAIService {
 	service := &PurchaseAIService{
 		questionCommon:  questionCommon,
@@ -81,6 +85,7 @@ func NewPurchaseAIService(
 		searchProvider:  searchProvider,
 		pageReader:      pageReader,
 		uploaderService: uploaderService,
+		voteService:     voteService,
 	}
 	// the queue calls handlers with a fresh context, so an analysis outlives the
 	// request that asked for it instead of dying when that request returns
@@ -167,5 +172,26 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 		return err
 	}
 
+	pas.voteAsBot(ctx, questionID, botID, originalText)
+
 	return pas.purchaseService.MarkFinished(ctx, questionID)
+}
+
+// voteAsBot casts the advice's verdict as the bot's vote, through the same
+// rules as a person's. The advice is already posted, so a vote that cannot be
+// cast (no verdict on the first line, voting closed) is logged, not failed.
+func (pas *PurchaseAIService) voteAsBot(ctx context.Context, questionID, botID, advice string) {
+	choice := parseVerdict(advice)
+	if choice == 0 {
+		log.Warnf("purchase ai: no verdict on the first line, the bot does not vote, questionID: %s", questionID)
+		return
+	}
+	_, err := pas.voteService.Vote(ctx, &schema.PurchaseVoteReq{
+		QuestionID: questionID,
+		Choice:     choice,
+		UserID:     botID,
+	})
+	if err != nil {
+		log.Warnf("purchase ai: bot vote failed, questionID: %s, err: %v", questionID, err)
+	}
 }

@@ -239,6 +239,10 @@ backend:
     purchase:
       image_not_from_site:
         other: 图片必须先上传到本站。
+      vote_own_post:
+        other: 不能给自己的帖子投票。
+      vote_closed:
+        other: 投票已关闭。
     ai:
       not_configured:
         other: AI 功能尚未配置，请联系管理员。
@@ -489,6 +493,8 @@ backend:
         other: 邀请你回答
       earned_badge:
         other: 你获得 "{{.BadgeName}}" 徽章
+      purchase_vote_closed:
+        other: 的帖子投票已结束
   email_tpl:
     change_email:
       title:
@@ -1216,6 +1222,17 @@ ui:
     open_link: 查看商品页
     no_price: 未填写
     images_count: "{{ count }} 张截图"
+    vote:
+      title: 大家怎么看
+      buy: 买
+      wait: 再等等
+      skip: 不买
+      empty: 还没有人投票
+      total: "共 {{ count }} 票，满 {{ limit }} 票结束投票"
+      closed: "投票已结束，共 {{ count }} 票"
+      ai_voted: AI 助手投了这一项
+      my_vote: "你投了「{{ choice }}」，结束前可以改"
+      author_hint: 这是你的帖子，你可以看大家怎么投，但不能自己投
   tag_selector:
     add_btn: 添加标签
     create_btn: 创建新标签

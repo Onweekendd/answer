@@ -53,6 +53,7 @@ import (
 	"github.com/apache/answer/internal/service/plugin_common"
 	"github.com/apache/answer/internal/service/purchase"
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
+	purchasevote "github.com/apache/answer/internal/service/purchase_vote"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/rank"
@@ -94,6 +95,7 @@ var ProviderSetService = wire.NewSet(
 	content.NewQuestionService,
 	purchase.NewPurchaseService,
 	purchaseai.NewPurchaseAIService,
+	purchasevote.NewPurchaseVoteService,
 	purchaseaiqueue.NewService,
 	websearch.NewProvider,
 	webreader.NewReader,

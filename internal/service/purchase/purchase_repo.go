@@ -51,6 +51,9 @@ type PurchaseRepo interface {
 	// UpdateProduct writes the product column only. product is the recognized
 	// product as JSON; "" means not recognized yet.
 	UpdateProduct(ctx context.Context, questionID string, product string) (err error)
+	// GetVoteChoices returns the choice each of userIDs holds on the post, in one
+	// query. Users without a vote, and empty IDs, are absent from the map.
+	GetVoteChoices(ctx context.Context, questionID string, userIDs []string) (choices map[string]int, err error)
 	// Vote records userID's buy / wait / skip choice on a purchase post, one
 	// vote per user: voting again changes the choice, and the same choice
 	// again changes nothing. Counts are updated in the same transaction while
