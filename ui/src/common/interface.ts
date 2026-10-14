@@ -113,6 +113,25 @@ export interface PurchaseInfo {
   ai_status?: number;
   /** sent back on edit as it was loaded; leaving it out clears it */
   product?: PurchaseProduct | null;
+  /** vote tally, output only */
+  buy_count?: number;
+  wait_count?: number;
+  skip_count?: number;
+  vote_closed?: boolean;
+  /** detail page only; 0 means no vote */
+  my_vote?: PurchaseVoteChoice | 0;
+  ai_vote?: PurchaseVoteChoice | 0;
+}
+
+/** 1 buy, 2 wait, 3 skip, same as entity.PurchaseVoteBuy / Wait / Skip */
+export type PurchaseVoteChoice = 1 | 2 | 3;
+
+export interface PurchaseVoteResp {
+  buy_count: number;
+  wait_count: number;
+  skip_count: number;
+  my_choice: PurchaseVoteChoice;
+  closed: boolean;
 }
 
 export interface QuestionParams extends ImgCodeReq {

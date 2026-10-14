@@ -36,6 +36,8 @@ import { useRenderHtmlPlugin } from '@/utils/pluginKit';
 import { formatCount, guard } from '@/utils';
 import { following } from '@/services';
 import { pathFactory } from '@/router/pathFactory';
+import { loggedUserInfoStore } from '@/stores';
+import PurchaseVote from '../PurchaseVote';
 
 interface Props {
   data: any;
@@ -50,6 +52,7 @@ const Index: FC<Props> = ({ data, initPage, hasAnswer, isLogged }) => {
   });
   const [searchParams] = useSearchParams();
   const [followed, setFollowed] = useState(data?.is_followed);
+  const { username = '' } = loggedUserInfoStore((state) => state.user);
   const ref = useRef<HTMLDivElement>(null);
 
   useRenderHtmlPlugin(ref.current);
@@ -196,6 +199,14 @@ const Index: FC<Props> = ({ data, initPage, hasAnswer, isLogged }) => {
         </Card>
       )}
 
+      {data?.purchase && (
+        <PurchaseVote
+          questionId={data.id}
+          purchase={data.purchase}
+          isAuthor={Boolean(username) && username === data.user_info?.username}
+        />
+      )}
+
       <ImgViewer>
         <article
           ref={ref}
@@ -221,6 +232,8 @@ const Index: FC<Props> = ({ data, initPage, hasAnswer, isLogged }) => {
           collected: data?.collected,
           collectCount: data?.collection_count,
           username: data.user_info?.username,
+          // a purchase post is voted on with buy / wait / skip instead
+          hideVote: Boolean(data?.purchase),
         }}
       />
 

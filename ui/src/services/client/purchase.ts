@@ -29,6 +29,16 @@ const IDENTIFY_TIMEOUT_MS = 60000;
  * caller to show quietly (`ignoreError`): the form works without a reading,
  * so it must not take the page over with the global error screen.
  */
+export const votePurchase = (
+  questionId: string,
+  choice: Type.PurchaseVoteChoice,
+) => {
+  return request.post<Type.PurchaseVoteResp>('/answer/api/v1/purchase/vote', {
+    question_id: questionId,
+    choice,
+  });
+};
+
 export const identifyPurchase = (images: string[], signal?: AbortSignal) => {
   return request.post<Type.PurchaseIdentifyResp>(
     '/answer/api/v1/purchase/ai/identify',

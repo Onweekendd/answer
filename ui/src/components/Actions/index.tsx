@@ -40,6 +40,7 @@ interface Props {
     isLike: boolean;
     isHate: boolean;
     hideCollect?: boolean;
+    hideVote?: boolean;
     collected: boolean;
     collectCount: number;
     username: string;
@@ -148,36 +149,38 @@ const Index: FC<Props> = ({ className, data, source }) => {
 
   return (
     <div className={classNames(className)}>
-      <ButtonGroup>
-        <Button
-          title={
-            source === 'question'
-              ? t('question_detail.question_useful')
-              : t('question_detail.answer_useful')
-          }
-          variant="outline-secondary"
-          active={like}
-          onClick={() => handleVote('up')}>
-          <Icon name="hand-thumbs-up-fill" />
-        </Button>
-        <Button variant="outline-secondary" className="opacity-100" disabled>
-          {votes}
-        </Button>
-        <Button
-          title={
-            source === 'question'
-              ? t('question_detail.question_un_useful')
-              : t('question_detail.answer_un_useful')
-          }
-          variant="outline-secondary"
-          active={hate}
-          onClick={() => handleVote('down')}>
-          <Icon name="hand-thumbs-down-fill" />
-        </Button>
-      </ButtonGroup>
+      {!data?.hideVote && (
+        <ButtonGroup className="me-3">
+          <Button
+            title={
+              source === 'question'
+                ? t('question_detail.question_useful')
+                : t('question_detail.answer_useful')
+            }
+            variant="outline-secondary"
+            active={like}
+            onClick={() => handleVote('up')}>
+            <Icon name="hand-thumbs-up-fill" />
+          </Button>
+          <Button variant="outline-secondary" className="opacity-100" disabled>
+            {votes}
+          </Button>
+          <Button
+            title={
+              source === 'question'
+                ? t('question_detail.question_un_useful')
+                : t('question_detail.answer_un_useful')
+            }
+            variant="outline-secondary"
+            active={hate}
+            onClick={() => handleVote('down')}>
+            <Icon name="hand-thumbs-down-fill" />
+          </Button>
+        </ButtonGroup>
+      )}
       {!data?.hideCollect && (
         <Button
-          variant="outline-secondary ms-3"
+          variant="outline-secondary"
           title={t('question_detail.question_bookmark')}
           active={bookmarkState.state}
           onClick={handleBookmark}>
