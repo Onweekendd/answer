@@ -307,6 +307,8 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 func Test_questionRepo_AddQuestionWithPurchase_Rollback(t *testing.T) {
 	// The whole point of the extension table: if the detail cannot be written,
 	// the question must not be left behind either.
+	// SQLite ignores VARCHAR lengths, so only PostgreSQL rejects the bad row.
+	requirePostgres(t)
 	_, questionRepo := newPurchaseRepos(t)
 	ctx := context.TODO()
 

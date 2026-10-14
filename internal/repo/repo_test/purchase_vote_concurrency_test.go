@@ -38,7 +38,7 @@ func requirePostgres(t *testing.T) {
 	t.Helper()
 
 	if testDataSource.DB.Dialect().URI().DBType != schemas.POSTGRES {
-		t.Skip("concurrency tests need PostgreSQL: set TEST_DB_DRIVER=postgres")
+		t.Skip("needs PostgreSQL: set TEST_DB_DRIVER=postgres")
 	}
 }
 
