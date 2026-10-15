@@ -27,14 +27,18 @@ start() {
 
 # 等 answer 的 /healthz 返回 200，最多等 $1 秒；等到了返回 0，超时返回 1
 wait_healthy() {
-	local timeout="$1"
-	# TODO(你) ①：每 2 秒用 curl 请求一次 $health_url，返回 200 就 return 0；超过 timeout 秒就 return 1。
-	#   提示：
-	#   - curl -fsS -o /dev/null -m 3 "$health_url"：-f 让非 2xx 也算失败，-m 3 防止单次请求卡住
-	#   - 新容器启动时要先跑 init、upgrade（迁移），这段时间连接会被拒绝，curl 失败是正常的，继续等
-	#   - 计时可以用 bash 内置的 $SECONDS（脚本启动后经过的秒数），也可以数循环次数
-	#   - 注意 set -e：curl 失败会让整个脚本退出，所以要放在 if 或者 until 的条件里
-	return 1
+	local deadline=$((SECONDS + $1))
+	# a new container runs init and upgrade (migrations) before it listens, so
+	# refused connections are expected for a while. curl sits in the until
+	# condition, where its failure does not trip set -e.
+	# -f: a non-2xx answer counts as a failure; -m 3: one stuck request cannot eat the wait
+	until curl -fsS -o /dev/null -m 3 "$health_url" 2>/dev/null; do
+		if ((SECONDS >= deadline)); then
+			return 1
+		fi
+		sleep 2
+	done
+	return 0
 }
 
 # 0. dockerd 拉镜像要经过 mihomo；代理没开时 pull 要卡几分钟才超时，不如一开始就报错
@@ -54,13 +58,22 @@ set_tag "$new_tag"
 start
 
 # 3. 健康检查，失败就回滚
-# TODO(你) ②：调用 wait_healthy（给 90 秒）。
-#   成功：打印一行 "deployed $new_tag"，exit 0。
-#   失败：
-#     - 先打印 answer 最近 50 行日志（docker compose logs --tail 50 answer），CI 的日志里就能看到原因
-#     - 把 TAG 改回 $old_tag，再 start 一次，再 wait_healthy 一次
-#     - 最后 exit 1，让 CI 变红
-#   想一想：回滚只换回了镜像。如果新版本已经跑过一个迁移（比如删了一列），
-#   旧版本的代码还能用吗？这时候第 1 步的备份就派上用场了。
-echo "TODO: health check and rollback" >&2
+if wait_healthy 90; then
+	echo "deployed $new_tag"
+	exit 0
+fi
+
+# the log goes to the CI output, so the reason is visible without logging in
+echo "$new_tag is not healthy after 90s, rolling back to $old_tag" >&2
+docker compose logs --tail 50 answer >&2
+
+# Rollback only swaps the image back. If the new version already ran a
+# migration the old code cannot read, restore the backup taken in step 1.
+set_tag "$old_tag"
+start
+if wait_healthy 90; then
+	echo "rolled back to $old_tag" >&2
+else
+	echo "rollback to $old_tag is not healthy either; the site is down, check by hand" >&2
+fi
 exit 1

@@ -1,0 +1,106 @@
+# 「买不买」的持续部署：push 到 main → 测试 → 构建镜像推到 GHCR → SSH 到服务器部署。
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 里配置：
+#   DEPLOY_HOST              服务器地址
+#   DEPLOY_USER              SSH 用户名
+#   DEPLOY_SSH_KEY           CI 专用私钥的完整内容
+#   DEPLOY_HOST_FINGERPRINT  服务器 SSH 主机公钥的 SHA256 指纹，防止连到冒充的服务器
+# GHCR 用的是 Actions 自带的 GITHUB_TOKEN，不用另外配置。
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # 只改了文档时不用部署
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+  # Actions 页面上多一个手动运行的按钮
+  workflow_dispatch:
+
+# 同一时间只跑一个部署；连续 push 两次时第二次排队，不会两个部署同时改服务器
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+# GITHUB_TOKEN 的权限只给到够用：读代码、写 GHCR
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/onweekendd/answer
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本取自 go.mod，和本地保持一致
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Unit tests
+        run: go test ./internal/service/... ./internal/migrations/... ./pkg/...
+
+      # dockertest 会在 runner 上临时起一个 PostgreSQL；投票的并发测试、序列测试只在 PG 上有意义
+      - name: Repository tests on PostgreSQL
+        run: go test ./internal/repo/repo_test/...
+        env:
+          TEST_DB_DRIVER: postgres
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 镜像 tag 用 commit 号的前 8 位，和手动部署时的 b11e974a 一致
+      - id: tag
+        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 缓存放在 GitHub Actions 的缓存里，第二次起没改依赖的层不用重新构建
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # 登录服务器，更新部署文件，再让 deploy.sh 切到新镜像；
+      # deploy.sh 健康检查失败会自动回滚，并以非 0 退出让这一步变红
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+          envs: TAG
+          command_timeout: 20m
+          script: |
+            set -e
+            cd ~/maibumai-repo/deploy
+            git pull --ff-only
+            ./deploy.sh "$TAG"
