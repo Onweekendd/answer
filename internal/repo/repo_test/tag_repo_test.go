@@ -65,6 +65,7 @@ var (
 func addTagList() {
 	uniqueIDRepo := unique.NewUniqueIDRepo(testDataSource)
 	tagCommonRepo := tag_common.NewTagCommonRepo(testDataSource, uniqueIDRepo)
+	fillTagDefaults(testTagList)
 	err := tagCommonRepo.AddTagList(context.TODO(), testTagList)
 	if err != nil {
 		log.Fatalf("%+v", err)

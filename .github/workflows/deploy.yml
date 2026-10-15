@@ -46,9 +46,15 @@ jobs:
       - name: Unit tests
         run: go test ./internal/service/... ./internal/migrations/... ./pkg/...
 
-      # dockertest 会在 runner 上临时起一个 PostgreSQL；投票的并发测试、序列测试只在 PG 上有意义
-      - name: Repository tests on PostgreSQL
+      # 上游 Answer 的仓库测试只在 SQLite 上跑过，整套放到 PG 上会有一批上游的兼容问题，
+      # 所以完整的一套在 SQLite 上跑，和上游一致
+      - name: Repository tests on SQLite
         run: go test ./internal/repo/repo_test/...
+
+      # 依赖 PG 行为的是我们自己的测试：投票的行锁和并发、事务回滚、用户 ID 序列。
+      # dockertest 会在 runner 上临时起一个 PostgreSQL
+      - name: Purchase repository tests on PostgreSQL
+        run: go test -run '(?i)purchase|AddUser_afterInit' ./internal/repo/repo_test/...
         env:
           TEST_DB_DRIVER: postgres
 

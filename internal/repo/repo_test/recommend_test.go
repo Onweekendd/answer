@@ -142,6 +142,7 @@ func Test_questionRepo_GetRecommend(t *testing.T) {
 	})
 
 	for _, question := range questions {
+		fillQuestionDefaults(question)
 		err = questionRepo.AddQuestion(context.TODO(), question)
 		require.NoError(t, err)
 		assert.NotEmpty(t, question.ID)
@@ -163,6 +164,7 @@ func Test_questionRepo_GetRecommend(t *testing.T) {
 			Status:       entity.TagStatusAvailable,
 		},
 	}
+	fillTagDefaults(tags)
 	err = tagCommenRepo.AddTagList(context.TODO(), tags)
 	require.NoError(t, err)
 

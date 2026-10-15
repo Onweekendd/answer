@@ -71,6 +71,7 @@ func Test_revisionRepo_AddRevision(t *testing.T) {
 	)
 
 	// create question
+	fillQuestionDefaults(q)
 	err := questionRepo.AddQuestion(context.TODO(), q)
 	require.NoError(t, err)
 	assert.NotEmpty(t, q.ID)
