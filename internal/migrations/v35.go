@@ -102,5 +102,9 @@ func ensureBotUser(ctx context.Context, x *xorm.Engine) error {
 			return fmt.Errorf("insert bot config failed: %w", err)
 		}
 	}
-	return nil
+
+	// The bot's id above, and the admin's id 1 at install, were given by hand,
+	// which PostgreSQL's sequence does not see. The bot is always the last user
+	// inserted this way, and both install and upgrade come through here.
+	return syncUserIDSequence(ctx, x)
 }
