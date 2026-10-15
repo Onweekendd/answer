@@ -1,0 +1,7 @@
+# Files that run inside Linux containers must keep LF line endings, even on a
+# Windows checkout with core.autocrlf=true: a CRLF shebang reads as
+# "/bin/bash\r", which does not exist.
+*.sh            text eol=lf
+script/plugin_list text eol=lf
+Dockerfile      text eol=lf
+Makefile        text eol=lf
