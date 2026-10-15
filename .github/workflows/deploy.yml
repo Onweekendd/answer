@@ -4,8 +4,13 @@
 #   DEPLOY_HOST              服务器地址
 #   DEPLOY_USER              SSH 用户名
 #   DEPLOY_SSH_KEY           CI 专用私钥的完整内容
-#   DEPLOY_HOST_FINGERPRINT  服务器 SSH 主机公钥的 SHA256 指纹，防止连到冒充的服务器
-# GHCR 用的是 Actions 自带的 GITHUB_TOKEN，不用另外配置。
+#   DEPLOY_HOST_FINGERPRINT  服务器 SSH 主机公钥的 SHA256 指纹，防止连到冒充的服务器。
+#                            要填 ECDSA 那把的：ssh-action 用的 Go SSH 库（x/crypto v0.29）
+#                            优先协商 ECDSA，ed25519 排在最后。在服务器上取：
+#                            ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub | cut -d' ' -f2
+# 网页上粘贴容易带进看不见的空白，写 Secret 用 gh 更稳：
+#   gh secret set DEPLOY_SSH_KEY < ~/.ssh/maibumai_ci
+# GHCR 用的是 Actions 自带的 GITHUB_TOKEN；包要在 GHCR 设置里给这个仓库 Write 权限。
 
 name: deploy
 
