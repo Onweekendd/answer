@@ -22,6 +22,7 @@ package purchaseai
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"strings"
 
@@ -108,6 +109,13 @@ func (pas *PurchaseAIService) Identify(ctx context.Context, req *schema.Purchase
 	product, err := pas.identifyProduct(ctx, req.Images)
 
 	if err != nil {
+		// an error that already carries a reason, such as AI not configured,
+		// goes up as it is; rewrapping it would turn a clear 400 into a vague 500
+		var reasoned *errors.Error
+		if stderrors.As(err, &reasoned) {
+			return nil, err
+		}
+		// what is left has no reason of its own, like replies that never parsed
 		return nil, errors.InternalServer(reason.AIRequestFailed).WithError(err).WithStack()
 	}
 

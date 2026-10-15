@@ -30,10 +30,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/uploader"
+	pacmanerrors "github.com/segmentfault/pacman/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -300,6 +302,56 @@ func Test_identifyProduct(t *testing.T) {
 		require.Nil(t, p)
 		require.ErrorContains(t, err, "not a valid JSON", "a parse error, not the fake running out of replies")
 		require.Len(t, model.reqs, maxIdentifyAttempts)
+	})
+}
+
+func TestPurchaseAIService_Identify(t *testing.T) {
+	t.Run("AI 未配置时原样返回 400，不改写成笼统的 500", func(t *testing.T) {
+		// Arrange: the client refuses before any request, as it does when AI is disabled
+		model := &fakeLLM{err: pacmanerrors.BadRequest(reason.AINotConfigured)}
+		pas := newProductForService(t, model, &fakePurchaseRepo{})
+
+		// Act
+		resp, err := pas.Identify(context.Background(), &schema.PurchaseAIIdentifyReq{Images: []string{"u"}})
+
+		// Assert
+		require.Nil(t, resp)
+		var got *pacmanerrors.Error
+		require.ErrorAs(t, err, &got)
+		require.Equal(t, 400, got.Code)
+		require.Equal(t, reason.AINotConfigured, got.Reason)
+	})
+
+	t.Run("没有原因的错误归为 AI 请求失败", func(t *testing.T) {
+		// Arrange: every reply fails to parse, which is a plain error with no reason
+		replies := make([]*llm.ChatResp, 0, maxIdentifyAttempts)
+		for range maxIdentifyAttempts {
+			replies = append(replies, &llm.ChatResp{Content: "这是一台 Switch"})
+		}
+		pas := newProductForService(t, &fakeLLM{replies: replies}, &fakePurchaseRepo{})
+
+		// Act
+		resp, err := pas.Identify(context.Background(), &schema.PurchaseAIIdentifyReq{Images: []string{"u"}})
+
+		// Assert
+		require.Nil(t, resp)
+		var got *pacmanerrors.Error
+		require.ErrorAs(t, err, &got)
+		require.Equal(t, 500, got.Code)
+		require.Equal(t, reason.AIRequestFailed, got.Reason)
+	})
+
+	t.Run("识别成功时返回商品", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{{Content: switchJSON}}}
+		pas := newProductForService(t, model, &fakePurchaseRepo{})
+
+		// Act
+		resp, err := pas.Identify(context.Background(), &schema.PurchaseAIIdentifyReq{Images: []string{"u"}})
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, "Switch OLED", resp.Product.Model)
 	})
 }
 
