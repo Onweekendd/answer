@@ -18,4 +18,6 @@
 
 /usr/bin/answer init
 /usr/bin/answer upgrade
-/usr/bin/answer run -C /data/
+# exec replaces this shell with answer, so dumb-init's child is answer itself:
+# it gets the forwarded SIGTERM, and dumb-init waits for its graceful shutdown.
+exec /usr/bin/answer run -C /data/

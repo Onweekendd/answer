@@ -1,0 +1,63 @@
+# 「买不买」单机部署：answer + PostgreSQL
+#
+# 在服务器的 deploy/ 目录下：
+#   cp .env.example .env      # 然后填写 .env
+#   docker compose config     # 先检查写法，会打印展开 ${...} 后的最终配置
+#   docker compose up -d
+# 首次访问 http://<服务器IP>:8080 会进入安装向导。
+
+# 项目名。卷、网络、容器名都以它为前缀（如 maibumai_pgdata）。
+# 不写的话默认用目录名 deploy，目录一改就会拿到一个新的空卷。
+name: maibumai
+
+services:
+  answer:
+    # 要运行的镜像。CI 推到 GHCR（地址必须全小写）；tag 取 .env 里的 TAG，
+    # 没设置时用 latest。本机测试时用 docker build -t 打成同一个名字即可，不必推送。
+    image: ghcr.io/onweekendd/answer:${TAG:-latest}
+    # 进程崩溃或服务器重启后自动拉起；手动 docker compose stop 的不拉起
+    restart: unless-stopped
+    # "宿主机端口:容器端口"。answer 在容器里监听 80（Dockerfile 的 EXPOSE），
+    # 对外默认用 8080：服务器没备案，先用 IP + 非 80 端口访问。
+    # 本机 8080 被占用时，在 .env 里设 ANSWER_PORT 换一个。
+    ports:
+      - "${ANSWER_PORT:-8080}:80"
+    volumes:
+      # 命名卷挂到 /data：上传文件、config.yaml、i18n 都在这里，删容器不会丢
+      - answer-data:/data
+    depends_on:
+      db:
+        # 不只是等 db 容器启动，而是等下面的 healthcheck 通过，
+        # 否则 answer 启动时 PG 可能还没准备好，连接会失败
+        condition: service_healthy
+
+  db:
+    # 带 pgvector 扩展的 PostgreSQL 16，需求 5 的向量检索要用
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      # 只在第一次初始化数据目录时生效：建出这个用户和这个库
+      POSTGRES_USER: answer
+      POSTGRES_DB: answer
+      # 从同目录的 .env 读取；没设置或为空时，compose 直接报这句错误并退出，
+      # 不会用空密码把数据库启动起来
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?在 deploy/.env 里设置 DB_PASSWORD}
+    volumes:
+      # PG 16 镜像把数据放在 /var/lib/postgresql/data（镜像文档里的 PGDATA）。
+      # 挂成命名卷，容器重建、镜像升级都不会丢数据
+      - pgdata:/var/lib/postgresql/data
+    # 故意没有 ports：数据库只在 compose 的内部网络里，公网连不到；
+    # answer 用服务名 db 访问它（安装向导里数据库地址填 db:5432）。
+    healthcheck:
+      # 在 db 容器里执行 pg_isready：PG 能接受连接时返回 0，即「健康」。
+      # CMD-SHELL 表示交给容器里的 sh 执行这一整条命令
+      test: ["CMD-SHELL", "pg_isready -U answer -d answer"]
+      # 每 5 秒检查一次，单次 3 秒超时，连续失败 10 次才判定为不健康
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+# 声明上面用到的两个命名卷，由 Docker 管理，实际存放在 /var/lib/docker/volumes/ 下
+volumes:
+  answer-data:
+  pgdata:

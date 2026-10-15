@@ -71,4 +71,6 @@ RUN chmod 755 /entrypoint.sh
 
 VOLUME /data
 EXPOSE 80
-ENTRYPOINT ["/entrypoint.sh"]
+# dumb-init runs as PID 1: the kernel drops unhandled signals sent to PID 1, so
+# without it docker stop's SIGTERM never reaches answer and it gets SIGKILLed.
+ENTRYPOINT ["dumb-init","--","/entrypoint.sh"]

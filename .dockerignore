@@ -1,0 +1,18 @@
+# The Dockerfile copies the whole directory into the build stage, so anything
+# listed here would otherwise end up in an image layer.
+
+# secrets and local runtime data (admin password, DB password, search key, uploads)
+# Unlike .gitignore, a bare ".env" here only matches the root one.
+**/.env
+answer-data/
+tmp/
+
+# the browser agent is a separate Python project, not part of the image
+browser-use/
+
+# local build and editor leftovers
+.git/
+.vscode/
+*.exe
+*.db
+ui/node_modules/
