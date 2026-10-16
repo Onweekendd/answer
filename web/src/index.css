@@ -1,0 +1,130 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "tw-shimmer";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+    --color-buy: var(--buy);
+    --color-buy-foreground: var(--buy-foreground);
+    --color-wait: var(--wait);
+    --color-wait-foreground: var(--wait-foreground);
+    --color-skip: var(--skip);
+    --color-skip-foreground: var(--skip-foreground);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+  @keyframes collapsible-down {
+  from {
+    height: 0;
+        }
+  to {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+        }
+    }
+  @keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+        }
+  to {
+    height: 0;
+        }
+    }
+}
+
+:root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.52 0.22 275);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.965 0.006 275);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.965 0.006 275);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.96 0.025 275);
+    --accent-foreground: oklch(0.35 0.14 275);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.92 0.008 275);
+    --input: oklch(0.92 0.008 275);
+    --ring: oklch(0.62 0.17 275);
+    --buy: oklch(0.62 0.17 150);
+    --buy-foreground: oklch(0.985 0 0);
+    --wait: oklch(0.78 0.16 75);
+    --wait-foreground: oklch(0.25 0.05 75);
+    --skip: oklch(0.6 0.22 20);
+    --skip-foreground: oklch(0.985 0 0);
+    --radius: 0.75rem;
+}
+
+.dark {
+    --background: oklch(0.16 0.012 275);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.21 0.015 275);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.21 0.015 275);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.68 0.19 275);
+    --primary-foreground: oklch(0.16 0.012 275);
+    --secondary: oklch(0.26 0.015 275);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.26 0.015 275);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.28 0.04 275);
+    --accent-foreground: oklch(0.95 0.02 275);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --buy: oklch(0.7 0.17 150);
+    --buy-foreground: oklch(0.15 0.04 150);
+    --wait: oklch(0.8 0.15 80);
+    --wait-foreground: oklch(0.22 0.05 80);
+    --skip: oklch(0.68 0.2 20);
+    --skip-foreground: oklch(0.15 0.04 20);
+    --ring: oklch(0.62 0.17 275);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
