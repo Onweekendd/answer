@@ -15,7 +15,23 @@
 # specific language governing permissions and limitations
 # under the License.
 
+packages:
+  - web
+  - extension
+  - packages/*
+
 # pnpm 默认不运行依赖包的安装脚本（防止装包时执行恶意代码），要逐个放行。
 # esbuild 的安装脚本只是检查当前平台的二进制是否就位。
 allowBuilds:
   esbuild: true
+  # import 别名解析器的依赖；它的二进制由平台可选依赖提供，安装脚本只是兜底，不放行
+  unrs-resolver: false
+
+# 新发布不满一定天数的包默认不装；这些是刚发布但我们确认要用的版本。
+minimumReleaseAgeExclude:
+  - "@assistant-ui/core@0.3.29"
+  - "@assistant-ui/react-markdown@0.14.23"
+  - "@assistant-ui/react@0.15.29"
+  - "@assistant-ui/store@0.3.21"
+  - assistant-stream@0.3.52
+  - tw-shimmer@0.4.14
