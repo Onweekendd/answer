@@ -25,7 +25,7 @@ import (
 	"fmt"
 )
 
-// WebSocket 上的消息格式，和 extension/src/protocol.ts 一一对应，改一边就要改另一边。
+// WebSocket 上的消息格式，和 frontend/extension/src/protocol.ts 一一对应，改一边就要改另一边。
 
 // Command 是 Go 发给插件的命令
 type Command struct {

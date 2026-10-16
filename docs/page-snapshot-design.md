@@ -179,7 +179,7 @@ Go 拿到以后交给小模型，按任务给出的 JSON schema 提取，比如 
 **通用规则不够精确的地方，用站点策略增强。** 策略是仓库里的内置代码，放在单独的目录，通过策略表接入内核：
 
 ```
-extension/src/
+frontend/extension/src/
   snapshot/          通用内核
   strategies/
     types.ts         SiteStrategy 接口
@@ -228,7 +228,7 @@ export interface SiteStrategy {
 `content.ts` 会越来越大，拆成一个目录：
 
 ```
-extension/src/snapshot/
+frontend/extension/src/snapshot/
   walk.ts         ① 遍历 + 上限
   visible.ts      ② 可见
   interactive.ts  ③ 可交互（isInteractive）

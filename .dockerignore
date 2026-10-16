@@ -9,8 +9,9 @@ tmp/
 
 # the browser agent is a separate Python project, not part of the image
 browser-use/
-# the Chrome extension runs in the user's browser, not on the server
-extension/
+# the Chrome extension runs in the user's browser, not on the server, and the new
+# web front end is not part of the image yet (the image still serves ui/)
+frontend/
 
 # local build and editor leftovers
 .git/

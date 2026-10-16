@@ -503,7 +503,7 @@ Kafka 本质上是**日志**，不是**工作队列**：
 
 ```
 internal/service/browser/     Hub（WS 服务 + pending 表）、TabPool、协议定义、Client 接口
-extension/                    MV3 插件（TS）：manifest、background、content script
+frontend/extension/           MV3 插件（TS）：manifest、background、content script
 internal/migrations/v36.go    price_snapshots 表、steps 表
 ```
 
