@@ -342,6 +342,22 @@ func (qc *QuestionController) QuestionPage(ctx *gin.Context) {
 	handler.HandleResponse(ctx, nil, pager.NewPageModel(total, questions))
 }
 
+// communityFeedSize is how many posts one feed batch holds
+const communityFeedSize = 20
+
+// CommunityFeed get a random batch of purchase posts to vote on
+// @Summary get a random batch of purchase posts to vote on
+// @Description a random batch of posts whose vote is not closed, leaving out the viewer's own; call again for the next batch
+// @Tags Question
+// @Produce  json
+// @Success 200 {object} handler.RespBody{data=[]schema.QuestionPageResp}
+// @Router /answer/api/v1/community/feed [get]
+func (qc *QuestionController) CommunityFeed(ctx *gin.Context) {
+	viewerID := middleware.GetLoginUserIDFromContext(ctx)
+	questions, err := qc.questionService.GetCommunityFeed(ctx, viewerID, communityFeedSize)
+	handler.HandleResponse(ctx, err, questions)
+}
+
 // QuestionRecommendPage get recommend questions by page
 // @Summary get recommend questions by page
 // @Description get recommend questions by page

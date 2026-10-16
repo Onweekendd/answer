@@ -56,6 +56,7 @@ func newTestQuestion(title string) *entity.Question {
 		OriginalText:     "original text",
 		ParsedText:       "<p>parsed text</p>",
 		Status:           entity.QuestionStatusAvailable,
+		Show:             entity.QuestionShow,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		PostUpdateTime:   now,

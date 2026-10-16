@@ -23,6 +23,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -458,6 +460,56 @@ func (qr *questionRepo) GetQuestionPage(ctx context.Context, page, pageSize int,
 		}
 	}
 	return questionList, total, err
+}
+
+// randomPoolSize caps how many recent candidates are shuffled; sampling ids in Go keeps
+// this portable, as RANDOM() and RAND() differ between the supported databases.
+const randomPoolSize = 500
+
+// GetRandomQuestionList picks up to limit open purchase posts at random.
+func (qr *questionRepo) GetRandomQuestionList(ctx context.Context, viewerID string, limit int) (
+	questionList []*entity.Question, err error) {
+	questionList = make([]*entity.Question, 0)
+	if limit <= 0 {
+		return questionList, nil
+	}
+
+	session := qr.data.DB.Context(ctx).Table("question").
+		Join("INNER", "purchase_detail", "purchase_detail.question_id = question.id").
+		Cols("question.id").
+		Where("question.status = ? AND question.show = ?", entity.QuestionStatusAvailable, entity.QuestionShow).
+		And("purchase_detail.vote_closed = ?", false)
+	if viewerID != "" {
+		session.And("question.user_id <> ?", viewerID)
+	}
+	ids := make([]string, 0, randomPoolSize)
+	if err = session.OrderBy("question.created_at DESC").Limit(randomPoolSize).Find(&ids); err != nil {
+		return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+	}
+	if len(ids) == 0 {
+		return questionList, nil
+	}
+
+	rand.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	if err = qr.data.DB.Context(ctx).In("id", ids).Find(&questionList); err != nil {
+		return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+	}
+	// In() returns rows in table order; restore the shuffled order
+	pos := make(map[string]int, len(ids))
+	for i, id := range ids {
+		pos[id] = i
+	}
+	sort.Slice(questionList, func(i, j int) bool { return pos[questionList[i].ID] < pos[questionList[j].ID] })
+
+	if handler.GetEnableShortID(ctx) {
+		for _, item := range questionList {
+			item.ID = uid.EnShortID(item.ID)
+		}
+	}
+	return questionList, nil
 }
 
 // GetRecommendQuestionPageByTags get recommend question page by tags

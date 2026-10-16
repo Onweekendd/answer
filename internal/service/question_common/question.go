@@ -65,6 +65,9 @@ type QuestionRepo interface {
 	GetQuestionPage(ctx context.Context, page, pageSize int, tagIDs []string, userID, orderCond string, inDays int, showHidden, showPending bool) (
 		questionList []*entity.Question, total int64, err error)
 	GetRecommendQuestionPageByTags(ctx context.Context, userID string, tagIDs, followedQuestionIDs []string, page, pageSize int) (questionList []*entity.Question, total int64, err error)
+	// GetRandomQuestionList picks up to limit purchase posts at random whose vote is not closed,
+	// leaving out the viewer's own posts (viewerID may be empty).
+	GetRandomQuestionList(ctx context.Context, viewerID string, limit int) (questionList []*entity.Question, err error)
 	UpdateQuestionStatus(ctx context.Context, questionID string, status int) (err error)
 	UpdateQuestionStatusWithOutUpdateTime(ctx context.Context, question *entity.Question) (err error)
 	DeletePermanentlyQuestions(ctx context.Context) (err error)

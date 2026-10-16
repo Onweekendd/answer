@@ -1552,6 +1552,16 @@ func (qs *QuestionService) GetQuestionPage(ctx context.Context, req *schema.Ques
 	return questions, total, nil
 }
 
+// GetCommunityFeed returns a random batch of purchase posts whose vote is still open.
+func (qs *QuestionService) GetCommunityFeed(ctx context.Context, viewerID string, size int) (
+	questions []*schema.QuestionPageResp, err error) {
+	questionList, err := qs.questionRepo.GetRandomQuestionList(ctx, viewerID, size)
+	if err != nil {
+		return nil, err
+	}
+	return qs.questioncommon.FormatQuestionsPage(ctx, questionList, viewerID, schema.QuestionOrderCondNewest)
+}
+
 // GetRecommendQuestionPage retrieves recommended question page based on following tags and questions.
 func (qs *QuestionService) GetRecommendQuestionPage(ctx context.Context, req *schema.QuestionPageReq) (
 	questions []*schema.QuestionPageResp, total int64, err error) {
