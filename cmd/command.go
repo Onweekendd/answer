@@ -85,7 +85,7 @@ func init() {
 	resetPasswordCmd.Flags().StringVarP(&resetPasswordEmail, "email", "e", "", "user email address")
 	resetPasswordCmd.Flags().StringVarP(&resetPasswordPassword, "password", "p", "", "new password (not recommended, will be recorded in shell history)")
 
-	for _, cmd := range []*cobra.Command{initCmd, checkCmd, runCmd, dumpCmd, upgradeCmd, buildCmd, pluginCmd, configCmd, i18nCmd, resetPasswordCmd} {
+	for _, cmd := range []*cobra.Command{initCmd, checkCmd, runCmd, dumpCmd, upgradeCmd, buildCmd, pluginCmd, configCmd, i18nCmd, resetPasswordCmd, browserCmd} {
 		rootCmd.AddCommand(cmd)
 	}
 }
