@@ -1,7 +1,11 @@
 {
   "eslint.workingDirectories": [
-    "ui"
+    "ui",
+    "extension"
   ],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
   "explorer.autoReveal": "focusNoScroll",
   "cSpell.words": [
     "grecaptcha"

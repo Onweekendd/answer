@@ -17,10 +17,11 @@ name: deploy
 on:
   push:
     branches: [main]
-    # 只改了文档时不用部署
+    # 只改了文档或浏览器插件时不用部署：插件装在浏览器里，不在服务器上
     paths-ignore:
       - "docs/**"
       - "**.md"
+      - "extension/**"
   # Actions 页面上多一个手动运行的按钮
   workflow_dispatch:
 

@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "买不买 Agent",
+  "description": "让「买不买」的 AI 通过你自己的浏览器查看网页。仅供个人学习，低频使用。",
+  "version": "0.2.0",
+  "minimum_chrome_version": "120",
+  "permissions": ["tabs", "storage", "alarms", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "买不买 Agent",
+    "default_popup": "popup.html"
+  }
+}
