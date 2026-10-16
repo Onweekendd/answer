@@ -19,13 +19,6 @@
 
 package schema
 
-import (
-	"encoding/json"
-	"sort"
-
-	"github.com/apache/answer/internal/entity"
-)
-
 const (
 	NotificationTypeInbox        = 1
 	NotificationTypeAchievement  = 2
@@ -102,70 +95,10 @@ type ObjectInfo struct {
 }
 
 type RedDot struct {
-	Inbox       int64             `json:"inbox"`
-	Achievement int64             `json:"achievement"`
-	Revision    int64             `json:"revision"`
-	CanRevision bool              `json:"can_revision"`
-	BadgeAward  *RedDotBadgeAward `json:"badge_award"`
-}
-
-type RedDotBadgeAward struct {
-	NotificationID string            `json:"notification_id"`
-	BadgeID        string            `json:"badge_id"`
-	Name           string            `json:"name"`
-	Icon           string            `json:"icon"`
-	Level          entity.BadgeLevel `json:"level"`
-}
-
-type RedDotBadgeAwardCache struct {
-	BadgeAwardList map[string]*RedDotBadgeAward `json:"badge_award_list"`
-}
-
-// NewRedDotBadgeAwardCache new red dot badge award cache
-func NewRedDotBadgeAwardCache() *RedDotBadgeAwardCache {
-	return &RedDotBadgeAwardCache{
-		BadgeAwardList: make(map[string]*RedDotBadgeAward),
-	}
-}
-
-// GetBadgeAward get badge award
-func (r *RedDotBadgeAwardCache) GetBadgeAward() *RedDotBadgeAward {
-	if len(r.BadgeAwardList) == 0 {
-		return nil
-	}
-	var ids []string
-	for _, v := range r.BadgeAwardList {
-		ids = append(ids, v.NotificationID)
-	}
-	sort.Strings(ids)
-	return r.BadgeAwardList[ids[0]]
-}
-
-// FromJSON from json
-func (r *RedDotBadgeAwardCache) FromJSON(data string) {
-	_ = json.Unmarshal([]byte(data), r)
-}
-
-// ToJSON to json
-func (r *RedDotBadgeAwardCache) ToJSON() string {
-	data, _ := json.Marshal(r)
-	return string(data)
-}
-
-// AddBadgeAward add badge award
-func (r *RedDotBadgeAwardCache) AddBadgeAward(badgeAward *RedDotBadgeAward) {
-	if r.BadgeAwardList == nil {
-		r.BadgeAwardList = make(map[string]*RedDotBadgeAward)
-	}
-	r.BadgeAwardList[badgeAward.NotificationID] = badgeAward
-}
-
-// RemoveBadgeAward remove badge award
-func (r *RedDotBadgeAwardCache) RemoveBadgeAward(notificationID string) {
-	if r.BadgeAwardList == nil {
-		return
-	}
-	delete(r.BadgeAwardList, notificationID)
+	Inbox       int64 `json:"inbox"`
+	Achievement int64 `json:"achievement"`
+	Revision    int64 `json:"revision"`
+	CanRevision bool  `json:"can_revision"`
 }
 
 type NotificationSearch struct {

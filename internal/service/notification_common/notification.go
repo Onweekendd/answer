@@ -123,26 +123,18 @@ func (ns *NotificationCommon) AddNotification(ctx context.Context, msg *schema.N
 	}
 	var questionID string // just for notify all followers
 	var objInfo *schema.SimpleObjectInfo
-	if msg.ObjectType == constant.BadgeAwardObjectType {
-		req.ObjectInfo.Title = msg.Title
-		objectMap := make(map[string]string)
-		objectMap["badge_id"] = msg.ExtraInfo["badge_id"]
-		req.ObjectInfo.ObjectMap = objectMap
-	} else {
-		objInfo, err = ns.objectInfoService.GetInfo(ctx, req.ObjectInfo.ObjectID)
-		if err != nil {
-			log.Error(err)
-			return err
-		} else {
-			req.ObjectInfo.Title = objInfo.Title
-			questionID = objInfo.QuestionID
-			objectMap := make(map[string]string)
-			objectMap["question"] = uid.DeShortID(objInfo.QuestionID)
-			objectMap["answer"] = uid.DeShortID(objInfo.AnswerID)
-			objectMap["comment"] = objInfo.CommentID
-			req.ObjectInfo.ObjectMap = objectMap
-		}
+	objInfo, err = ns.objectInfoService.GetInfo(ctx, req.ObjectInfo.ObjectID)
+	if err != nil {
+		log.Error(err)
+		return err
 	}
+	req.ObjectInfo.Title = objInfo.Title
+	questionID = objInfo.QuestionID
+	objectMap := make(map[string]string)
+	objectMap["question"] = uid.DeShortID(objInfo.QuestionID)
+	objectMap["answer"] = uid.DeShortID(objInfo.AnswerID)
+	objectMap["comment"] = objInfo.CommentID
+	req.ObjectInfo.ObjectMap = objectMap
 
 	if msg.Type == schema.NotificationTypeAchievement {
 		notificationInfo, exist, err := ns.notificationRepo.GetByUserIdObjectIdTypeId(ctx, req.ReceiverUserID, req.ObjectInfo.ObjectID, req.Type)
@@ -203,12 +195,6 @@ func (ns *NotificationCommon) AddNotification(ctx context.Context, msg *schema.N
 	err = ns.addRedDot(ctx, info.UserID, msg.Type)
 	if err != nil {
 		log.Error("addRedDot Error", err.Error())
-	}
-	if req.ObjectInfo.ObjectType == constant.BadgeAwardObjectType {
-		err = ns.AddBadgeAwardAlertCache(ctx, info.UserID, info.ID, req.ObjectInfo.ObjectMap["badge_id"])
-		if err != nil {
-			log.Error("AddBadgeAwardAlertCache Error", err.Error())
-		}
 	}
 
 	go ns.SendNotificationToAllFollower(ctx, msg, questionID)
@@ -279,49 +265,6 @@ func (ns *NotificationCommon) DeleteRedDot(ctx context.Context, userID string, n
 		return errors.InternalServer(reason.UnknownError).WithError(err).WithStack()
 	}
 	return nil
-}
-
-// AddBadgeAwardAlertCache add badge award alert cache
-func (ns *NotificationCommon) AddBadgeAwardAlertCache(ctx context.Context, userID, notificationID, badgeID string) (err error) {
-	key := fmt.Sprintf(constant.RedDotCacheKey, constant.NotificationTypeBadgeAchievement, userID)
-	cacheData, exist, err := ns.data.Cache.GetString(ctx, key)
-	if err != nil {
-		return errors.InternalServer(reason.UnknownError).WithError(err).WithStack()
-	}
-	if !exist {
-		c := schema.NewRedDotBadgeAwardCache()
-		c.AddBadgeAward(&schema.RedDotBadgeAward{
-			NotificationID: notificationID,
-			BadgeID:        badgeID,
-		})
-		return ns.data.Cache.SetString(ctx, key, c.ToJSON(), constant.RedDotCacheTime)
-	}
-	c := schema.NewRedDotBadgeAwardCache()
-	c.FromJSON(cacheData)
-	c.AddBadgeAward(&schema.RedDotBadgeAward{
-		NotificationID: notificationID,
-		BadgeID:        badgeID,
-	})
-	return ns.data.Cache.SetString(ctx, key, c.ToJSON(), constant.RedDotCacheTime)
-}
-
-// RemoveBadgeAwardAlertCache remove badge award alert cache
-func (ns *NotificationCommon) RemoveBadgeAwardAlertCache(ctx context.Context, userID, notificationID string) (err error) {
-	key := fmt.Sprintf(constant.RedDotCacheKey, constant.NotificationTypeBadgeAchievement, userID)
-	cacheData, exist, err := ns.data.Cache.GetString(ctx, key)
-	if err != nil {
-		return errors.InternalServer(reason.UnknownError).WithError(err).WithStack()
-	}
-	if !exist {
-		return nil
-	}
-	c := schema.NewRedDotBadgeAwardCache()
-	c.FromJSON(cacheData)
-	c.RemoveBadgeAward(notificationID)
-	if len(c.BadgeAwardList) == 0 {
-		return ns.data.Cache.Del(ctx, key)
-	}
-	return ns.data.Cache.SetString(ctx, key, c.ToJSON(), constant.RedDotCacheTime)
 }
 
 // SendNotificationToAllFollower send notification to all followers

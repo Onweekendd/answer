@@ -28,7 +28,6 @@ import (
 	answercommon "github.com/apache/answer/internal/service/answer_common"
 	"github.com/apache/answer/internal/service/apikey"
 	"github.com/apache/answer/internal/service/auth"
-	"github.com/apache/answer/internal/service/badge"
 	"github.com/apache/answer/internal/service/collection"
 	collectioncommon "github.com/apache/answer/internal/service/collection_common"
 	"github.com/apache/answer/internal/service/comment"
@@ -141,10 +140,6 @@ var ProviderSetService = wire.NewSet(
 	review.NewReviewService,
 	meta.NewMetaService,
 	eventqueue.NewService,
-	badge.NewBadgeService,
-	badge.NewBadgeEventService,
-	badge.NewBadgeAwardService,
-	badge.NewBadgeGroupService,
 	importer.NewImporterService,
 	file_record.NewFileRecordService,
 	apikey.NewAPIKeyService,

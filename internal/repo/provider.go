@@ -27,9 +27,6 @@ import (
 	"github.com/apache/answer/internal/repo/answer"
 	"github.com/apache/answer/internal/repo/api_key"
 	"github.com/apache/answer/internal/repo/auth"
-	"github.com/apache/answer/internal/repo/badge"
-	"github.com/apache/answer/internal/repo/badge_award"
-	"github.com/apache/answer/internal/repo/badge_group"
 	"github.com/apache/answer/internal/repo/captcha"
 	"github.com/apache/answer/internal/repo/collection"
 	"github.com/apache/answer/internal/repo/comment"
@@ -108,10 +105,6 @@ var ProviderSetRepo = wire.NewSet(
 	limit.NewRateLimitRepo,
 	plugin_config.NewPluginUserConfigRepo,
 	review.NewReviewRepo,
-	badge.NewBadgeRepo,
-	badge.NewEventRuleRepo,
-	badge_group.NewBadgeGroupRepo,
-	badge_award.NewBadgeAwardRepo,
 	file_record.NewFileRecordRepo,
 	api_key.NewAPIKeyRepo,
 	ai_conversation.NewAIConversationRepo,

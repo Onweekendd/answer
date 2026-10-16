@@ -22,9 +22,6 @@ import (
 	"github.com/apache/answer/internal/repo/answer"
 	"github.com/apache/answer/internal/repo/api_key"
 	"github.com/apache/answer/internal/repo/auth"
-	"github.com/apache/answer/internal/repo/badge"
-	"github.com/apache/answer/internal/repo/badge_award"
-	"github.com/apache/answer/internal/repo/badge_group"
 	"github.com/apache/answer/internal/repo/captcha"
 	"github.com/apache/answer/internal/repo/collection"
 	"github.com/apache/answer/internal/repo/comment"
@@ -60,7 +57,6 @@ import (
 	"github.com/apache/answer/internal/service/answer_common"
 	"github.com/apache/answer/internal/service/apikey"
 	auth2 "github.com/apache/answer/internal/service/auth"
-	badge2 "github.com/apache/answer/internal/service/badge"
 	collection2 "github.com/apache/answer/internal/service/collection"
 	"github.com/apache/answer/internal/service/collection_common"
 	comment2 "github.com/apache/answer/internal/service/comment"
@@ -242,8 +238,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	userAdminRepo := user.NewUserAdminRepo(dataData, authRepo)
 	notificationRepo := notification2.NewNotificationRepo(dataData)
 	pluginUserConfigRepo := plugin_config.NewPluginUserConfigRepo(dataData)
-	badgeAwardRepo := badge_award.NewBadgeAwardRepo(dataData, uniqueIDRepo)
-	userAdminService := user_admin.NewUserAdminService(userAdminRepo, userRoleRelService, authService, userCommon, userActiveActivityRepo, siteInfoCommonService, emailService, questionRepo, answerRepo, commentCommonRepo, userExternalLoginRepo, notificationRepo, pluginUserConfigRepo, badgeAwardRepo, apiKeyRepo)
+	userAdminService := user_admin.NewUserAdminService(userAdminRepo, userRoleRelService, authService, userCommon, userActiveActivityRepo, siteInfoCommonService, emailService, questionRepo, answerRepo, commentCommonRepo, userExternalLoginRepo, notificationRepo, pluginUserConfigRepo, apiKeyRepo)
 	userAdminController := controller_admin.NewUserAdminController(userAdminService)
 	reasonRepo := reason.NewReasonRepo(configService)
 	reasonService := reason2.NewReasonService(reasonRepo)
@@ -253,8 +248,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	siteInfoController := controller_admin.NewSiteInfoController(siteInfoService)
 	controllerSiteInfoController := controller.NewSiteInfoController(siteInfoCommonService)
 	notificationCommon := notificationcommon.NewNotificationCommon(dataData, notificationRepo, userCommon, activityRepo, followRepo, objService, noticequeueService, userExternalLoginRepo, siteInfoCommonService)
-	badgeRepo := badge.NewBadgeRepo(dataData, uniqueIDRepo)
-	notificationService := notification.NewNotificationService(dataData, notificationRepo, notificationCommon, revisionService, userRepo, reportRepo, reviewService, badgeRepo)
+	notificationService := notification.NewNotificationService(dataData, notificationRepo, notificationCommon, revisionService, userRepo, reportRepo, reviewService)
 	notificationController := controller.NewNotificationController(notificationService, rankService)
 	dashboardService := dashboard.NewDashboardService(questionRepo, answerRepo, commentCommonRepo, voteRepo, userRepo, reportRepo, configService, siteInfoCommonService, serviceConf, reviewService, revisionRepo, dataData)
 	dashboardController := controller.NewDashboardController(dashboardService)
@@ -274,13 +268,6 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	reviewController := controller.NewReviewController(reviewService, rankService, captchaService)
 	metaService := meta2.NewMetaService(metaCommonService, userCommon, answerRepo, questionRepo, eventqueueService)
 	metaController := controller.NewMetaController(metaService)
-	badgeGroupRepo := badge_group.NewBadgeGroupRepo(dataData, uniqueIDRepo)
-	eventRuleRepo := badge.NewEventRuleRepo(dataData)
-	badgeAwardService := badge2.NewBadgeAwardService(badgeAwardRepo, badgeRepo, userCommon, objService, noticequeueService)
-	badgeEventService := badge2.NewBadgeEventService(dataData, eventqueueService, badgeRepo, eventRuleRepo, badgeAwardService)
-	badgeService := badge2.NewBadgeService(badgeRepo, badgeGroupRepo, badgeAwardRepo, badgeEventService, siteInfoCommonService)
-	badgeController := controller.NewBadgeController(badgeService, badgeAwardService)
-	controller_adminBadgeController := controller_admin.NewBadgeController(badgeService)
 	apiKeyService := apikey.NewAPIKeyService(apiKeyRepo)
 	adminAPIKeyController := controller_admin.NewAdminAPIKeyController(apiKeyService)
 	featureToggleService := feature_toggle.NewFeatureToggleService(siteInfoRepo)
@@ -291,7 +278,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	aiController := controller.NewAIController(searchService, siteInfoCommonService, tagCommonService, questionCommon, commentRepo, userCommon, answerRepo, mcpController, aiConversationService, featureToggleService)
 	aiConversationController := controller.NewAIConversationController(aiConversationService, featureToggleService)
 	aiConversationAdminController := controller_admin.NewAIConversationAdminController(aiConversationService, featureToggleService)
-	answerAPIRouter := router.NewAnswerAPIRouter(langController, userController, commentController, reportController, voteController, tagController, followController, collectionController, questionController, purchaseAIController, purchaseVoteController, answerController, searchController, revisionController, rankController, userAdminController, reasonController, themeController, siteInfoController, controllerSiteInfoController, notificationController, dashboardController, uploadController, activityController, roleController, pluginController, permissionController, userPluginController, reviewController, metaController, badgeController, controller_adminBadgeController, adminAPIKeyController, aiController, aiConversationController, aiConversationAdminController, mcpController)
+	answerAPIRouter := router.NewAnswerAPIRouter(langController, userController, commentController, reportController, voteController, tagController, followController, collectionController, questionController, purchaseAIController, purchaseVoteController, answerController, searchController, revisionController, rankController, userAdminController, reasonController, themeController, siteInfoController, controllerSiteInfoController, notificationController, dashboardController, uploadController, activityController, roleController, pluginController, permissionController, userPluginController, reviewController, metaController, adminAPIKeyController, aiController, aiConversationController, aiConversationAdminController, mcpController)
 	swaggerRouter := router.NewSwaggerRouter(swaggerConf)
 	uiRouter := router.NewUIRouter(controllerSiteInfoController, siteInfoCommonService)
 	authUserMiddleware := middleware.NewAuthUserMiddleware(authService, siteInfoCommonService)

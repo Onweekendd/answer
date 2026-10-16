@@ -97,7 +97,7 @@ var migrations = []Migration{
 	NewMigration("v1.2.5", "add notification plugin and theme config", addNotificationPluginAndThemeConfig, true),
 	NewMigration("v1.3.0", "add review", addReview, false),
 	NewMigration("v1.3.6", "add hot score to question table", addQuestionHotScore, true),
-	NewMigration("v1.4.0", "add badge/badge_group/badge_award table", addBadges, true),
+	NewMigration("v1.4.0", "add badge/badge_group/badge_award table", noopMigration, true),
 	NewMigration("v1.4.1", "add question link", addQuestionLink, true),
 	NewMigration("v1.4.2", "add the number of question links", addQuestionLinkedCount, true),
 	NewMigration("v1.4.5", "add file record", addFileRecord, true),
@@ -114,6 +114,7 @@ var migrations = []Migration{
 	NewMigration("v2.0.5", "add purchase product column", addPurchaseProduct, true),
 	NewMigration("v2.0.6", "add purchase vote", addPurchaseVote, true),
 	NewMigration("v2.0.7", "sync user id sequence", syncUserIDSequence, false),
+	NewMigration("v2.0.8", "drop badge tables and badge notifications", dropBadges, true),
 }
 
 func GetMigrations() []Migration {

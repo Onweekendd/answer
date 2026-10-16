@@ -56,8 +56,6 @@ const (
 	NotificationYourCommentWasDeleted = "notification.action.your_comment_was_deleted"
 	// NotificationInvitedYouToAnswer invited you to answer
 	NotificationInvitedYouToAnswer = "notification.action.invited_you_to_answer"
-	// NotificationEarnedBadge earned badge
-	NotificationEarnedBadge = "notification.action.earned_badge"
 	// NotificationPurchaseVoteClosed voting on your purchase post reached the threshold and closed
 	NotificationPurchaseVoteClosed = "notification.action.purchase_vote_closed"
 )
@@ -76,9 +74,8 @@ const (
 )
 
 const (
-	NotificationTypeInbox            = "inbox"
-	NotificationTypeAchievement      = "achievement"
-	NotificationTypeBadgeAchievement = "badge"
+	NotificationTypeInbox       = "inbox"
+	NotificationTypeAchievement = "achievement"
 )
 
 var (

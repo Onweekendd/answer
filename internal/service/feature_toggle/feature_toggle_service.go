@@ -32,7 +32,6 @@ import (
 
 // Feature keys
 const (
-	FeatureBadge        = "badge"
 	FeatureCustomDomain = "custom_domain"
 	FeatureMCP          = "mcp"
 	FeaturePrivateAPI   = "private_api"

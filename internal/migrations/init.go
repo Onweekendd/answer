@@ -87,7 +87,6 @@ func (m *Mentor) InitDB() error {
 	m.do("init site info write", m.initSiteInfoTags)
 	m.do("init site info security", m.initSiteInfoSecurityConfig)
 	m.do("init default content", m.initDefaultContent)
-	m.do("init default badges", m.initDefaultBadges)
 	m.do("init default ai config", m.initSiteInfoAI)
 	m.do("init default MCP config", m.initSiteInfoMCP)
 	return m.err
@@ -594,24 +593,6 @@ func (m *Mentor) initDefaultContent() {
 	})
 	if m.err != nil {
 		return
-	}
-}
-
-func (m *Mentor) initDefaultBadges() {
-	uniqueIDRepo := unique.NewUniqueIDRepo(&data.Data{DB: m.engine})
-
-	_, m.err = m.engine.Context(m.ctx).Insert(defaultBadgeGroupTable)
-	if m.err != nil {
-		return
-	}
-	for _, badge := range defaultBadgeTable {
-		badge.ID, m.err = uniqueIDRepo.GenUniqueIDStr(m.ctx, new(entity.Badge).TableName())
-		if m.err != nil {
-			return
-		}
-		if _, m.err = m.engine.Context(m.ctx).Insert(badge); m.err != nil {
-			return
-		}
 	}
 }
 

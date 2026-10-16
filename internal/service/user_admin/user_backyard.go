@@ -32,7 +32,6 @@ import (
 	"github.com/apache/answer/internal/base/translator"
 	"github.com/apache/answer/internal/base/validator"
 	answercommon "github.com/apache/answer/internal/service/answer_common"
-	"github.com/apache/answer/internal/service/badge"
 	"github.com/apache/answer/internal/service/comment_common"
 	"github.com/apache/answer/internal/service/export"
 	notificationcommon "github.com/apache/answer/internal/service/notification_common"
@@ -87,7 +86,6 @@ type UserAdminService struct {
 	userExternalLoginRepo user_external_login.UserExternalLoginRepo
 	notificationRepo      notificationcommon.NotificationRepo
 	pluginUserConfigRepo  plugin_common.PluginUserConfigRepo
-	badgeAwardRepo        badge.BadgeAwardRepo
 	apiKeyRepo            apikey.APIKeyRepo
 }
 
@@ -106,7 +104,6 @@ func NewUserAdminService(
 	userExternalLoginRepo user_external_login.UserExternalLoginRepo,
 	notificationRepo notificationcommon.NotificationRepo,
 	pluginUserConfigRepo plugin_common.PluginUserConfigRepo,
-	badgeAwardRepo badge.BadgeAwardRepo,
 	apiKeyRepo apikey.APIKeyRepo,
 ) *UserAdminService {
 	return &UserAdminService{
@@ -123,7 +120,6 @@ func NewUserAdminService(
 		userExternalLoginRepo: userExternalLoginRepo,
 		notificationRepo:      notificationRepo,
 		pluginUserConfigRepo:  pluginUserConfigRepo,
-		badgeAwardRepo:        badgeAwardRepo,
 		apiKeyRepo:            apiKeyRepo,
 	}
 }
@@ -205,10 +201,6 @@ func (us *UserAdminService) removeAllUserConfiguration(ctx context.Context, user
 	err = us.pluginUserConfigRepo.DeleteUserPluginConfig(ctx, userID)
 	if err != nil {
 		log.Errorf("remove all user plugin config error: %v", err)
-	}
-	err = us.badgeAwardRepo.DeleteUserBadgeAward(ctx, userID)
-	if err != nil {
-		log.Errorf("remove all user badge award error: %v", err)
 	}
 }
 
