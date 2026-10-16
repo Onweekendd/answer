@@ -1,21 +1,22 @@
-import { LogOut, MessageCircle, Users } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { ThemeToggle } from '@/components/ThemeToggle'
-import { Button } from '@/components/ui/button'
-import { useLogout } from '@/hooks/useAuth'
-import { cn } from '@/lib/utils'
+import { LogOut, MessageCircle, Users } from "lucide-react";
+import { NavLink, Outlet } from "react-router-dom";
+
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
+import { useLogout } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
 
 const NAV = [
-  { to: '/', label: '对话', icon: MessageCircle, end: true },
-  { to: '/community', label: '社区', icon: Users, end: false },
-]
+  { to: "/", label: "对话", icon: MessageCircle, end: true },
+  { to: "/community", label: "社区", icon: Users, end: false }
+];
 
 /**
  * Top bar with tabs on wide screens; on phones the tabs move to a bottom bar within thumb
  * reach, and the content is padded so the bar never covers it.
  */
 export function AppShell() {
-  const logout = useLogout()
+  const logout = useLogout();
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
@@ -31,10 +32,11 @@ export function AppShell() {
                 end={end}
                 className={({ isActive }) =>
                   cn(
-                    'rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
-                    isActive && 'bg-accent text-accent-foreground',
+                    "rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+                    isActive && "bg-accent text-accent-foreground"
                   )
-                }>
+                }
+              >
                 {label}
               </NavLink>
             ))}
@@ -62,10 +64,11 @@ export function AppShell() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center gap-0.5 py-2 text-xs font-medium text-muted-foreground transition-colors',
-                  isActive && 'text-primary',
+                  "flex flex-col items-center gap-0.5 py-2 text-xs font-medium text-muted-foreground transition-colors",
+                  isActive && "text-primary"
                 )
-              }>
+              }
+            >
               <Icon className="size-5" />
               {label}
             </NavLink>
@@ -73,5 +76,5 @@ export function AppShell() {
         </div>
       </nav>
     </div>
-  )
+  );
 }

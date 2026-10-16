@@ -1,12 +1,13 @@
-import { RefreshCw } from 'lucide-react'
-import { toast } from 'sonner'
-import { PostCard } from '@/components/PostCard'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { describeError } from '@/core/api/errors'
-import { useFeed } from '@/hooks/useFeed'
-import { useVote } from '@/hooks/useVote'
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+
+import { PostCard } from "@/components/PostCard";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { describeError } from "@/core/api/errors";
+import { useFeed } from "@/hooks/useFeed";
+import { useVote } from "@/hooks/useVote";
 
 function CardSkeleton() {
   return (
@@ -22,19 +23,19 @@ function CardSkeleton() {
         <Skeleton className="h-10 w-full" />
       </CardContent>
     </Card>
-  )
+  );
 }
 
 export default function Community() {
-  const feed = useFeed()
-  const vote = useVote()
+  const feed = useFeed();
+  const vote = useVote();
 
   return (
     <div className="space-y-4 py-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">社区</h1>
         <Button variant="outline" disabled={feed.isLoading || feed.isRefreshing} onClick={() => feed.nextBatch()}>
-          <RefreshCw className={feed.isRefreshing ? 'animate-spin' : undefined} />
+          <RefreshCw className={feed.isRefreshing ? "animate-spin" : undefined} />
           换一批
         </Button>
       </div>
@@ -65,5 +66,5 @@ export default function Community() {
         />
       ))}
     </div>
-  )
+  );
 }

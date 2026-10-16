@@ -1,13 +1,14 @@
 import {
-  CompositeAttachmentAdapter,
-  SimpleImageAttachmentAdapter,
-  useLocalRuntime,
   type ChatModelAdapter,
   type ChatModelRunResult,
-} from '@assistant-ui/react'
-import { lastUserText } from '@/core/chat/prompt'
-import { mockReply } from '@/core/chat/mock'
-import { foldEvents } from '@/core/chat/stream'
+  CompositeAttachmentAdapter,
+  SimpleImageAttachmentAdapter,
+  useLocalRuntime
+} from "@assistant-ui/react";
+
+import { mockReply } from "@/core/chat/mock";
+import { lastUserText } from "@/core/chat/prompt";
+import { foldEvents } from "@/core/chat/stream";
 
 /**
  * The chat adapter. For now it plays a scripted reply (mockReply); once the Go chat endpoint
@@ -19,14 +20,14 @@ const adapter: ChatModelAdapter = {
     // The cast is the one place our plain types meet the library's JSON types: every value in
     // a snapshot came from JSON.parse (or the mock's literals), so it is JSON by construction.
     for await (const snapshot of foldEvents(mockReply(lastUserText(messages), { signal: abortSignal }), abortSignal)) {
-      yield snapshot as ChatModelRunResult
+      yield snapshot as ChatModelRunResult;
     }
-  },
-}
+  }
+};
 
 /** Images are read in the browser for now; the real flow uploads each to /file and sends the url. */
-const attachments = new CompositeAttachmentAdapter([new SimpleImageAttachmentAdapter()])
+const attachments = new CompositeAttachmentAdapter([new SimpleImageAttachmentAdapter()]);
 
 export function useChatRuntime() {
-  return useLocalRuntime(adapter, { adapters: { attachments } })
+  return useLocalRuntime(adapter, { adapters: { attachments } });
 }

@@ -1,9 +1,9 @@
-import { applyEvent, parseEvent, type ChatEvent, type ContentPart } from './mapper'
-import { parseSSE } from './sse'
+import { applyEvent, type ChatEvent, type ContentPart, parseEvent } from "./mapper";
+import { parseSSE } from "./sse";
 
 /** What assistant-ui's ChatModelAdapter.run yields: the whole message so far, not a delta. */
 export interface Snapshot {
-  content: ContentPart[]
+  content: ContentPart[];
 }
 
 /**
@@ -12,19 +12,25 @@ export interface Snapshot {
  * A server `error` event throws; `done` ends quietly. Aborting stops pulling from the source.
  */
 export async function* foldEvents(events: AsyncIterable<ChatEvent>, signal?: AbortSignal): AsyncGenerator<Snapshot> {
-  let parts: ContentPart[] = []
+  let parts: ContentPart[] = [];
   for await (const event of events) {
-    if (signal?.aborted) return
-    if (event.type === 'done') continue
-    parts = applyEvent(parts, event)
-    yield { content: parts }
+    if (signal?.aborted) {
+      return;
+    }
+    if (event.type === "done") {
+      continue;
+    }
+    parts = applyEvent(parts, event);
+    yield { content: parts };
   }
 }
 
 /** The chat events carried by an SSE response body; lines that are not valid events are skipped. */
 export async function* eventsFromSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
   for await (const msg of parseSSE(body)) {
-    const event = parseEvent(msg.data)
-    if (event) yield event
+    const event = parseEvent(msg.data);
+    if (event) {
+      yield event;
+    }
   }
 }

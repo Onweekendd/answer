@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
-import { dedupeById } from '@/core/feed/batch'
-import { api } from '@/lib/session'
+import { useQuery } from "@tanstack/react-query";
 
-export const FEED_KEY = ['community', 'feed'] as const
+import { dedupeById } from "@/core/feed/batch";
+import { api } from "@/lib/session";
+
+export const FEED_KEY = ["community", "feed"] as const;
 
 /**
  * One random batch. It never refetches by itself (no refocus, no staleness): the batch only
@@ -17,14 +18,14 @@ export function useFeed() {
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  })
+    refetchOnReconnect: false
+  });
 
   return {
     items: query.data ?? [],
     isLoading: query.isPending,
     isRefreshing: query.isFetching && !query.isPending,
     error: query.error,
-    nextBatch: () => query.refetch(),
-  }
+    nextBatch: () => query.refetch()
+  };
 }
