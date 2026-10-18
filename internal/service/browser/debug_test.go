@@ -36,8 +36,9 @@ import (
 
 // fakeBackend 代替 Hub：不需要 WebSocket，也不需要插件
 type fakeBackend struct {
-	tabs []TabInfo
-	call func(ctx context.Context, tabID int, cmd string, args any) (json.RawMessage, error)
+	tabs      []TabInfo
+	connected bool
+	call      func(ctx context.Context, tabID int, cmd string, args any) (json.RawMessage, error)
 }
 
 func (f *fakeBackend) Call(ctx context.Context, tabID int, cmd string, args any) (json.RawMessage, error) {
@@ -45,6 +46,8 @@ func (f *fakeBackend) Call(ctx context.Context, tabID int, cmd string, args any)
 }
 
 func (f *fakeBackend) Tabs() []TabInfo { return f.tabs }
+
+func (f *fakeBackend) Connected() bool { return f.connected }
 
 // waitForCtx 一直等到 ctx 结束；2 秒还没结束说明 ctx 没设好，直接让测试失败，不要卡住
 func waitForCtx(ctx context.Context) error {
@@ -137,6 +140,17 @@ func TestDebugHandler_Authorize(t *testing.T) {
 		require.NotNil(t, resp.Error)
 		assert.Equal(t, "FORBIDDEN", resp.Error.Code)
 	})
+}
+
+func TestDebugHandler_Status(t *testing.T) {
+	for _, connected := range []bool{true, false} {
+		t.Run(fmt.Sprintf("插件连接状态为 %v 时原样返回", connected), func(t *testing.T) {
+			status, resp := serveDebug(t, &fakeBackend{connected: connected}, debugRequest{method: http.MethodGet, path: "/debug/status", header: authed})
+
+			assert.Equal(t, http.StatusOK, status)
+			assert.JSONEq(t, fmt.Sprintf(`{"connected":%v}`, connected), string(resp.Data))
+		})
+	}
 }
 
 func TestDebugHandler_Tabs(t *testing.T) {

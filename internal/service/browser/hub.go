@@ -71,6 +71,11 @@ func (h *Hub) Call(ctx context.Context, tabID int, cmd string, args any) (json.R
 	return s.call(ctx, Command{ID: id, Type: "command", Cmd: cmd, TabID: tabID, Args: args})
 }
 
+// Connected 报告现在有没有插件连着。
+func (h *Hub) Connected() bool {
+	return h.current() != nil
+}
+
 // Tabs 返回插件上报的网页标签页。
 func (h *Hub) Tabs() []TabInfo {
 	h.mu.Lock()

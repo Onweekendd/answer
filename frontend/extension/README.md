@@ -111,6 +111,7 @@ BROWSER_HUB_TOKEN=<token> go run ./cmd/answer browser --console=false
 
 ```bash
 H="Authorization: Bearer $BROWSER_HUB_TOKEN"
+curl -s -H "$H" http://127.0.0.1:8765/debug/status   # {"connected":true}：插件连着没有
 curl -s -H "$H" http://127.0.0.1:8765/debug/tabs
 curl -s -H "$H" -d '{"tabId":123,"cmd":"snapshot","args":{"maxChars":8000}}' http://127.0.0.1:8765/debug/call
 curl -s -H "$H" -d '{"tabId":123,"cmd":"navigate","args":{"url":"https://github.com"},"timeoutMs":60000}' http://127.0.0.1:8765/debug/call

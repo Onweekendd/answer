@@ -45,10 +45,11 @@ const (
 	statusClientClosedRequest = 499
 )
 
-// DebugBackend 是调试接口用到的两个方法。*Hub 实现了它，测试里换成假的
+// DebugBackend 是调试接口用到的方法。*Hub 实现了它，测试里换成假的
 type DebugBackend interface {
 	Call(ctx context.Context, tabID int, cmd string, args any) (json.RawMessage, error)
 	Tabs() []TabInfo
+	Connected() bool
 }
 
 type debugCall struct {
@@ -74,6 +75,7 @@ type debugHandler struct {
 func NewDebugHandler(backend DebugBackend, token string) http.Handler {
 	d := &debugHandler{backend: backend, token: token}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /debug/status", d.status)
 	mux.HandleFunc("GET /debug/tabs", d.tabs)
 	mux.HandleFunc("POST /debug/call", d.call)
 	return d.guard(mux)
@@ -131,6 +133,16 @@ func callError(err error) (int, *ErrorBody) {
 	default:
 		return http.StatusInternalServerError, &ErrorBody{Code: "INTERNAL", Message: err.Error()}
 	}
+}
+
+// debugStatus 是 GET /debug/status 的 data
+type debugStatus struct {
+	Connected bool `json:"connected"`
+}
+
+func (d *debugHandler) status(w http.ResponseWriter, _ *http.Request) {
+	data, _ := json.Marshal(debugStatus{Connected: d.backend.Connected()})
+	writeDebugJSON(w, http.StatusOK, debugResponse{OK: true, Data: data})
 }
 
 func (d *debugHandler) tabs(w http.ResponseWriter, _ *http.Request) {
