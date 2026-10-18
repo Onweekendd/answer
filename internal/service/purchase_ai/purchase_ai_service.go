@@ -43,8 +43,6 @@ import (
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/uploader"
-	"github.com/apache/answer/internal/service/webreader"
-	"github.com/apache/answer/internal/service/websearch"
 )
 
 // PurchaseAIService orchestrates the analysis. It owns no data of its own and
@@ -56,8 +54,7 @@ type PurchaseAIService struct {
 	configService   *config.ConfigService
 	llmClient       llm.Client
 	queueService    purchaseaiqueue.Service
-	searchProvider  websearch.Provider
-	pageReader      webreader.Reader
+	browser         Browser
 	uploaderService uploader.UploaderService
 	voteService     *purchasevote.PurchaseVoteService
 }
@@ -70,8 +67,7 @@ func NewPurchaseAIService(
 	configService *config.ConfigService,
 	llmClient llm.Client,
 	queueService purchaseaiqueue.Service,
-	searchProvider websearch.Provider,
-	pageReader webreader.Reader,
+	browser Browser,
 	uploaderService uploader.UploaderService,
 	voteService *purchasevote.PurchaseVoteService,
 ) *PurchaseAIService {
@@ -82,8 +78,7 @@ func NewPurchaseAIService(
 		configService:   configService,
 		llmClient:       llmClient,
 		queueService:    queueService,
-		searchProvider:  searchProvider,
-		pageReader:      pageReader,
+		browser:         browser,
 		uploaderService: uploaderService,
 		voteService:     voteService,
 	}
@@ -132,23 +127,27 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 		}
 	}()
 
-	product := pas.productFor(ctx, questionID, question.Purchase)
-
+	// checked once up front: without the extension the model gets no tools and
+	// answers from what it knows, saying the prices are not checked live
+	browserOn := pas.browser.Connected()
 	messages := []llm.Message{
-		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now())),
-		llm.Text(llm.RoleUser, buildUserPrompt(question, product)),
+		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn)),
+		pas.userMessage(ctx, question),
 	}
 
-	resp, err := pas.runAgent(ctx, messages)
+	result, err := pas.runAgent(ctx, messages, browserOn)
 	if err != nil {
 		return err
 	}
+	if result.Finish != "" {
+		log.Infof("purchase ai: finished early (%s) after %d tool calls, questionID: %s", result.Finish, len(result.Steps), questionID)
+	}
 
-	originalText := fixNumberRanges(resp.Content)
+	originalText := fixNumberRanges(result.Text)
 
 	if strings.TrimSpace(originalText) == "" {
 		return errors.InternalServer(reason.AIRequestFailed).
-			WithError(fmt.Errorf("model returned empty content, reasoning length: %d", len(resp.Reasoning))).
+			WithError(fmt.Errorf("model returned empty content, reasoning length: %d", len(result.Reasoning))).
 			WithStack()
 	}
 
@@ -175,6 +174,31 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 	pas.voteAsBot(ctx, questionID, botID, originalText)
 
 	return pas.purchaseService.MarkFinished(ctx, questionID)
+}
+
+// userMessage is the post as the agent first sees it: what the author typed,
+// then the screenshots themselves. The model reads the images directly instead
+// of a JSON summary made by an earlier call, which saves that call and keeps
+// what a summary drops (coupons, the selected SKU, small print). The images sit
+// in the first message, so every later step resends them inside the cached
+// prefix.
+//
+// A product stored with the post (one the author confirmed in the old form) is
+// still written out, as a second opinion beside the images.
+func (pas *PurchaseAIService) userMessage(ctx context.Context, question *schema.QuestionInfoResp) llm.Message {
+	var stored *schema.PurchaseProduct
+	var images []string
+	if question.Purchase != nil {
+		stored = question.Purchase.Product
+		images = question.Purchase.Images
+	}
+
+	parts := []llm.Part{{Text: buildUserPrompt(question, stored)}}
+	if imageParts := pas.imageParts(ctx, images); len(imageParts) > 0 {
+		parts = append(parts, llm.Part{Text: screenshotsHeader})
+		parts = append(parts, imageParts...)
+	}
+	return llm.Message{Role: llm.RoleUser, Parts: parts}
 }
 
 // voteAsBot casts the advice's verdict as the bot's vote, through the same

@@ -103,8 +103,6 @@ import (
 	user_external_login2 "github.com/apache/answer/internal/service/user_external_login"
 	user_notification_config2 "github.com/apache/answer/internal/service/user_notification_config"
 	"github.com/apache/answer/internal/service/vector_sync"
-	"github.com/apache/answer/internal/service/webreader"
-	"github.com/apache/answer/internal/service/websearch"
 	"github.com/segmentfault/pacman"
 	"github.com/segmentfault/pacman/log"
 )
@@ -219,11 +217,10 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	collectionController := controller.NewCollectionController(collectionService)
 	questionController := controller.NewQuestionController(questionService, answerService, rankService, siteInfoCommonService, captchaService, rateLimitMiddleware)
 	client := llm.NewClient(siteInfoCommonService)
-	provider := websearch.NewProvider(serviceConf)
-	reader := webreader.NewReader(serviceConf)
+	browser := purchaseai.NewNoBrowser()
 	uploaderService := uploader.NewUploaderService(serviceConf, siteInfoCommonService, fileRecordService)
 	purchaseVoteService := purchasevote.NewPurchaseVoteService(purchaseRepo, questionRepo, noticequeueService)
-	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, provider, reader, uploaderService, purchaseVoteService)
+	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, browser, uploaderService, purchaseVoteService)
 	purchaseAIController := controller.NewPurchaseAIController(purchaseAIService)
 	purchaseVoteController := controller.NewPurchaseVoteController(purchaseVoteService)
 	answerController := controller.NewAnswerController(answerService, rankService, captchaService, siteInfoCommonService, rateLimitMiddleware)

@@ -72,39 +72,12 @@ func (pas *PurchaseAIService) imageParts(ctx context.Context, imageURLs []string
 	return parts
 }
 
-// productFor returns the product a post is about: the stored one when there is
-// one, otherwise one recognized from the screenshots now and saved for next
-// time. It returns nil rather than an error when there is none, because the
-// analysis works from the title and description without it, only less exactly;
-// a failed recognition should cost precision, not the whole analysis.
-func (pas *PurchaseAIService) productFor(ctx context.Context, questionID string, purchase *schema.PurchaseInfo) *schema.PurchaseProduct {
-	if purchase == nil {
-		return nil
-	}
-	if purchase.Product != nil {
-		return purchase.Product
-	}
-
-	product, err := pas.identifyProduct(ctx, purchase.Images)
-	if err != nil {
-		log.Warnf("purchase ai: identify product failed, questionID: %s, err: %v", questionID, err)
-		return nil
-	}
-	if product == nil {
-		return nil
-	}
-
-	// a failed save only means the next analysis recognizes it again, so this
-	// one still uses what it has
-	if err := pas.purchaseService.SaveProduct(ctx, questionID, product); err != nil {
-		log.Warnf("purchase ai: save product failed, questionID: %s, err: %v", questionID, err)
-	}
-	return product
-}
-
 // Identify reads the product off screenshots the user has just uploaded, so
 // the post form can offer to fill in the price and tags. Nothing is saved: the
 // post does not exist yet, and the form submits the reading along with it.
+//
+// The analysis no longer goes through here: the agent looks at the screenshots
+// itself. Only the old ui's post form calls this, and it goes when that form does.
 func (pas *PurchaseAIService) Identify(ctx context.Context, req *schema.PurchaseAIIdentifyReq) (*schema.PurchaseAIIdentifyResp, error) {
 	product, err := pas.identifyProduct(ctx, req.Images)
 

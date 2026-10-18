@@ -73,8 +73,6 @@ import (
 	"github.com/apache/answer/internal/service/user_external_login"
 	"github.com/apache/answer/internal/service/user_notification_config"
 	"github.com/apache/answer/internal/service/vector_sync"
-	"github.com/apache/answer/internal/service/webreader"
-	"github.com/apache/answer/internal/service/websearch"
 	"github.com/google/wire"
 )
 
@@ -94,10 +92,9 @@ var ProviderSetService = wire.NewSet(
 	content.NewQuestionService,
 	purchase.NewPurchaseService,
 	purchaseai.NewPurchaseAIService,
+	purchaseai.NewNoBrowser,
 	purchasevote.NewPurchaseVoteService,
 	purchaseaiqueue.NewService,
-	websearch.NewProvider,
-	webreader.NewReader,
 	llm.NewClient,
 	content.NewAnswerService,
 	export.NewEmailService,

@@ -20,26 +20,8 @@
 package service_config
 
 type ServiceConfig struct {
-	UploadPath                    string        `json:"upload_path" mapstructure:"upload_path" yaml:"upload_path"`
-	CleanUpUploads                bool          `json:"clean_up_uploads" mapstructure:"clean_up_uploads" yaml:"clean_up_uploads"`
-	CleanOrphanUploadsPeriodHours int           `json:"clean_orphan_uploads_period_hours" mapstructure:"clean_orphan_uploads_period_hours" yaml:"clean_orphan_uploads_period_hours"`
-	PurgeDeletedFilesPeriodDays   int           `json:"purge_deleted_files_period_days" mapstructure:"purge_deleted_files_period_days" yaml:"purge_deleted_files_period_days"`
-	Search                        *SearchConfig `json:"search" mapstructure:"search" yaml:"search"`
-	Reader                        *ReaderConfig `json:"reader" mapstructure:"reader" yaml:"reader"`
-}
-
-// SearchConfig picks the web search provider the AI analysis uses. Leaving
-// APIKey empty, or the whole section out, turns search off: the analysis still
-// runs, it just has no sources to cite.
-type SearchConfig struct {
-	Provider string `json:"provider" mapstructure:"provider" yaml:"provider"`
-	APIKey   string `json:"api_key" mapstructure:"api_key" yaml:"api_key"`
-}
-
-// ReaderConfig picks how the AI analysis reads a web page. Jina works without
-// a key at a low rate limit, so the section can be left out; set Provider to
-// "off" to stop pages being sent to it.
-type ReaderConfig struct {
-	Provider string `json:"provider" mapstructure:"provider" yaml:"provider"`
-	APIKey   string `json:"api_key" mapstructure:"api_key" yaml:"api_key"`
+	UploadPath                    string `json:"upload_path" mapstructure:"upload_path" yaml:"upload_path"`
+	CleanUpUploads                bool   `json:"clean_up_uploads" mapstructure:"clean_up_uploads" yaml:"clean_up_uploads"`
+	CleanOrphanUploadsPeriodHours int    `json:"clean_orphan_uploads_period_hours" mapstructure:"clean_orphan_uploads_period_hours" yaml:"clean_orphan_uploads_period_hours"`
+	PurgeDeletedFilesPeriodDays   int    `json:"purge_deleted_files_period_days" mapstructure:"purge_deleted_files_period_days" yaml:"purge_deleted_files_period_days"`
 }

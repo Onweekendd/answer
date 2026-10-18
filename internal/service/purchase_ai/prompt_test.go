@@ -29,15 +29,40 @@ import (
 )
 
 func Test_buildSystemPrompt(t *testing.T) {
-	// Act
-	prompt := buildSystemPrompt(time.Date(2026, 9, 27, 10, 0, 0, 0, time.Local))
+	now := time.Date(2026, 9, 27, 10, 0, 0, 0, time.Local)
 
-	// Assert
-	require.Contains(t, prompt, "今天是 2026-09-27")
-	require.Contains(t, prompt, "web_search")
-	require.Contains(t, prompt, "fetch_page")
-	require.Contains(t, prompt, "未能核实")
-	require.NotContains(t, prompt, "没有联网能力")
+	t.Run("插件连着时教模型用浏览器查，并且只看不买", func(t *testing.T) {
+		// Act
+		prompt := buildSystemPrompt(now, true)
+
+		// Assert
+		require.Contains(t, prompt, "今天是 2026-09-27")
+		for _, word := range []string{"snapshot", "done", "加入购物车", "验证码", "未能核实"} {
+			require.Contains(t, prompt, word)
+		}
+		require.NotContains(t, prompt, "web_search")
+	})
+
+	t.Run("两种模式都带着看截图的规则：看不到的不要凭印象补", func(t *testing.T) {
+		for _, browserOn := range []bool{true, false} {
+			// Act
+			prompt := buildSystemPrompt(now, browserOn)
+
+			// Assert
+			require.Contains(t, prompt, "如何看截图")
+			require.Contains(t, prompt, "不要凭印象补上价格")
+		}
+	})
+
+	t.Run("插件没连上时不提工具，要求说明价格没有实时核实", func(t *testing.T) {
+		// Act
+		prompt := buildSystemPrompt(now, false)
+
+		// Assert
+		require.Contains(t, prompt, "没有实时核实")
+		require.NotContains(t, prompt, "snapshot")
+		require.NotContains(t, prompt, "done")
+	})
 }
 
 func Test_buildUserPrompt(t *testing.T) {
