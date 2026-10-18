@@ -1,0 +1,5 @@
+{
+  "api_host": "https://api.deepseek.com",
+  "api_key": "sk-...",
+  "model": "deepseek-flash"
+}

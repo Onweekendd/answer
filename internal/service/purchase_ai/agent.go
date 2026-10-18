@@ -31,7 +31,9 @@ import (
 // runAgent 让模型操作浏览器，直到它调用 done、直接回答，或者走到收尾。
 // browserOn 为 false 时不给任何工具，模型只能直接回答（概念 7 的降级）。
 func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
-	return newAgentRun(pas.llmClient, pas.browser, defaultLimits).run(ctx, messages, browserOn)
+	r := newAgentRun(pas.llmClient, pas.browser, defaultLimits)
+	defer r.closeTabs()
+	return r.run(ctx, messages, browserOn)
 }
 
 // run 是 Agent 循环。一步 = 调用一次模型；每一步按 ①～⑨ 的顺序走。

@@ -247,6 +247,56 @@ func Test_click(t *testing.T) {
 	})
 }
 
+func Test_afterAct(t *testing.T) {
+	t.Run("在原来的标签页里跳转：告诉模型现在的网址", func(t *testing.T) {
+		// Arrange
+		r := openedRun(t, newFakeBrowser())
+
+		// Act
+		res, err := r.click(context.Background(), `{"index":1}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, 1, r.tabID)
+		require.Equal(t, jdSearch, res.URL)
+		require.Contains(t, res.Text, "现在的网址是 "+jdSearch)
+	})
+
+	t.Run("在新标签页里打开：切换过去，并记下来结束时关掉", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := newToolRun(b)
+		_, _ = r.open(context.Background(), `{"url":"`+tbHome+`"}`)
+
+		// Act
+		res, err := r.click(context.Background(), `{"index":1}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, 2, r.tabID)
+		require.Equal(t, []int{1, 2}, r.openedTabs)
+		require.True(t, res.PageChanged)
+		require.Contains(t, res.Text, "已经切换到这个标签页")
+	})
+}
+
+func Test_closeTabs(t *testing.T) {
+	// Arrange：开了首页，搜索又开了一个新标签页
+	b := newFakeBrowser()
+	r := newToolRun(b)
+	_, _ = r.open(context.Background(), `{"url":"`+tbHome+`"}`)
+	_, _ = r.typeText(context.Background(), `{"index":0,"text":"iphone","submit":true}`)
+
+	// Act
+	r.closeTabs()
+
+	// Assert：两个都关了，浏览器里不剩 Agent 开的标签页
+	require.Contains(t, b.calls, "close 1")
+	require.Contains(t, b.calls, "close 2")
+	require.Empty(t, b.tabs)
+	require.Empty(t, r.openedTabs)
+}
+
 func Test_typeText(t *testing.T) {
 	t.Run("不按回车：页面不算变了", func(t *testing.T) {
 		// Arrange

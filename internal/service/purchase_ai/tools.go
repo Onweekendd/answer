@@ -52,6 +52,7 @@ type agentRun struct {
 	tabID        int    // Agent 自己开的标签页；0 表示还没开
 	snapshotHash string // 最新一份快照的哈希
 	pageHash     string // 页面状态：快照哈希加上滚动位置，见 pageState
+	openedTabs   []int  // Agent 开过的标签页，结束时关掉
 	steps        []stepRecord
 
 	failures failureCounter
@@ -183,6 +184,7 @@ func (r *agentRun) open(ctx context.Context, arguments string) (toolResult, erro
 		return *res, err
 	}
 	r.tabID = page.TabID
+	r.openedTabs = append(r.openedTabs, page.TabID)
 	return pageResult(page), nil
 }
 
@@ -268,10 +270,11 @@ func (r *agentRun) click(ctx context.Context, arguments string) (toolResult, err
 	if res := r.requireTab(); res != nil {
 		return *res, nil
 	}
-	if res, err := r.call(ctx, r.tabID, "click", args, nil); res != nil {
+	var act actResult
+	if res, err := r.call(ctx, r.tabID, "click", args, &act); res != nil {
 		return *res, err
 	}
-	return toolResult{Text: fmt.Sprintf("已点击 [%d]。页面可能已经变了，先 snapshot 再继续。", args.Index), PageChanged: true}, nil
+	return r.afterAct(fmt.Sprintf("已点击 [%d]。", args.Index), act), nil
 }
 
 func (r *agentRun) typeText(ctx context.Context, arguments string) (toolResult, error) {
@@ -285,17 +288,51 @@ func (r *agentRun) typeText(ctx context.Context, arguments string) (toolResult, 
 	if res := r.requireTab(); res != nil {
 		return *res, nil
 	}
-	if res, err := r.call(ctx, r.tabID, "type", args, nil); res != nil {
+	var act actResult
+	if res, err := r.call(ctx, r.tabID, "type", args, &act); res != nil {
 		return *res, err
 	}
-	if !args.Submit {
+	if !args.Submit && act.NewTab == nil {
 		return toolResult{Text: fmt.Sprintf("已在 [%d] 里填入「%s」。", args.Index, args.Text)}, nil
 	}
 	// 按了回车，页面多半会跳转
+	return r.afterAct(fmt.Sprintf("已在 [%d] 里填入「%s」并按了回车。", args.Index, args.Text), act), nil
+}
+
+// actResult 是插件 click / type 的结果
+type actResult struct {
+	URL    string    `json:"url"`    // 动作之后这个标签页的网址
+	NewTab *pageInfo `json:"newTab"` // 动作在新标签页里打开了页面
+}
+
+// afterAct 写出点击、回车之后的结果。在新标签页里打开了的，切换过去并记下来，结束时一起关掉：
+// 淘宝的搜索就是这样，不跟过去的话，Agent 会一直盯着没有变化的首页，以为没搜成功
+func (r *agentRun) afterAct(done string, act actResult) toolResult {
+	if tab := act.NewTab; tab != nil {
+		r.tabID = tab.TabID
+		r.openedTabs = append(r.openedTabs, tab.TabID)
+		return toolResult{
+			Text:        done + fmt.Sprintf("结果在新标签页里打开了：「%s」（%s），已经切换到这个标签页。先 snapshot 再继续。", oneLine(tab.Title), tab.URL),
+			PageChanged: true,
+			URL:         tab.URL,
+		}
+	}
 	return toolResult{
-		Text:        fmt.Sprintf("已在 [%d] 里填入「%s」并按了回车。页面可能已经变了，先 snapshot 再继续。", args.Index, args.Text),
+		Text:        done + fmt.Sprintf("现在的网址是 %s。页面可能已经变了，先 snapshot 再继续。", act.URL),
 		PageChanged: true,
-	}, nil
+		URL:         act.URL,
+	}
+}
+
+// closeTabs 关掉 Agent 开过的标签页，不在用户的浏览器里留下一堆。
+// 整次任务的 ctx 这时可能已经结束了，所以用一个新的、很短的期限；关不掉的就算了
+func (r *agentRun) closeTabs() {
+	for _, id := range r.openedTabs {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, _ = r.browser.Call(ctx, id, "close", struct{}{})
+		cancel()
+	}
+	r.openedTabs = nil
 }
 
 type scrollData struct {

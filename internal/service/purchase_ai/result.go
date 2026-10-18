@@ -61,7 +61,6 @@ type stepRecord struct {
 	Tool      string
 	Arguments string
 	Failed    bool
-	Skipped   bool
 	URL       string
 	Duration  time.Duration
 }

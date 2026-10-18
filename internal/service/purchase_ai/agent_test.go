@@ -80,6 +80,7 @@ type fakePage struct {
 	links    map[int]string // 点几号元素会跳到哪个网址
 	submitTo string         // 在这一页输入并回车会跳到哪个网址
 	screens  float64        // 页面有几屏高，滚到底就不再动；0 表示 3 屏
+	newTab   bool           // 点链接、回车搜索的结果在新标签页里打开（淘宝的搜索就是这样）
 }
 
 func (p fakePage) height() float64 {
@@ -155,15 +156,15 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 			return nil, &browser.CommandError{Code: "ELEMENT_NOT_FOUND", Message: "no such element"}
 		}
 		if to, ok := page.links[a.Index]; ok {
-			f.go2(tabID, to)
+			return f.follow(tabID, to, page.newTab), nil
 		}
-		return mustJSON(map[string]bool{"ok": true}), nil
+		return f.acted(tabID, nil), nil
 	case "type":
 		f.calls = append(f.calls, fmt.Sprintf("type %d %s submit=%v", a.Index, a.Text, a.Submit))
 		if page := f.pages[f.tabs[tabID]]; a.Submit && page.submitTo != "" {
-			f.go2(tabID, page.submitTo)
+			return f.follow(tabID, page.submitTo, page.newTab), nil
 		}
-		return mustJSON(map[string]bool{"ok": true}), nil
+		return f.acted(tabID, nil), nil
 	case "scroll":
 		f.calls = append(f.calls, fmt.Sprintf("scroll %s %d", a.Direction, a.Pages))
 		// 往下滚到底就停在底部，往上滚到顶就停在顶部，和真的页面一样
@@ -175,8 +176,32 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 		above := min(max(f.scrolled[tabID]+delta, 0), height)
 		f.scrolled[tabID] = above
 		return mustJSON(map[string]float64{"pagesAbove": above, "pagesBelow": height - above}), nil
+	case "close":
+		f.calls = append(f.calls, fmt.Sprintf("close %d", tabID))
+		delete(f.tabs, tabID)
+		return mustJSON(map[string]bool{"closed": true}), nil
 	}
 	return nil, &browser.CommandError{Code: "UNKNOWN_COMMAND", Message: cmd}
+}
+
+// follow 是点击或回车以后跳到 url：在原来的标签页里跳，或者像淘宝那样开一个新标签页
+func (f *fakeBrowser) follow(tabID int, url string, newTab bool) json.RawMessage {
+	if !newTab {
+		f.go2(tabID, url)
+		return f.acted(tabID, nil)
+	}
+	f.nextTab++
+	f.go2(f.nextTab, url)
+	return f.acted(tabID, f.pageInfo(f.nextTab))
+}
+
+// acted 是插件 click / type 的回复：动作之后的网址，以及新开的标签页（有的话）
+func (f *fakeBrowser) acted(tabID int, newTab json.RawMessage) json.RawMessage {
+	out := map[string]any{"url": f.tabs[tabID]}
+	if newTab != nil {
+		out["newTab"] = newTab
+	}
+	return mustJSON(out)
 }
 
 // go2 让标签页跳到 url，回到页面顶部
@@ -202,6 +227,9 @@ const (
 	jdHome   = "https://www.jd.com"
 	jdSearch = "https://search.jd.com/Search?keyword=iphone"
 	jdItem   = "https://item.jd.com/1.html"
+
+	tbHome   = "https://www.taobao.com"
+	tbSearch = "https://s.taobao.com/search?q=iphone"
 )
 
 func shopPages() map[string]fakePage {
@@ -218,6 +246,15 @@ func shopPages() map[string]fakePage {
 			links:    map[int]string{0: jdItem},
 		},
 		jdItem: {title: "Apple iPhone 17", elements: "[0]<a>Apple 京东自营旗舰店\n[1]<button>加入购物车"},
+		// 淘宝首页：搜索结果在新标签页里打开
+		tbHome: {
+			title:    "淘宝",
+			elements: "[0]<input aria-label=搜索>\n[1]<button>搜索",
+			links:    map[int]string{1: tbSearch},
+			submitTo: tbSearch,
+			newTab:   true,
+		},
+		tbSearch: {title: "iphone_淘宝搜索", elements: "[0]<a>Apple iPhone 17 256GB ¥5299 300+人付款"},
 	}
 }
 
@@ -337,6 +374,25 @@ func Test_run(t *testing.T) {
 		require.Len(t, replies, 3)
 		require.Equal(t, "c3", replies[2].ToolCallID)
 		require.Equal(t, skippedText, replies[2].Parts[0].Text)
+	})
+
+	t.Run("搜索结果在新标签页里打开：切换过去，接下来在新标签页里看页面", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(toolCall("c1", toolOpen, `{"url":"`+tbHome+`"}`)),
+			calls(toolCall("c2", toolType, `{"index":0,"text":"iphone","submit":true}`)),
+			calls(toolCall("c3", toolSnapshot, `{}`)),
+			calls(doneCall("c4", "好")),
+		}}
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), testLimits())
+
+		// Assert：回车以后告诉模型切到了新标签页，快照拍的是搜索结果页
+		require.NoError(t, err)
+		require.Contains(t, toolReplies(model, 2)[1].Parts[0].Text, "新标签页")
+		require.Contains(t, toolReplies(model, 3)[2].Parts[0].Text, "Apple iPhone 17 256GB ¥5299")
+		require.Equal(t, tbSearch, res.Steps[2].URL)
 	})
 
 	t.Run("一个调用失败了，同一轮后面的不执行：它们是按前一个成功来安排的", func(t *testing.T) {
