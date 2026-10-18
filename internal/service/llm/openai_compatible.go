@@ -47,6 +47,24 @@ const (
 type openAICompatibleClient struct {
 	siteInfoService siteinfo_common.SiteInfoCommonService
 	httpClient      *http.Client
+	// static, when set, is used instead of the admin settings
+	static *StaticProvider
+}
+
+// StaticProvider is a fixed provider for code that runs outside the site,
+// such as the case runner, where there are no admin settings to read.
+type StaticProvider struct {
+	APIHost string `json:"api_host"`
+	APIKey  string `json:"api_key"`
+	Model   string `json:"model"`
+}
+
+// NewStaticClient builds a client that always uses p.
+func NewStaticClient(p StaticProvider) Client {
+	return &openAICompatibleClient{
+		httpClient: &http.Client{Timeout: defaultTimeout},
+		static:     &p,
+	}
 }
 
 // NewClient new llm client
@@ -65,6 +83,13 @@ type provider struct {
 
 // resolveProvider reads the admin settings and builds a client for them.
 func (c *openAICompatibleClient) resolveProvider(ctx context.Context) (*provider, error) {
+	if s := c.static; s != nil {
+		if s.APIKey == "" || s.APIHost == "" {
+			return nil, errors.BadRequest(reason.AINotConfigured)
+		}
+		return c.newProvider(s.APIHost, s.APIKey, s.Model), nil
+	}
+
 	aiConfig, err := c.siteInfoService.GetSiteAI(ctx)
 	if err != nil {
 		return nil, err
@@ -74,10 +99,14 @@ func (c *openAICompatibleClient) resolveProvider(ctx context.Context) (*provider
 		return nil, errors.BadRequest(reason.AINotConfigured)
 	}
 
-	config := openai.DefaultConfig(p.APIKey)
-	config.BaseURL = baseURL(p.APIHost)
+	return c.newProvider(p.APIHost, p.APIKey, p.Model), nil
+}
+
+func (c *openAICompatibleClient) newProvider(apiHost, apiKey, model string) *provider {
+	config := openai.DefaultConfig(apiKey)
+	config.BaseURL = baseURL(apiHost)
 	config.HTTPClient = c.httpClient
-	return &provider{client: openai.NewClientWithConfig(config), model: p.Model}, nil
+	return &provider{client: openai.NewClientWithConfig(config), model: model}
 }
 
 // Chat sends one request and returns the whole answer.
@@ -90,7 +119,12 @@ func (c *openAICompatibleClient) Chat(ctx context.Context, req *ChatReq) (*ChatR
 	// the request can hold base64 images, so it is never logged
 	resp, err := p.client.CreateChatCompletion(ctx, c.buildRequest(req, p.model))
 	if err != nil {
-		// includes the context being cancelled when the caller goes away
+		// a done context comes back as itself: the pacman error below has no
+		// Unwrap, so wrapped in it, errors.Is could not tell a call that ran out
+		// of time (worth one retry) from a provider that refused
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, errors.InternalServer(reason.AIRequestFailed).WithError(err).WithStack()
 	}
 	if len(resp.Choices) == 0 {

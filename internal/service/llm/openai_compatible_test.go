@@ -20,8 +20,13 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -105,4 +110,52 @@ func Test_toSDKMessages_toolRound(t *testing.T) {
 	require.Equal(t, RoleTool, out[2].Role)
 	require.Equal(t, "call_1", out[2].ToolCallID)
 	require.Equal(t, "call_2", out[3].ToolCallID)
+}
+
+func Test_Chat_contextErrors(t *testing.T) {
+	// a provider that never answers. It reads the body first: the server only
+	// notices the client hanging up once the body is consumed, and until then
+	// Close would wait for this handler forever
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	}))
+	defer hang.Close()
+	client := NewStaticClient(StaticProvider{APIHost: hang.URL, APIKey: "k", Model: "m"})
+
+	t.Run("期限到了返回 ctx 自己的错误，errors.Is 认得出来", func(t *testing.T) {
+		// Arrange
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		// Act
+		_, err := client.Chat(ctx, &ChatReq{Messages: []Message{Text(RoleUser, "hi")}})
+
+		// Assert
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("服务商出错时仍然是带原因的错误", func(t *testing.T) {
+		// Arrange
+		broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, `{"error":{"message":"bad key"}}`, http.StatusUnauthorized)
+		}))
+		defer broken.Close()
+		c := NewStaticClient(StaticProvider{APIHost: broken.URL, APIKey: "k", Model: "m"})
+
+		// Act
+		_, err := c.Chat(context.Background(), &ChatReq{Messages: []Message{Text(RoleUser, "hi")}})
+
+		// Assert
+		require.Error(t, err)
+		require.NotErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("没填 key 时报未配置，不发请求", func(t *testing.T) {
+		// Act
+		_, err := NewStaticClient(StaticProvider{APIHost: hang.URL}).Chat(context.Background(), &ChatReq{})
+
+		// Assert
+		require.Error(t, err)
+	})
 }
