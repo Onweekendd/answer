@@ -97,11 +97,21 @@ export type OutgoingMessage = Result | AgentEvent;
 
 // ---------- background ⇄ content script ----------
 
+export interface InputTarget {
+  x: number;
+  y: number;
+}
+
+export type InputAction =
+  { type: "click"; index: number } | { type: "type"; index: number; text: string; submit: boolean };
+
 export type TabRequest =
   | { type: "snapshot"; maxChars: number }
-  | { type: "click"; index: number }
-  | { type: "type"; index: number; text: string; submit: boolean }
-  | { type: "scroll"; direction: "up" | "down"; pages: number };
+  | { type: "prepareInput"; index: number; editable: boolean }
+  | { type: "selectInput"; index: number }
+  | { type: "viewport" }
+  | { type: "visibility" }
+  | { type: "scrollPosition" };
 
 export type TabResponse = { ok: true; data: unknown } | { ok: false; error: ErrorBody };
 

@@ -17,7 +17,15 @@
  * under the License.
  */
 
-import { type Command, CommandError, type TabRequest, type TabResponse } from "./protocol";
+import { cdpClick, cdpScroll, cdpType, withDebugger } from "./cdp";
+import {
+  type Command,
+  CommandError,
+  type InputAction,
+  type InputTarget,
+  type TabRequest,
+  type TabResponse
+} from "./protocol";
 
 // 在 background 里执行 Go 发来的命令。
 // 分工：跟"标签页"有关的（跳转、开关）在这里做；跟"页面内容"有关的转给 content script。
@@ -26,7 +34,23 @@ const DEFAULT_MAX_CHARS = 8000;
 
 type ListenerOf<E> = E extends chrome.events.Event<infer F> ? F : never;
 
+// 同一标签页串行执行，避免输入、快照和 debugger 会话相互干扰。
+const queues = new Map<number, Promise<unknown>>();
+
 export async function execute(cmd: Command): Promise<unknown> {
+  const previous = queues.get(cmd.tabId) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => executeCommand(cmd));
+  queues.set(cmd.tabId, next);
+  try {
+    return await next;
+  } finally {
+    if (queues.get(cmd.tabId) === next) {
+      queues.delete(cmd.tabId);
+    }
+  }
+}
+
+async function executeCommand(cmd: Command): Promise<unknown> {
   switch (cmd.cmd) {
     case "navigate":
       return navigate(cmd.tabId, cmd.args.url);
@@ -36,16 +60,21 @@ export async function execute(cmd: Command): Promise<unknown> {
         maxChars: cmd.args.maxChars ?? DEFAULT_MAX_CHARS
       });
     case "click":
-      return sendToTab(cmd.tabId, { type: "click", index: cmd.args.index });
+      return actIn(cmd.tabId, { type: "click", index: cmd.args.index });
     case "type":
-      return sendToTab(cmd.tabId, {
+      return actIn(cmd.tabId, {
         type: "type",
         index: cmd.args.index,
         text: cmd.args.text,
         submit: cmd.args.submit ?? false
       });
     case "scroll":
-      return sendToTab(cmd.tabId, { type: "scroll", direction: cmd.args.direction, pages: cmd.args.pages ?? 1 });
+      return withDebugger(cmd.tabId, async (target) => {
+        await bringToFront(cmd.tabId);
+        const viewport = (await sendToTab(cmd.tabId, { type: "viewport" })) as { width: number; height: number };
+        await cdpScroll(target, viewport, cmd.args.direction, cmd.args.pages ?? 1);
+        return sendToTab(cmd.tabId, { type: "scrollPosition" });
+      });
     case "open":
       return openTab(cmd.args.url);
     case "close":
@@ -136,6 +165,139 @@ async function loadIn(tabId: number, start: () => Promise<unknown>): Promise<Pag
 
   const tab = await chrome.tabs.get(tabId);
   return { url: tab.url ?? "", title: tab.title ?? "", loaded: isLoaded };
+}
+
+// 点击、回车以后的结果。newTab：动作在新标签页里打开了页面（比如淘宝的搜索），Agent 要切换过去
+interface ActResult {
+  url: string; // 动作之后这个标签页的网址；还在跳转的话是要去的网址
+  newTab?: { tabId: number } & PageInfo;
+}
+
+// 新标签页一般在动作之后几百毫秒内出现，等这么久还没有就算没有
+const NEW_TAB_WAIT_MS = 1000;
+
+// 在页面里点击或输入。动作之前先留意"从这个标签页打开的新标签页"（Chrome 会记下 openerTabId），
+// 动作之后等一小会儿：有的话等它加载完，一起告诉 Go。不认识任何网站，所有网站都一样
+async function actIn(tabId: number, req: InputAction): Promise<ActResult> {
+  const opened = watchOpened(tabId);
+  try {
+    await withDebugger(tabId, async (target) => {
+      await bringToFront(tabId);
+      const point = (await sendToTab(tabId, {
+        type: "prepareInput",
+        index: req.index,
+        editable: req.type === "type"
+      })) as InputTarget;
+      await cdpClick(target, point);
+      if (req.type === "type") {
+        await sendToTab(tabId, { type: "selectInput", index: req.index });
+        await cdpType(target, req.text, req.submit);
+      }
+    });
+    const newTabId = await opened.next(NEW_TAB_WAIT_MS);
+    const tab = await chrome.tabs.get(tabId);
+    const result: ActResult = { url: tab.pendingUrl ?? tab.url ?? "" };
+    if (newTabId !== undefined) {
+      result.newTab = { tabId: newTabId, ...(await waitLoaded(newTabId)) };
+    }
+    return result;
+  } finally {
+    opened.stop();
+  }
+}
+
+// 切到前台以后，最多等这么久页面变成可见
+const VISIBLE_WAIT_MS = 2000;
+const VISIBLE_POLL_MS = 50;
+
+// CDP 的鼠标、键盘事件要经过渲染才送得进页面，后台标签页不渲染，事件会被悄悄丢掉（返回成功，页面没反应）。
+// 所以输入之前先把标签页切到前台，再等页面真的可见。动作做完不切回去：滚动以后的懒加载也要页面在渲染。
+// 切到前台了还不可见，是整个窗口被最小化或者完全挡住了，这时报错，不假装成功
+export async function bringToFront(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.update(tabId, { active: true });
+  } catch {
+    throw new CommandError("TAB_NOT_FOUND", `没有 id 为 ${tabId} 的标签页`);
+  }
+  const deadline = Date.now() + VISIBLE_WAIT_MS;
+  for (;;) {
+    if ((await sendToTab(tabId, { type: "visibility" })) === "visible") {
+      return;
+    }
+    if (Date.now() >= deadline) {
+      throw new CommandError(
+        "EXEC_FAILED",
+        "标签页已经切到前台，但页面不可见：浏览器窗口可能被最小化或完全挡住了，需要用户把它露出来"
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, VISIBLE_POLL_MS));
+  }
+}
+
+// 留意从 openerId 打开的第一个新标签页
+function watchOpened(openerId: number): { next(ms: number): Promise<number | undefined>; stop(): void } {
+  let found: number | undefined;
+  let notify: ((id: number) => void) | undefined;
+  const onCreated = (tab: chrome.tabs.Tab) => {
+    if (tab.openerTabId !== openerId || tab.id === undefined || found !== undefined) {
+      return;
+    }
+    found = tab.id;
+    notify?.(tab.id);
+  };
+  chrome.tabs.onCreated.addListener(onCreated);
+
+  return {
+    // 已经有了就马上给；还没有就最多等 ms 毫秒
+    next(ms) {
+      if (found !== undefined) {
+        return Promise.resolve(found);
+      }
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(undefined), ms);
+        notify = (id) => {
+          clearTimeout(timer);
+          resolve(id);
+        };
+      });
+    },
+    stop() {
+      chrome.tabs.onCreated.removeListener(onCreated);
+    }
+  };
+}
+
+// 等一个已经在加载的标签页加载完，最多 10 秒，和 navigate 一样等不到也不算失败。
+// 先挂监听再查状态：查之前就加载完了的，查的时候能看到；查之后才完成的，监听能收到
+async function waitLoaded(tabId: number): Promise<PageInfo> {
+  let cleanup = () => {};
+  const loaded = new Promise<boolean>((resolve) => {
+    const onUpdated: ListenerOf<typeof chrome.tabs.onUpdated> = (curTabId, changeInfo) => {
+      if (curTabId === tabId && changeInfo.status === "complete") {
+        cleanup();
+        resolve(true);
+      }
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, NAVIGATE_TIMEOUT_MS);
+    cleanup = () => {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+
+  let isLoaded: boolean;
+  if ((await chrome.tabs.get(tabId)).status === "complete") {
+    cleanup();
+    isLoaded = true;
+  } else {
+    isLoaded = await loaded;
+  }
+  const tab = await chrome.tabs.get(tabId);
+  return { url: tab.url ?? tab.pendingUrl ?? "", title: tab.title ?? "", loaded: isLoaded };
 }
 
 // 把请求转发给标签页里的 content script，等它回复。

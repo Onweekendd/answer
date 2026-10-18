@@ -49,12 +49,23 @@ async function handle(req: TabRequest): Promise<unknown> {
       result.stats.stable = settle.stable;
       return result;
     }
-    case "click":
-      return click(req.index);
-    case "type":
-      return typeText(req.index, req.text, req.submit);
-    case "scroll":
-      return scroll(req.direction, req.pages);
+    case "prepareInput":
+      return prepareInput(req.index, req.editable);
+    case "selectInput": {
+      const el = editableAt(req.index);
+      // 在 shadow DOM 里的输入框，document.activeElement 是外面的宿主元素，要问它自己所在的那棵树
+      if ((el.getRootNode() as Document | ShadowRoot).activeElement !== el) {
+        throw new CommandError("EXEC_FAILED", "输入框没有获得焦点，请重新 snapshot 后重试");
+      }
+      el.select();
+      return { ok: true };
+    }
+    case "visibility":
+      return document.visibilityState;
+    case "viewport":
+      return { width: window.innerWidth, height: window.innerHeight };
+    case "scrollPosition":
+      return scrollPages();
   }
 }
 
@@ -234,43 +245,39 @@ function elementAt(index: number): Element {
   return el;
 }
 
-function click(index: number): { ok: true } {
+// content script 负责定位和选择文字；实际输入由后台通过 CDP 执行。
+function editableAt(index: number): HTMLInputElement | HTMLTextAreaElement {
   const el = elementAt(index);
-  (el as HTMLElement).click();
-  return { ok: true };
-}
-
-// 往输入框里填文字。直接改 el.value，React、Vue 这类框架是感知不到的：它们只在收到 input 事件时
-// 才去读值，而且 React 还会拦截 value 的赋值。所以要用原型上的 setter 赋值，再手动发 input、change 事件
-function typeText(index: number, text: string, submit: boolean): { ok: true } {
-  const el = elementAt(index);
-  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
-    throw new CommandError("NOT_EDITABLE", `编号 ${index} 不是输入框`);
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) || el.disabled || el.readOnly) {
+    throw new CommandError("NOT_EDITABLE", `编号 ${index} 不是可编辑的输入框`);
   }
-  el.focus();
-  const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, text);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-
-  if (submit) {
-    // 搜索框大多监听回车键；在 form 里的再提交一次表单（form.requestSubmit 会触发网站自己的 submit 处理）
-    for (const type of ["keydown", "keypress", "keyup"]) {
-      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, bubbles: true }));
-    }
-    el.form?.requestSubmit();
+  if (el instanceof HTMLInputElement && !["text", "search", "tel", "url", "email", "password"].includes(el.type)) {
+    throw new CommandError("NOT_EDITABLE", `暂不支持 ${el.type} 类型的输入框`);
   }
-  return { ok: true };
+  return el;
 }
 
-// 滚动 pages 屏，返回滚完以后上下还有几屏
-function scroll(direction: "up" | "down", pages: number): ReturnType<typeof scrollPages> {
-  const sign = direction === "down" ? 1 : -1;
-  window.scrollBy({ top: sign * pages * window.innerHeight * 0.9, behavior: "instant" });
-  return scrollPages();
+function prepareInput(index: number, editable: boolean): { x: number; y: number } {
+  const el = editable ? editableAt(index) : elementAt(index);
+  if (!el.isConnected || el.matches(":disabled")) {
+    throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效或被禁用，请重新 snapshot");
+  }
+  el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  const rect = el.getBoundingClientRect();
+  const left = Math.max(0, rect.left);
+  const right = Math.min(window.innerWidth, rect.right);
+  const top = Math.max(0, rect.top);
+  const bottom = Math.min(window.innerHeight, rect.bottom);
+  if (right <= left || bottom <= top) {
+    throw new CommandError("EXEC_FAILED", "元素不在可点击区域，请重新 snapshot");
+  }
+  const x = (left + right) / 2;
+  const y = (top + bottom) / 2;
+  const hit = document.elementFromPoint(x, y);
+  if (!hit || !el.contains(hit)) {
+    throw new CommandError("EXEC_FAILED", "元素被遮挡，请先处理页面弹窗并重新 snapshot");
+  }
+  return { x, y };
 }
 
-// 调试入口：页面被注入过以后（Go 对它发过一次 snapshot），F12 → Console，
-// 左上角上下文切到「Pagehand」，就能直接敲 __pagehand.snapshot(8000)。
-// 它挂在 content script 自己的隔离世界里，网页的 JS 看不到。
-Object.assign(globalThis, { __pagehand: { snapshot, click } });
+Object.assign(globalThis, { __pagehand: { snapshot } });

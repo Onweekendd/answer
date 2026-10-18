@@ -4,7 +4,7 @@
   "description": "让 AI Agent 通过你自己的浏览器查看和操作网页。仅供个人学习，低频使用。",
   "version": "0.2.0",
   "minimum_chrome_version": "120",
-  "permissions": ["tabs", "storage", "alarms", "scripting"],
+  "permissions": ["tabs", "storage", "alarms", "scripting", "debugger"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
