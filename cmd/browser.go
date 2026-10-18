@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"time"
@@ -35,36 +36,46 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// answer browser：开发调试用。起一个 Hub 等插件连上来，然后在终端里敲命令控制浏览器。
+// answer browser：开发调试用。起一个 Hub 等插件连上来，然后在终端里敲命令控制浏览器，
+// 或者用 --console=false 只开 HTTP 调试接口，给 curl、脚本和自动化测试用。
 // 不读配置文件，不连数据库，和 answer run 互不影响。
 
 const browserCallTimeout = 30 * time.Second
 
 var (
-	browserAddr string
+	browserAddr    string
+	browserConsole bool
 
 	browserCmd = &cobra.Command{
 		Use:   "browser",
 		Short: "Debug the browser extension from the terminal",
 		Long: `Start the browser hub and drive the extension by typing commands.
-The token is read from the BROWSER_HUB_TOKEN environment variable and must match the one set in the extension popup.`,
+The token is read from the BROWSER_HUB_TOKEN environment variable and must match the one set in the extension popup.
+The same token protects the HTTP debug API:
+
+  curl -H "Authorization: Bearer $BROWSER_HUB_TOKEN" http://127.0.0.1:8765/debug/tabs
+  curl -H "Authorization: Bearer $BROWSER_HUB_TOKEN" -d '{"tabId":1,"cmd":"snapshot"}' http://127.0.0.1:8765/debug/call
+
+Use --console=false to run without the interactive console, for scripts and background jobs.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runBrowserConsole(browserAddr, os.Getenv("BROWSER_HUB_TOKEN"))
+			return runBrowserConsole(browserAddr, os.Getenv("BROWSER_HUB_TOKEN"), browserConsole)
 		},
 	}
 )
 
 func init() {
 	browserCmd.Flags().StringVar(&browserAddr, "addr", "127.0.0.1:8765", "address to listen on; keep it on 127.0.0.1")
+	browserCmd.Flags().BoolVar(&browserConsole, "console", true, "read commands from the terminal; false serves only the HTTP debug API until Ctrl+C")
 }
 
-func runBrowserConsole(addr, token string) error {
+func runBrowserConsole(addr, token string, console bool) error {
 	if token == "" {
 		return errors.New("set BROWSER_HUB_TOKEN to the token you entered in the extension popup")
 	}
 	hub := browser.NewHub(token)
 	mux := http.NewServeMux()
 	mux.Handle("/agent", hub)
+	mux.Handle("/debug/", browser.NewDebugHandler(hub, token))
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
 	serveErr := make(chan error, 1)
@@ -72,6 +83,10 @@ func runBrowserConsole(addr, token string) error {
 	defer func() { _ = srv.Close() }()
 
 	fmt.Printf("browser hub listening on ws://%s/agent, waiting for the extension...\n", addr)
+	fmt.Printf("debug API on http://%s/debug/ (GET tabs, POST call)\n", addr)
+	if !console {
+		return waitForInterrupt(serveErr)
+	}
 	printBrowserHelp()
 
 	lines := make(chan string)
@@ -99,6 +114,18 @@ func runBrowserConsole(addr, token string) error {
 				return nil
 			}
 		}
+	}
+}
+
+// waitForInterrupt 在没有交互终端时一直运行，直到 Ctrl+C 或者服务出错
+func waitForInterrupt(serveErr <-chan error) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+		return nil
 	}
 }
 
