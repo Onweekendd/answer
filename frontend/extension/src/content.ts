@@ -20,6 +20,7 @@
 import { CommandError, type TabRequest, type TabResponse, toErrorBody } from "./protocol";
 import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
+import { waitForStable } from "./snapshot/stable";
 import { clip } from "./snapshot/text";
 
 // content script：Go 第一次要操作某个页面时，由 background 注入进去（commands.ts 的 inject），
@@ -40,10 +41,20 @@ chrome.runtime.onMessage.addListener((req: TabRequest, _sender, sendResponse) =>
 
 async function handle(req: TabRequest): Promise<unknown> {
   switch (req.type) {
-    case "snapshot":
-      return snapshot(req.maxChars);
+    case "snapshot": {
+      // 先等页面安静下来再看：有的网站 complete 以后才用 JS 把内容渲染出来
+      const settle = await waitForStable(document.body);
+      const result = snapshot(req.maxChars);
+      result.stats.waitedMs = Math.round(settle.waitedMs);
+      result.stats.stable = settle.stable;
+      return result;
+    }
     case "click":
       return click(req.index);
+    case "type":
+      return typeText(req.index, req.text, req.submit);
+    case "scroll":
+      return scroll(req.direction, req.pages);
   }
 }
 
@@ -60,6 +71,8 @@ interface SnapshotStats {
   rawHtmlChars: number; // 原始 HTML 有多长
   outputChars: number; // 压缩后有多长
   ms: number; // 快照花了多少毫秒（不含算 rawHtmlChars）
+  waitedMs?: number; // 快照前等页面安静等了多久
+  stable?: boolean; // 等到安静了没有；false 说明页面一直在变（轮播图）或者还在加载
 }
 
 interface Snapshot {
@@ -213,17 +226,51 @@ function scrollPages(): { pagesAbove: number; pagesBelow: number } {
   };
 }
 
-function click(index: number): { ok: true } {
+function elementAt(index: number): Element {
   const el = elements[index];
   if (!el) {
     throw new CommandError("ELEMENT_NOT_FOUND", `编号 ${index} 不存在，先重新 snapshot`);
   }
-  // TODO(以后)：点击前检查文字，命中"立即购买 / 提交订单 / 去支付"直接拒绝（第 1 站笔记）
+  return el;
+}
+
+function click(index: number): { ok: true } {
+  const el = elementAt(index);
   (el as HTMLElement).click();
   return { ok: true };
 }
 
+// 往输入框里填文字。直接改 el.value，React、Vue 这类框架是感知不到的：它们只在收到 input 事件时
+// 才去读值，而且 React 还会拦截 value 的赋值。所以要用原型上的 setter 赋值，再手动发 input、change 事件
+function typeText(index: number, text: string, submit: boolean): { ok: true } {
+  const el = elementAt(index);
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+    throw new CommandError("NOT_EDITABLE", `编号 ${index} 不是输入框`);
+  }
+  el.focus();
+  const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, text);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+
+  if (submit) {
+    // 搜索框大多监听回车键；在 form 里的再提交一次表单（form.requestSubmit 会触发网站自己的 submit 处理）
+    for (const type of ["keydown", "keypress", "keyup"]) {
+      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, bubbles: true }));
+    }
+    el.form?.requestSubmit();
+  }
+  return { ok: true };
+}
+
+// 滚动 pages 屏，返回滚完以后上下还有几屏
+function scroll(direction: "up" | "down", pages: number): ReturnType<typeof scrollPages> {
+  const sign = direction === "down" ? 1 : -1;
+  window.scrollBy({ top: sign * pages * window.innerHeight * 0.9, behavior: "instant" });
+  return scrollPages();
+}
+
 // 调试入口：页面被注入过以后（Go 对它发过一次 snapshot），F12 → Console，
-// 左上角上下文切到「买不买 Agent」，就能直接敲 __buyOrNot.snapshot(8000)。
+// 左上角上下文切到「Pagehand」，就能直接敲 __pagehand.snapshot(8000)。
 // 它挂在 content script 自己的隔离世界里，网页的 JS 看不到。
-Object.assign(globalThis, { __buyOrNot: { snapshot, click } });
+Object.assign(globalThis, { __pagehand: { snapshot, click } });

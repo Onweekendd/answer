@@ -29,6 +29,16 @@ export interface CommandArgs {
   navigate: { url: string };
   snapshot: { maxChars?: number };
   click: { index: number };
+  // 在后台新开一个标签页打开 url，等它加载完，返回新标签页的 id。tabId 填 0，不会用到
+  open: { url: string };
+  // 关掉 tabId 这个标签页
+  close: Record<string, never>;
+  // 往编号为 index 的输入框里填文字；submit 为 true 时再按一下回车
+  type: { index: number; text: string; submit?: boolean };
+  // 上下滚动 pages 屏（默认 1），触发懒加载、看到下面的内容
+  scroll: { direction: "up" | "down"; pages?: number };
+  // 插件从磁盘重新加载自己（开发用：pnpm watch 打包完自动调用）。tabId 填 0
+  reload: Record<string, never>;
 }
 
 export type CommandName = keyof CommandArgs;
@@ -54,6 +64,7 @@ export type ErrorCode =
   | "NO_CONTENT_SCRIPT" // 标签页里没有 content script，注入也没成功
   | "PAGE_NOT_SCRIPTABLE" // chrome:// 页面、应用商店这类浏览器不允许插件注入脚本的页面
   | "ELEMENT_NOT_FOUND"
+  | "NOT_EDITABLE" // type 的目标不是输入框
   | "TIMEOUT"
   | "EXEC_FAILED";
 
@@ -86,7 +97,11 @@ export type OutgoingMessage = Result | AgentEvent;
 
 // ---------- background ⇄ content script ----------
 
-export type TabRequest = { type: "snapshot"; maxChars: number } | { type: "click"; index: number };
+export type TabRequest =
+  | { type: "snapshot"; maxChars: number }
+  | { type: "click"; index: number }
+  | { type: "type"; index: number; text: string; submit: boolean }
+  | { type: "scroll"; direction: "up" | "down"; pages: number };
 
 export type TabResponse = { ok: true; data: unknown } | { ok: false; error: ErrorBody };
 

@@ -1,7 +1,8 @@
 {
   "eslint.workingDirectories": [
     "ui",
-    "extension"
+    "frontend/extension",
+    "frontend/web"
   ],
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"

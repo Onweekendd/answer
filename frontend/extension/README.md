@@ -1,6 +1,6 @@
-# 买不买 Agent（Chrome 插件）
+# Pagehand（Chrome 插件）
 
-让 Go 后端的 Agent 通过你自己的浏览器查看任意网页。插件本身不认识任何网站，站点适配放在 `src/strategies/`（见 [docs/page-snapshot-design.md](../docs/page-snapshot-design.md) 第 4 节）。设计见 [docs/buy-or-not-design.md](../docs/buy-or-not-design.md) 第 5 节。
+让 Go 后端的 Agent 通过你自己的浏览器查看任意网页。插件本身不认识任何网站，站点适配放在 `src/strategies/`（见 [docs/page-snapshot-design.md](../../docs/page-snapshot-design.md) 第 4 节）。设计见 [docs/buy-or-not-design.md](../../docs/buy-or-not-design.md) 第 5 节。
 
 仅供个人学习、低频使用。遇到验证码或登录页要停下来请人处理，不尝试绕过。
 
@@ -46,7 +46,7 @@ manifest 里没有 `content_scripts`，插件不会在你打开的每个网页�
 ## 构建和加载
 
 ```bash
-cd extension
+cd frontend/extension
 pnpm install
 pnpm watch      # 改了 ts 会自动重新打包到 dist/
 ```
@@ -68,13 +68,21 @@ ESLint 和 Prettier 的规则沿用 funBI（`packages/eslint-config`）：双引
 第一次加载：
 
 1. 打开 `chrome://extensions`，打开右上角「开发者模式」；
-2. 点「加载已解压的扩展程序」，选择 `extension/dist` 目录；
+2. 点「加载已解压的扩展程序」，选择 `frontend/extension/dist` 目录；
 3. 点工具栏上的插件图标，填 Token（和 Go Hub 配置的一致），保存。
 
-改了代码以后：
+改了代码以后，**自动重载**：Hub 在跑、插件连着的时候，带上 token 运行 watch，每次保存都会自动打包并让插件重载自己，不用去点刷新：
+
+```bash
+BROWSER_HUB_TOKEN=<token> pnpm watch
+```
+
+原理：打包完调用 Hub 的调试接口发一条 `reload` 命令，插件先回复、再调用 `chrome.runtime.reload()` 从磁盘重新加载。网页里旧的 content script 会和插件断开，下一条命令会自动注入新的（按需注入），网页不用刷新。
+
+没有开 Hub 时：
 
 - 改了 `background.ts` / `commands.ts` / `connection.ts`：在 `chrome://extensions` 里点插件卡片上的刷新按钮；
-- 改了 `content.ts`：刷新插件**之后，还要刷新那个网页**。旧页面里的 content script 已经和插件断开了，刷新后下一条命令会注入新的；
+- 改了 `content.ts`：刷新插件以后，下一条命令会自动注入新的 content script；
 - 改了 `static/` 里的文件（manifest、popup.html）：重新运行 `pnpm watch`，再刷新插件。
 
 ## 调试
@@ -82,10 +90,56 @@ ESLint 和 Prettier 的规则沿用 funBI（`packages/eslint-config`）：双引
 | 想看什么                   | 去哪里                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
 | background 的日志、断点    | `chrome://extensions` → 插件卡片上的「Service Worker」链接       |
-| content script 的日志      | 网页按 F12 → Console，左上角下拉框从 top 切到「买不买 Agent」    |
+| content script 的日志      | 网页按 F12 → Console，左上角下拉框从 top 切到「Pagehand」        |
 | popup 的日志               | 右键插件图标 →「审查弹出内容」                                   |
 | 连接状态                   | 点插件图标                                                       |
 | WebSocket 收发的每一条消息 | Service Worker 的 DevTools → Network → 点那条 ws 连接 → Messages |
+
+### 从命令行控制插件
+
+`answer browser` 有两种用法，都在仓库根目录运行，token 和 popup 里填的一致：
+
+```bash
+# 交互式：敲 tabs、navigate、snapshot、click
+BROWSER_HUB_TOKEN=<token> go run ./cmd/answer browser
+
+# 只开 HTTP 调试接口，一直跑到 Ctrl+C：给 curl、脚本和自动化测试用
+BROWSER_HUB_TOKEN=<token> go run ./cmd/answer browser --console=false
+```
+
+两种用法都会开调试接口，请求头带上同一个 token：
+
+```bash
+H="Authorization: Bearer $BROWSER_HUB_TOKEN"
+curl -s -H "$H" http://127.0.0.1:8765/debug/tabs
+curl -s -H "$H" -d '{"tabId":123,"cmd":"snapshot","args":{"maxChars":8000}}' http://127.0.0.1:8765/debug/call
+curl -s -H "$H" -d '{"tabId":123,"cmd":"navigate","args":{"url":"https://github.com"},"timeoutMs":60000}' http://127.0.0.1:8765/debug/call
+```
+
+返回格式和插件回给 Go 的结果一样：`{"ok":true,"data":…}` 或 `{"ok":false,"error":{"code":…,"message":…}}`。状态码：
+
+| 状态码 | code            | 意思                                        |
+| ------ | --------------- | ------------------------------------------- |
+| 200    |                 | 成功                                        |
+| 400    | `BAD_REQUEST`   | 请求体不是 JSON，或者缺 `cmd`               |
+| 401    | `UNAUTHORIZED`  | 没带 token 或 token 不对                    |
+| 403    | `FORBIDDEN`     | 请求带了 Origin，也就是网页发来的           |
+| 422    | 插件的错误码    | 插件执行失败，比如 `ELEMENT_NOT_FOUND`      |
+| 499    | `CANCELED`      | 结果出来之前客户端断开了                    |
+| 502    | `DISCONNECTED`  | 等结果的时候插件断开了                      |
+| 503    | `NOT_CONNECTED` | 插件没连上                                  |
+| 504    | `TIMEOUT`       | 超过 `timeoutMs`（默认 30 秒，最多 2 分钟） |
+
+### 量一遍快照：pagebench
+
+改了压缩规则以后，在固定的几个页面上重量一遍，和基线比较（页面列表在 `script/pagebench/pages.json`）：
+
+```bash
+BROWSER_HUB_TOKEN=<token> PAGEBENCH_REDACT=<你的昵称> go run ./script/pagebench
+BROWSER_HUB_TOKEN=<token> go run ./script/pagebench -update-baseline   # 满意了就存成新基线
+```
+
+它在后台新开一个标签页，每个页面只打开一次、快照一次，页面之间等 4 秒，不点任何东西；跳到登录页或验证码页就跳过这个网站。基线 `baseline.json` 只有数字，可以提交；完整的快照写到 `script/pagebench/out/`，不提交，写之前把 `script/pagebench/redact.txt`（一行一个词，不提交）和 `PAGEBENCH_REDACT` 里的词换成 `[已屏蔽]`。
 
 ## Service worker 会"睡着"
 
@@ -102,7 +156,7 @@ MV3 的 background 不是常驻进程：空闲约 30 秒后 Chrome 会关掉它�
 - [x] ① 骨架：manifest、构建、连接 Hub、发 `hello`、保活、重连、popup
 - [x] ② Go Hub：接受连接、校验 hello 里的 token（在 `internal/service/browser/`）
 - [x] ③ `navigate`
-- [x] ④ `snapshot` P1，参考 [第 4 站笔记](../docs/browser-use-study/04-页面压缩.md) 和 [压缩方案](../docs/page-snapshot-design.md)
+- [x] ④ `snapshot` P1，参考 [第 4 站笔记](../../docs/browser-use-study/04-页面压缩.md) 和 [压缩方案](../../docs/page-snapshot-design.md)
 - [x] ⑤ 通用化：上报所有网页标签页，content script 按需注入
 
 终端调试：`BROWSER_HUB_TOKEN=<popup 里填的> go run ./cmd/answer browser`，然后敲 `tabs`、`snapshot <id>`。

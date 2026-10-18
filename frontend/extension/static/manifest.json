@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "买不买 Agent",
-  "description": "让「买不买」的 AI 通过你自己的浏览器查看网页。仅供个人学习，低频使用。",
+  "name": "Pagehand",
+  "description": "让 AI Agent 通过你自己的浏览器查看和操作网页。仅供个人学习，低频使用。",
   "version": "0.2.0",
   "minimum_chrome_version": "120",
   "permissions": ["tabs", "storage", "alarms", "scripting"],
@@ -11,7 +11,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "买不买 Agent",
+    "default_title": "Pagehand",
     "default_popup": "popup.html"
   }
 }
