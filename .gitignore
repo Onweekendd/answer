@@ -38,3 +38,6 @@ dist/
 .env
 
 browser-use
+# full page snapshots from script/pagebench; may contain account names
+script/pagebench/out/
+script/pagebench/redact.txt

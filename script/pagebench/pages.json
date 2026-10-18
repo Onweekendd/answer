@@ -1,0 +1,8 @@
+[
+  { "site": "1688", "name": "1688-home", "url": "https://www.1688.com/" },
+  { "site": "1688", "name": "1688-search", "url": "https://s.1688.com/selloffer/offer_search.htm?keywords=iphone" },
+  { "site": "jd", "name": "jd-home", "url": "https://www.jd.com/" },
+  { "site": "jd", "name": "jd-search", "url": "https://search.jd.com/Search?keyword=iphone%2017" },
+  { "site": "taobao", "name": "taobao-home", "url": "https://www.taobao.com/" },
+  { "site": "taobao", "name": "taobao-search", "url": "https://s.taobao.com/search?q=iphone%2017" }
+]
