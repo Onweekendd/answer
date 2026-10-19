@@ -76,7 +76,7 @@ ensure_env S3_SECRET_ACCESS_KEY "$(openssl rand -hex 32)"
 set_tag "$new_tag"
 start
 # 建桶、导入密钥，每次都跑（已经有的跳过）。失败只影响存图，网站照常，所以不让部署失败
-./garage-init.sh || echo "garage-init.sh failed: the agent cannot save pictures until it succeeds" >&2
+bash ./garage-init.sh || echo "garage-init.sh failed: the agent cannot save pictures until it succeeds" >&2
 
 # 3. 健康检查，失败就回滚
 if wait_healthy 90; then
