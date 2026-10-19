@@ -80,11 +80,25 @@ describe("applyEvent", () => {
 
     expect(applyEvent(before, { type: "done" })).toEqual(before);
   });
+
+  it("keeps each step's thinking in its own part, between the tool calls", () => {
+    const parts = run([
+      { type: "reasoning", delta: "先打开" },
+      { type: "reasoning", delta: "京东" },
+      { type: "tool_start", id: "0-0", name: "open", args: { summary: "打开 www.jd.com" } },
+      { type: "reasoning", delta: "看看页面" },
+      { type: "text", delta: "**买**" }
+    ]);
+
+    expect(parts.map((p) => p.type)).toEqual(["reasoning", "tool-call", "reasoning", "text"]);
+    expect(parts[0]).toEqual({ type: "reasoning", text: "先打开京东" });
+  });
 });
 
 describe("parseEvent", () => {
   it("parses a known event from SSE data", () => {
     expect(parseEvent('{"type":"text","delta":"x"}')).toEqual({ type: "text", delta: "x" });
+    expect(parseEvent('{"type":"reasoning","delta":"想"}')).toEqual({ type: "reasoning", delta: "想" });
   });
 
   it("turns tool args that are not an object into {} because the UI needs an object", () => {

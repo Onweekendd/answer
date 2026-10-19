@@ -99,6 +99,10 @@ export type ThreadComponents = {
     | ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
     | undefined;
   TaskGroup?: ComponentType<{ group: ThreadGroupPart }> | undefined;
+  /** Wraps the whole run of thinking and tool calls before the answer. */
+  ChainOfThought?:
+    | ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
+    | undefined;
 };
 
 const messageGroupBy = groupPartByType({
@@ -538,6 +542,7 @@ const AssistantMessage: FC = () => {
     ToolGroup,
     ReasoningGroup,
     TaskGroup: TaskGroupComponent,
+    ChainOfThought,
   } = useContext(ThreadComponentsContext);
   const groupBy = TaskGroupComponent ? taskAwareGroupBy : messageGroupBy;
 
@@ -559,6 +564,11 @@ const AssistantMessage: FC = () => {
           {({ part, children }) => {
             switch (part.type) {
               case "group-chainOfThought":
+                if (ChainOfThought) {
+                  return (
+                    <ChainOfThought group={part}>{children}</ChainOfThought>
+                  );
+                }
                 return <div data-slot="aui_chain-of-thought">{children}</div>;
               case "group-task":
                 return TaskGroupComponent ? (

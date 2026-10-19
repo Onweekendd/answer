@@ -4,6 +4,9 @@
  */
 export type ChatEvent =
   | { type: "text"; delta: string }
+  /** The model's thinking for one step, sent whole once the step's reply is in. */
+  | { type: "reasoning"; delta: string }
+  /** For the agent's tools, `args` is `{ summary }` and `result` is `{ summary, ok }`: what the user may see. */
   | { type: "tool_start"; id: string; name: string; args: Record<string, unknown> }
   | { type: "tool_end"; id: string; result: unknown }
   | { type: "error"; message: string }
@@ -12,6 +15,7 @@ export type ChatEvent =
 /** The shapes of assistant-ui's message content parts that we produce. */
 export type ContentPart =
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
   | {
       type: "tool-call";
       toolCallId: string;
@@ -32,12 +36,15 @@ export class ChatStreamError extends Error {
 /** Folds one event into the message so far; never mutates `parts`. */
 export function applyEvent(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
   switch (event.type) {
-    case "text": {
+    case "text":
+    case "reasoning": {
+      // a delta joins the part before it only if that part is the same kind: thinking from the
+      // next step, after a tool call, starts a part of its own
       const last = parts.at(-1);
-      if (last?.type === "text") {
-        return [...parts.slice(0, -1), { type: "text", text: last.text + event.delta }];
+      if (last?.type === event.type) {
+        return [...parts.slice(0, -1), { type: event.type, text: last.text + event.delta }];
       }
-      return [...parts, { type: "text", text: event.delta }];
+      return [...parts, { type: event.type, text: event.delta }];
     }
     case "tool_start":
       return [
@@ -77,7 +84,8 @@ export function parseEvent(data: string): ChatEvent | null {
 
   switch (raw.type) {
     case "text":
-      return typeof raw.delta === "string" ? { type: "text", delta: raw.delta } : null;
+    case "reasoning":
+      return typeof raw.delta === "string" ? { type: raw.type, delta: raw.delta } : null;
     case "tool_start":
       return typeof raw.id === "string" && typeof raw.name === "string"
         ? { type: "tool_start", id: raw.id, name: raw.name, args: isRecord(raw.args) ? raw.args : {} }

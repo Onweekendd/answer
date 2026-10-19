@@ -7,7 +7,6 @@ import {
   type ReasoningMessagePartComponent,
   type ReasoningGroupComponent,
 } from "@assistant-ui/react";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import {
   ANIMATION_DURATION,
   ReasoningRoot as ReasoningRootBase,
@@ -62,7 +61,11 @@ const ReasoningRoot = forwardRef<
   );
 });
 
-const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
+// Plain text, not markdown: the agent's thinking retells the pages it read, and a link a page
+// planted there must not turn into one the user can click.
+const ReasoningImpl: ReasoningMessagePartComponent = ({ text }) => (
+  <p className="whitespace-pre-wrap">{text}</p>
+);
 
 const ReasoningGroupImpl: ReasoningGroupComponent = ({
   children,

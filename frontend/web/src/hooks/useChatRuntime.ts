@@ -1,32 +1,39 @@
-import {
-  type ChatModelAdapter,
-  type ChatModelRunResult,
-  CompositeAttachmentAdapter,
-  SimpleImageAttachmentAdapter,
-  useLocalRuntime
-} from "@assistant-ui/react";
+import { type ChatModelAdapter, type ChatModelRunResult, useLocalRuntime } from "@assistant-ui/react";
 
+import { chatEvents, toChatMessages } from "@/core/chat/api";
 import { mockReply } from "@/core/chat/mock";
 import { lastUserText } from "@/core/chat/prompt";
 import { foldEvents } from "@/core/chat/stream";
+import { UploadImageAdapter } from "@/core/chat/upload";
+import { api, tokenStore } from "@/lib/session";
+
+/** VITE_CHAT_MOCK=true plays the scripted reply instead, for working on the UI without a backend. */
+const useMock = import.meta.env.VITE_CHAT_MOCK === "true";
+
+const transport = {
+  baseUrl: "/answer/api/v1",
+  getToken: tokenStore.get,
+  onUnauthorized: tokenStore.clear
+};
 
 /**
- * The chat adapter. For now it plays a scripted reply (mockReply); once the Go chat endpoint
- * exists only the event source changes, to `eventsFromSSE(response.body)`. The folding into
- * snapshots, and everything the UI shows, stays the same.
+ * The chat adapter: posts the conversation to the Go chat endpoint and folds the streamed events
+ * into the message. The mock feeds the same folding, so what the UI shows is the same code path.
  */
 const adapter: ChatModelAdapter = {
   async *run({ messages, abortSignal }) {
+    const events = useMock
+      ? mockReply(lastUserText(messages), { signal: abortSignal })
+      : chatEvents(transport, toChatMessages(messages), abortSignal);
     // The cast is the one place our plain types meet the library's JSON types: every value in
     // a snapshot came from JSON.parse (or the mock's literals), so it is JSON by construction.
-    for await (const snapshot of foldEvents(mockReply(lastUserText(messages), { signal: abortSignal }), abortSignal)) {
+    for await (const snapshot of foldEvents(events, abortSignal)) {
       yield snapshot as ChatModelRunResult;
     }
   }
 };
 
-/** Images are read in the browser for now; the real flow uploads each to /file and sends the url. */
-const attachments = new CompositeAttachmentAdapter([new SimpleImageAttachmentAdapter()]);
+const attachments = new UploadImageAdapter(api.uploadImage);
 
 export function useChatRuntime() {
   return useLocalRuntime(adapter, { adapters: { attachments } });
