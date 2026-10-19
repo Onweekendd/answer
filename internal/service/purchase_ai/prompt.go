@@ -44,8 +44,16 @@ const maxContentRunes = 2000
 // The chat answers without a buy / wait / skip verdict: on the chat page the
 // community decides, by voting on the post the chat can turn into.
 func buildSystemPrompt(now time.Time, browserOn bool) string {
-	return systemPrompt(now, browserOn, chatOpening)
+	return systemPrompt(now, browserOn, chatOpening) + "\n\n" + draftRules
 }
+
+// draftRules 只在对话里有：帖子分析和 case 运行器没有 draft_post
+const draftRules = `帮用户发帖：
+- 用户想把这件事发到社区请大家投票时（比如「帮我发到社区」「发个帖子问问大家」），调用 draft_post 整理一篇帖子草稿。用户没要求就不要调用。
+- 草稿写给社区里帮忙投票的人看：标题说清要买什么、纠结什么；正文写用户的需求、查到的价格和出处、几个选择各自的好坏，不写买不买的结论，结论留给大家投。
+- 配图从这段对话里出现过的图里挑（用户上传的截图、回答里的图、商品卡片的图），填网址，最能说明问题的放第一张。
+- vote 填你自己的看法，帖子发出来以后你会以 AI 的身份投第一票。
+- 草稿交给用户以后这次回答就结束了：用户会在页面上修改、发布或者放弃。`
 
 // buildPostPrompt is the prompt for analysing a post: the verdict comes first,
 // in bold, because the bot casts it as its vote (parseVerdict reads it).

@@ -39,8 +39,10 @@ const (
 	EventToolStart = "tool_start"
 	EventToolEnd   = "tool_end"
 	EventProduct   = "product" // 一张商品卡片，见 products.go
-	EventError     = "error"
-	EventDone      = "done"
+	// EventToolSuspend 是一个要用户拍板的调用：Agent 停在这里，把 input 交给页面，见 drafts.go
+	EventToolSuspend = "tool_suspend"
+	EventError       = "error"
+	EventDone        = "done"
 )
 
 // Event 是一条事件。没用到的字段不输出
@@ -53,6 +55,7 @@ type Event struct {
 	Result  *ToolView    `json:"result,omitempty"`  // tool_end：做得怎么样
 	Message string       `json:"message,omitempty"` // error：给用户看的一句话
 	Product *ProductCard `json:"product,omitempty"` // product
+	Input   *DraftInput  `json:"input,omitempty"`   // tool_suspend：交给用户确认的内容（tool_input）
 }
 
 // ToolView 是一次工具调用给用户看的样子。只有这两个字段：给模型看的 Text 里有页面内容，
@@ -168,6 +171,8 @@ func (r *agentRun) describeCall(name, arguments string) string {
 		}
 		_ = json.Unmarshal([]byte(arguments), &c)
 		return "截图存证：" + clipRunes(oneLine(c.Caption), labelMaxRunes)
+	case toolDraft:
+		return "整理帖子草稿"
 	case toolCiteImg:
 		var c struct {
 			Caption string `json:"caption"`

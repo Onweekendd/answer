@@ -63,6 +63,8 @@ func Test_buildSystemPrompt(t *testing.T) {
 		require.Contains(t, chat, "社区投票决定")
 		require.NotContains(t, chat, "放在回答的第一行")
 		require.Contains(t, post, "放在回答的第一行")
+		require.Contains(t, chat, "draft_post", "对话里可以帮用户发帖")
+		require.NotContains(t, post, "draft_post")
 	})
 
 	t.Run("插件没连上时不提工具，要求说明价格没有实时核实", func(t *testing.T) {

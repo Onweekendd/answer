@@ -21,6 +21,14 @@ package schema
 
 import "encoding/json"
 
+// PurchaseDraftVoteReq asks the AI to cast the vote it kept with a draft, on
+// the post the user published from that draft.
+type PurchaseDraftVoteReq struct {
+	DraftID    string `validate:"required,max=32" json:"draft_id"`
+	QuestionID string `validate:"required" json:"question_id"`
+	UserID     string `json:"-"`
+}
+
 // PurchaseChatCreateReq starts a conversation; the page sends the first question as the title.
 type PurchaseChatCreateReq struct {
 	Title  string `json:"title"`

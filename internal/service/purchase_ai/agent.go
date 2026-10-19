@@ -64,9 +64,9 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 
 	var tools map[string]agentTool
 	var defs []llm.Tool
-	if browserOn {
+	if browserOn || r.draft != nil {
 		var err error
-		tools, defs, err = r.tools()
+		tools, defs, err = r.tools(browserOn)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +98,8 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		if len(resp.ToolCalls) == 0 {
 			// ③ 只回了文字：没给工具、已经提醒过一次，或者这是最后一步（提醒了也没有步数去调用 done），
 			// 就当作答案；否则提醒它调用 done。空回复当不了答案：最后再问一次，不给工具，让它把回答写出来
-			if len(defs) == 0 || reminded || step == r.limits.maxSteps-1 {
+			// 插件没连着时只有 draft_post，没有 done：直接回答就是答案
+			if !browserOn || reminded || step == r.limits.maxSteps-1 {
 				if empty {
 					return r.finish(ctx, messages, finishEmpty)
 				}
@@ -248,6 +249,7 @@ func (r *agentRun) runCalls(ctx context.Context, tools map[string]agentTool, cal
 			r.emitToolStart(ctx, id, call)
 		}
 
+		r.callID = id
 		res, err := r.runTool(ctx, tools, call)
 		if errors.Is(err, errBrowserGone) {
 			toolRes[i] = toolResult{Failed: true, Text: browserGoneText}

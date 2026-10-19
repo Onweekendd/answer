@@ -4892,6 +4892,44 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/answer/api/v1/purchase/ai/draft/vote": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PurchaseAI"
+                ],
+                "summary": "the AI casts the vote it kept with a draft, on the post the user published from it",
+                "parameters": [
+                    {
+                        "description": "draft and post",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/schema.PurchaseDraftVoteReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.RespBody"
+                        }
+                    }
+                }
+            }
+        },
         "/answer/api/v1/purchase/ai/identify": {
             "post": {
                 "security": [
@@ -10952,6 +10990,22 @@ const docTemplate = `{
                     }
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.PurchaseDraftVoteReq": {
+            "type": "object",
+            "required": [
+                "draft_id",
+                "question_id"
+            ],
+            "properties": {
+                "draft_id": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "question_id": {
                     "type": "string"
                 }
             }

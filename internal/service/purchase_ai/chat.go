@@ -90,6 +90,7 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		r.showReasoning = pas.chatOptions.showReasoning
 		r.redact = pas.chatOptions.redact
 		r.images = pas.uploaderService
+		r.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(req.Messages), store: pas.drafts}
 		defer r.closeTabs()
 
 		res, err := r.run(ctx, messages, browserOn)
@@ -123,6 +124,8 @@ func (pas *PurchaseAIService) chatMessages(ctx context.Context, req *schema.Purc
 		if images := pas.imageParts(ctx, m.Images); len(images) > 0 {
 			parts = append(parts, llm.Part{Text: screenshotsHeader})
 			parts = append(parts, images...)
+			// 网址也给模型：整理帖子草稿时，配图要填网址
+			parts = append(parts, llm.Part{Text: "这些截图的网址依次是：" + strings.Join(m.Images, " ")})
 		}
 		messages = append(messages, llm.Message{Role: llm.RoleUser, Parts: parts})
 	}

@@ -59,6 +59,8 @@ type agentRun struct {
 	images   ImageStore    // 存商品卡片的图；nil 就不存，卡片没有图
 	products []ProductCard // 做好的商品卡片
 	shots    []Shot        // 存下来、回答里要引用的截图
+	draft    *draftContext // 对话页才有：可以把对话整理成帖子草稿；nil 就没有 draft_post
+	callID   string        // 正在执行的调用的 id（tool_start 里那个），挂起的事件要带上它
 
 	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
 	events        chan<- Event
@@ -94,6 +96,7 @@ const (
 	toolProduct  = "pick_product"
 	toolCite     = "cite_screenshot"
 	toolCiteImg  = "cite_image"
+	toolDraft    = "draft_post"
 	toolDone     = "done"
 )
 
@@ -156,8 +159,9 @@ type doneArgs struct {
 	Success bool   `json:"success" description:"用户要求的事有没有做成。没查到、被登录页或验证码挡住时填 false"`
 }
 
-// tools 返回浏览器工具。顺序固定：工具定义在请求的最前面，顺序一变前缀缓存就全部失效
-func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
+// tools 返回这次能用的工具。顺序固定：工具定义在请求的最前面，顺序一变前缀缓存就全部失效。
+// browserOn 为 false 时只剩 draft_post（对话页上插件没连着，也能整理草稿）；没有 r.draft 就没有 draft_post
+func (r *agentRun) tools(browserOn bool) (map[string]agentTool, []llm.Tool, error) {
 	list := []struct {
 		name, description string
 		args              any
@@ -188,12 +192,17 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 		{toolCiteImg, "把页面上的一张图片下载原图放进回答里给用户看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
 			"填 index 取那个元素里最大的图，不填取屏幕上最大的图。和 cite_screenshot 共用编号，返回「图几」，回答里单独写一行 [图几]。" +
 			"价格区、表格这类不是图片的，或者下载失败了，用 cite_screenshot。", citeImageArgs{}, r.citeImage},
+		{toolDraft, "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
+			"调用以后这次回答就结束了：用户会在页面上修改、发布或者放弃，不用你再说什么。", draftArgs{}, r.draftPost},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
 
 	tools := make(map[string]agentTool, len(list))
 	defs := make([]llm.Tool, 0, len(list))
 	for _, t := range list {
+		if (t.name == toolDraft && r.draft == nil) || (t.name != toolDraft && !browserOn) {
+			continue
+		}
 		schema, err := llm.SchemaFor(t.args)
 		if err != nil {
 			return nil, nil, err

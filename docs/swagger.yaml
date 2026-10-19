@@ -1710,6 +1710,17 @@ definitions:
       title:
         type: string
     type: object
+  schema.PurchaseDraftVoteReq:
+    properties:
+      draft_id:
+        maxLength: 32
+        type: string
+      question_id:
+        type: string
+    required:
+    - draft_id
+    - question_id
+    type: object
   schema.PurchaseInfo:
     properties:
       ai_status:
@@ -6525,6 +6536,30 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: chat with the buying agent
+      tags:
+      - PurchaseAI
+  /answer/api/v1/purchase/ai/draft/vote:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: draft and post
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseDraftVoteReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.RespBody'
+      security:
+      - ApiKeyAuth: []
+      summary: the AI casts the vote it kept with a draft, on the post the user published
+        from it
       tags:
       - PurchaseAI
   /answer/api/v1/purchase/ai/identify:

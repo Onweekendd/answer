@@ -45,7 +45,7 @@ func openedRun(t *testing.T, b *fakeBrowser) *agentRun {
 func Test_tools(t *testing.T) {
 	t.Run("每个工具的参数说明都是合法的 JSON Schema", func(t *testing.T) {
 		// Act
-		tools, defs, err := newToolRun(newFakeBrowser()).tools()
+		tools, defs, err := newToolRun(newFakeBrowser()).tools(true)
 
 		// Assert
 		require.NoError(t, err)
@@ -60,8 +60,8 @@ func Test_tools(t *testing.T) {
 
 	t.Run("每次的工具顺序都一样（前缀缓存靠它）", func(t *testing.T) {
 		// Act
-		_, first, _ := newToolRun(newFakeBrowser()).tools()
-		_, second, _ := newToolRun(newFakeBrowser()).tools()
+		_, first, _ := newToolRun(newFakeBrowser()).tools(true)
+		_, second, _ := newToolRun(newFakeBrowser()).tools(true)
 
 		// Assert
 		require.Equal(t, first, second)
@@ -71,7 +71,7 @@ func Test_tools(t *testing.T) {
 func Test_hover(t *testing.T) {
 	b := newFakeBrowser()
 	r := openedRun(t, b)
-	tools, _, err := r.tools()
+	tools, _, err := r.tools(true)
 	require.NoError(t, err)
 	res, err := tools[toolHover].run(context.Background(), `{"index":3}`)
 	require.NoError(t, err)
@@ -652,7 +652,7 @@ func Test_runTool(t *testing.T) {
 	t.Run("不存在的工具告诉模型，不算出错", func(t *testing.T) {
 		// Arrange
 		r := newToolRun(newFakeBrowser())
-		tools, _, _ := r.tools()
+		tools, _, _ := r.tools(true)
 
 		// Act
 		res, err := r.runTool(context.Background(), tools, toolCall("c1", "buy_now", `{}`))
@@ -666,7 +666,7 @@ func Test_runTool(t *testing.T) {
 	t.Run("记下执行之前的快照哈希，并记下这一步", func(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())
-		tools, _, _ := r.tools()
+		tools, _, _ := r.tools(true)
 		r.pageHash = "before"
 		r.step = 4
 
