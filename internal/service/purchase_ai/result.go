@@ -26,12 +26,15 @@ import (
 
 // toolResult 是一次工具调用的结果。它有两个读者：Text 给模型看，其余字段给循环看。
 type toolResult struct {
-	Text        string // 给模型看的
-	Failed      bool   // 这次没做成，模型换个做法也许能成（概念 3）
-	Skipped     bool   // 没有执行：前面的动作改变了页面，或者任务已经结束（概念 1）
-	PageChanged bool   // 页面可能变了，同一轮后面的编号已经过期（概念 1）
-	Snapshot    bool   // 这是一份快照，下一轮要换成占位语（概念 2）
-	Done        bool   // 模型调用了 done（概念 7）
+	Text string // 给模型看的
+	// Display 是给用户看的一句话（tool_end 的 summary）。由每个工具自己写，只放白名单里的东西：
+	// 页面的正文、元素列表、截图都不放（阶段 3 概念 3）。空的显示"完成"，失败的不看它
+	Display     string
+	Failed      bool // 这次没做成，模型换个做法也许能成（概念 3）
+	Skipped     bool // 没有执行：前面的动作改变了页面，或者任务已经结束（概念 1）
+	PageChanged bool // 页面可能变了，同一轮后面的编号已经过期（概念 1）
+	Snapshot    bool // 这是一份快照，下一轮要换成占位语（概念 2）
+	Done        bool // 模型调用了 done（概念 7）
 
 	// Image 是截图的 data URI。工具消息里放不了图，它放在这一轮全部工具回复之后的一条用户消息里，
 	// 下一轮开始时和旧快照一样换成占位语，只留最新一张（阶段 2 概念 5）
@@ -95,7 +98,9 @@ type agentLimits struct {
 }
 
 var defaultLimits = agentLimits{
-	maxSteps:    20,
+	// 2026-10-19 从 20 提到 30：小红书一篇笔记要 4 步（点开、snapshot 加 read、截图加 Esc、回到列表），
+	// 读三篇再加上读 skill、打开搜索页，20 步常常用完被迫收尾
+	maxSteps:    30,
 	warnAt:      3,
 	maxFailures: 3,
 

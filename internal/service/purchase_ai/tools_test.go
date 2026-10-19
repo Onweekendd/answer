@@ -212,6 +212,15 @@ func Test_formatRead(t *testing.T) {
 		require.Contains(t, got, "一共 5000 字，只读了前 3000 字")
 	})
 
+	t.Run("有大图时提醒截图：图里的字读不到", func(t *testing.T) {
+		// Act
+		got := formatRead(readData{Scope: "overlay", Text: "#富冈义勇", Images: 1}, nil)
+
+		// Assert
+		require.Contains(t, got, "这里有大图")
+		require.Contains(t, got, "screenshot")
+	})
+
 	t.Run("没读到文字时建议截图", func(t *testing.T) {
 		// Act
 		got := formatRead(readData{Scope: "page", Text: "  "}, nil)
@@ -238,7 +247,23 @@ func Test_press(t *testing.T) {
 		require.Equal(t, "press Escape", b.calls[len(b.calls)-1])
 	})
 
-	t.Run("别的键不发给插件，告诉模型只能按 Escape", func(t *testing.T) {
+	t.Run("方向键只翻轮播图：不算页面变了，同一轮后面的截图照样执行", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+
+		// Act
+		res, err := r.press(context.Background(), `{"key":"ArrowRight"}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, res.Failed)
+		require.False(t, res.PageChanged)
+		require.Contains(t, res.Text, "screenshot")
+		require.Equal(t, "press ArrowRight", b.calls[len(b.calls)-1])
+	})
+
+	t.Run("别的键不发给插件，告诉模型能按哪几个", func(t *testing.T) {
 		// Arrange
 		b := newFakeBrowser()
 		r := openedRun(t, b)

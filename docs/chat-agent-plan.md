@@ -112,6 +112,11 @@ frontend/web (Chat.tsx) ──SSE──► answer run
 ### 阶段 3：对话接口 + 前端对接
 
 - SSE 接口：事件包括文字、工具开始、工具结束、完成、出错，对应 assistant-ui 的工具展示组件
+- 2026-10-18 已实现：`POST /purchase/ai/chat`（要登录），事件 `reasoning / text / tool_start / tool_end / error / done`，最后 `data: [DONE]`，每 15 秒 `: ping`。
+  Agent 通过 channel 交出事件（`agentRun.events`，为 nil 时帖子分析和 case 运行器照旧）；每次发送都和 `ctx.Done()` 一起等，用户断开就停、关标签页。
+  给用户看的是每个工具自己写的 `Display`（白名单），点击写元素名不写编号，网址只留域名，失败不说原因；思考按步骤整段发，打码加屏蔽词（`PURCHASE_AI_REDACT_FILE`），`PURCHASE_AI_SHOW_REASONING=false` 关掉，前端按纯文本显示。
+  浏览器：设置 `BROWSER_HUB_URL` 和 `BROWSER_HUB_TOKEN` 时，answer run 通过调试接口用 `answer browser` 里的 Hub（过渡做法），没设置就降级
+- 还没做：多个对话同时跑会抢同一个浏览器（概念 5 的串行锁和排队）；系统提示词还是写给帖子评论的，强制第一行给结论
 - `Chat.tsx` 从 mock 切换到真实接口
 - "帮我发帖"：复用现有的发帖流程，带上商品信息和 AI 的建议
 - 对话记录存不存数据库：待定（见第 6 节）

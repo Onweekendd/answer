@@ -54,6 +54,12 @@ type agentRun struct {
 	pageHash     string // 页面状态：快照哈希加上滚动位置，见 pageState
 	openedTabs   []int  // Agent 开过的标签页，结束时关掉
 	steps        []stepRecord
+	labels       map[int]string // 最新快照里每个编号的名字，给用户看"点击「…」"用
+
+	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
+	events        chan<- Event
+	showReasoning bool     // 思考也推给用户
+	redact        []string // 推给用户的文字里要换掉的词
 
 	failures failureCounter
 	loops    loopDetector
@@ -130,7 +136,7 @@ type typeArgs struct {
 }
 
 type pressArgs struct {
-	Key string `json:"key" enum:"Escape" description:"要按的键，现在只有 Escape"`
+	Key string `json:"key" enum:"Escape,ArrowRight,ArrowLeft" description:"要按的键：Escape 关浮层；ArrowRight、ArrowLeft 翻轮播图的下一张、上一张"`
 }
 
 type scrollArgs struct {
@@ -164,7 +170,8 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 		{toolClick, "点击最新一份快照里编号为 index 的元素。", indexArgs{}, r.click},
 		{toolHover, "将鼠标悬停在最新快照里编号为 index 的元素上，不点击。用于展开下拉菜单；悬停后先 snapshot 查看新出现的选项，再 click 选项。", indexArgs{}, r.hover},
 		{toolType, "往编号为 index 的输入框里填文字。submit 为 true 时填完按回车，比如在搜索框里搜索。", typeArgs{}, r.typeText},
-		{toolPress, "按键盘上的一个键。现在只有 Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快。按完先 snapshot 再继续。", pressArgs{}, r.press},
+		{toolPress, "按键盘上的一个键。Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快，按完先 snapshot 再继续。" +
+			"ArrowRight、ArrowLeft：把轮播图翻到下一张、上一张（比如小红书笔记的图片），页面别的地方不变，编号照样能用，翻完直接截图。", pressArgs{}, r.press},
 		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
@@ -258,7 +265,7 @@ func pageResult(page pageInfo) toolResult {
 		text += "页面还没有完全加载完，snapshot 会再等它一会儿。"
 	}
 	text += "接下来用 snapshot 查看页面。"
-	return toolResult{Text: text, PageChanged: true, URL: page.URL}
+	return toolResult{Text: text, Display: "打开了「" + oneLine(page.Title) + "」", PageChanged: true, URL: page.URL}
 }
 
 // snapshotData 是插件 snapshot 的结果，只取 Agent 用得到的字段
@@ -284,7 +291,13 @@ func (r *agentRun) snapshot(ctx context.Context, _ string) (toolResult, error) {
 	}
 	r.snapshotHash = hashText(snap.Elements)
 	r.pageHash = pageState(r.snapshotHash, snap.Stats.PagesAbove)
-	return toolResult{Text: formatSnapshot(snap), Snapshot: true, URL: snap.URL}, nil
+	r.labels = elementLabels(snap.Elements)
+	return toolResult{
+		Text:     formatSnapshot(snap),
+		Display:  fmt.Sprintf("页面上有 %d 个可以操作的元素", len(r.labels)),
+		Snapshot: true,
+		URL:      snap.URL,
+	}, nil
 }
 
 // readData 是插件 read 命令的结果
@@ -295,6 +308,7 @@ type readData struct {
 	Text       string `json:"text"`
 	Truncated  bool   `json:"truncated"`
 	TotalChars int    `json:"totalChars"`
+	Images     int    `json:"images"` // 这块区域里露在屏幕上的大图有几张
 }
 
 // readScopes 是每种 scope 写给模型看的说法
@@ -321,7 +335,11 @@ func (r *agentRun) read(ctx context.Context, arguments string) (toolResult, erro
 	if res, err := r.call(ctx, r.tabID, "read", req, &data); res != nil {
 		return *res, err
 	}
-	return toolResult{Text: formatRead(data, args.Index), URL: data.URL}, nil
+	display := fmt.Sprintf("读了「%s」，%d 字", oneLine(data.Title), data.TotalChars)
+	if strings.TrimSpace(data.Text) == "" {
+		display = "没有读到文字"
+	}
+	return toolResult{Text: formatRead(data, args.Index), Display: display, URL: data.URL}, nil
 }
 
 // formatRead 把读到的文字写给模型看。和快照一样，开头标明这只是资料
@@ -341,6 +359,11 @@ func formatRead(data readData, index *int) string {
 		return b.String()
 	}
 	b.WriteString(data.Text)
+	// 提醒放在读完文字的这一刻：只写在 reference 里，模型读完文字常常就觉得够了（2026-10-19 实测三篇漏看两篇）。
+	// 不说几张：轮播图挨着的几张也算露在屏幕上（被容器裁掉了，插件看不出来），数字不准
+	if data.Images > 0 {
+		b.WriteString("\n\n这里有大图，图里的字 read 读不到。笔记、商品详情的内容常常就在图里，要看就 screenshot：填图片所在元素的编号只截图片，小字也看得清。")
+	}
 	if data.Truncated {
 		fmt.Fprintf(&b, "\n\n一共 %d 字，只读了前 %d 字。", data.TotalChars, readMaxChars)
 	}
@@ -396,9 +419,10 @@ func (r *agentRun) screenshot(ctx context.Context, arguments string) (toolResult
 		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
 	return toolResult{
-		Text:  fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, shot.Width, shot.Height),
-		Image: "data:" + shot.Mime + ";base64," + shot.Data,
-		URL:   shot.URL,
+		Text:    fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, shot.Width, shot.Height),
+		Display: fmt.Sprintf("截了一张图（%d×%d）", shot.Width, shot.Height),
+		Image:   "data:" + shot.Mime + ";base64," + shot.Data,
+		URL:     shot.URL,
 	}, nil
 }
 
@@ -475,14 +499,22 @@ func (r *agentRun) typeText(ctx context.Context, arguments string) (toolResult, 
 	return r.afterAct(fmt.Sprintf("已在 [%d] 里填入「%s」并按了回车。", args.Index, args.Text), act), nil
 }
 
-// press 按一个键。按完页面可能变了（浮层关了、网址变回去了），和点击一样要求先 snapshot
+// pressKeys 是能按的键，和插件的 PRESS_KEYS 一致；值是给模型、给用户看的说法
+var pressKeys = map[string]string{
+	"Escape":     "按 Esc 关闭浮层",
+	"ArrowRight": "翻到下一张图",
+	"ArrowLeft":  "翻到上一张图",
+}
+
+// press 按一个键。Escape 以后页面可能变了（浮层关了、网址变回去了），和点击一样要求先 snapshot；
+// 方向键只是翻轮播图，页面别的地方不变，编号照样能用，同一轮后面的截图也不用跳过
 func (r *agentRun) press(ctx context.Context, arguments string) (toolResult, error) {
 	var args pressArgs
 	if res := decodeArgs(arguments, &args, `{"key": "Escape"}`); res != nil {
 		return *res, nil
 	}
-	if args.Key != "Escape" {
-		return toolResult{Failed: true, Text: "现在只能按 Escape。"}, nil
+	if _, ok := pressKeys[args.Key]; !ok {
+		return toolResult{Failed: true, Text: "只能按 Escape、ArrowRight、ArrowLeft。"}, nil
 	}
 	if res := r.requireTab(); res != nil {
 		return *res, nil
@@ -491,7 +523,13 @@ func (r *agentRun) press(ctx context.Context, arguments string) (toolResult, err
 	if res, err := r.call(ctx, r.tabID, "press", args, &act); res != nil {
 		return *res, err
 	}
-	return r.afterAct("已按 Escape。", act), nil
+	if args.Key == "Escape" {
+		return r.afterAct("已按 Escape。", act), nil
+	}
+	return toolResult{
+		Text: fmt.Sprintf("已按 %s（%s）。快照里的编号还能用；要看这一张，就 screenshot 图片区的编号。", args.Key, pressKeys[args.Key]),
+		URL:  act.URL,
+	}, nil
 }
 
 // actResult 是插件 click / type 的结果
@@ -508,6 +546,7 @@ func (r *agentRun) afterAct(done string, act actResult) toolResult {
 		r.openedTabs = append(r.openedTabs, tab.TabID)
 		return toolResult{
 			Text:        done + fmt.Sprintf("结果在新标签页里打开了：「%s」（%s），已经切换到这个标签页。先 snapshot 再继续。", oneLine(tab.Title), tab.URL),
+			Display:     "在新标签页里打开了「" + oneLine(tab.Title) + "」",
 			PageChanged: true,
 			URL:         tab.URL,
 		}
@@ -563,6 +602,7 @@ func (r *agentRun) scroll(ctx context.Context, arguments string) (toolResult, er
 	return toolResult{
 		Text: fmt.Sprintf("已向%s滚动 %d 屏。现在上面还有 %.1f 屏，下面还有 %.1f 屏。先 snapshot 查看新出现的内容。",
 			direction, args.Pages, pos.PagesAbove, pos.PagesBelow),
+		Display:     fmt.Sprintf("上面还有 %.1f 屏，下面还有 %.1f 屏", pos.PagesAbove, pos.PagesBelow),
 		PageChanged: true,
 	}, nil
 }

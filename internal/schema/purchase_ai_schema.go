@@ -19,6 +19,14 @@
 
 package schema
 
+import (
+	"strings"
+
+	"github.com/apache/answer/internal/base/reason"
+	"github.com/apache/answer/internal/base/validator"
+	"github.com/segmentfault/pacman/errors"
+)
+
 // PurchaseAIAnalyzeReq asks for an AI opinion on one purchase request.
 type PurchaseAIAnalyzeReq struct {
 	QuestionID string `validate:"required" json:"question_id"`
@@ -79,4 +87,34 @@ type PurchaseAIIdentifyReq struct {
 // show no product, which is an answer rather than an error.
 type PurchaseAIIdentifyResp struct {
 	Product *PurchaseProduct `json:"product"`
+}
+
+// PurchaseAIChatReq is one turn of the chat: the whole conversation so far,
+// oldest first, ending with the user's new message. The server keeps no
+// history yet, so the client sends it back each time.
+type PurchaseAIChatReq struct {
+	Messages []PurchaseAIChatMessage `json:"messages" validate:"required,min=1,max=40,dive"`
+	// UserID is filled by the controller, never by the client.
+	UserID string `json:"-"`
+}
+
+// PurchaseAIChatMessage is one message. Images are urls returned by POST /file,
+// the same rule as a post's screenshots; an assistant message has none.
+type PurchaseAIChatMessage struct {
+	Role   string   `json:"role" validate:"required,oneof=user assistant"`
+	Text   string   `json:"text" validate:"max=8000"`
+	Images []string `json:"images" validate:"max=5,dive,url"`
+}
+
+// Check wants the conversation to end with something from the user to answer.
+func (req *PurchaseAIChatReq) Check() (errFields []*validator.FormErrorField, err error) {
+	n := len(req.Messages)
+	if n == 0 || req.Messages[n-1].Role != "user" ||
+		(strings.TrimSpace(req.Messages[n-1].Text) == "" && len(req.Messages[n-1].Images) == 0) {
+		return append(errFields, &validator.FormErrorField{
+			ErrorField: "messages",
+			ErrorMsg:   reason.RequestFormatError,
+		}), errors.BadRequest(reason.RequestFormatError)
+	}
+	return nil, nil
 }

@@ -57,7 +57,7 @@ func NewHTTPServer(debug bool,
 		uiConf.APIBaseURL+"/answer/admin/api",
 	))
 	r.Use(func(ctx *gin.Context) {
-		if strings.Contains(ctx.Request.URL.Path, "/chat/completions") {
+		if isStream(ctx.Request.URL.Path) {
 			return
 		}
 		brotli.Brotli(brotli.DefaultCompression)(ctx)
@@ -123,4 +123,21 @@ func NewHTTPServer(debug bool,
 	mcpAPIGroup.Use(authUserMiddleware.AuthMcpEnable(), authUserMiddleware.AuthAPIKey())
 	answerRouter.RegisterMCPRouter(mcpAPIGroup)
 	return r
+}
+
+// streamPaths are the endpoints that stream server-sent events. Compression
+// has to skip them: the compressor holds small writes until it has a block's
+// worth, so every event would arrive at once when the stream ends.
+var streamPaths = []string{
+	"/chat/completions",
+	"/answer/api/v1/purchase/ai/chat",
+}
+
+func isStream(path string) bool {
+	for _, p := range streamPaths {
+		if strings.HasSuffix(path, p) {
+			return true
+		}
+	}
+	return false
 }

@@ -190,17 +190,15 @@ func (r *agentRun) chat(ctx context.Context, req *llm.ChatReq) (*llm.ChatResp, e
 	}
 
 	resp, err := once()
-
-	if err == nil {
-		return resp, nil
+	if err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+		resp, err = once()
 	}
-
-	if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
-		return once()
-
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, err
+	// 循环里的每一步和收尾都经过这里，思考在这里发一次就都覆盖到了
+	r.emitReasoning(ctx, resp)
+	return resp, nil
 }
 
 // runCalls 按顺序执行一轮的调用（④），返回和 calls 一样长、一一对应的结果。
@@ -220,9 +218,19 @@ func (r *agentRun) runCalls(ctx context.Context, tools map[string]agentTool, cal
 			continue
 		}
 
+		// 跳过的调用不发事件，用户只看到真的做了的事；done 不是一张工具卡片，它的回答走 text
+		id := fmt.Sprintf("%d-%d", r.step, i)
+		shown := call.Name != toolDone
+		if shown {
+			r.emitToolStart(ctx, id, call)
+		}
+
 		res, err := r.runTool(ctx, tools, call)
 		if errors.Is(err, errBrowserGone) {
 			toolRes[i] = toolResult{Failed: true, Text: browserGoneText}
+			if shown {
+				r.emitToolEnd(ctx, id, toolRes[i])
+			}
 			skip = skippedText
 			gone = err
 			continue
@@ -232,6 +240,9 @@ func (r *agentRun) runCalls(ctx context.Context, tools map[string]agentTool, cal
 		}
 
 		toolRes[i] = res
+		if shown {
+			r.emitToolEnd(ctx, id, res)
+		}
 		switch {
 		case res.Done:
 			skip = skippedAfterDoneText

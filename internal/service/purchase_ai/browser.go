@@ -22,6 +22,7 @@ package purchaseai
 import (
 	"context"
 	"encoding/json"
+	"os"
 
 	"github.com/apache/answer/internal/service/browser"
 )
@@ -38,8 +39,7 @@ type Browser interface {
 	Connected() bool
 }
 
-// noBrowser 是还没接上 Hub 时的浏览器：永远没连上，Agent 降级成直接回答。
-// Hub 挂进 answer run 之后（阶段 3）换成真的。
+// noBrowser 是没有浏览器时用的：永远没连上，Agent 降级成直接回答。
 type noBrowser struct{}
 
 func (noBrowser) Call(context.Context, int, string, any) (json.RawMessage, error) {
@@ -48,5 +48,13 @@ func (noBrowser) Call(context.Context, int, string, any) (json.RawMessage, error
 
 func (noBrowser) Connected() bool { return false }
 
-// NewNoBrowser 给依赖注入用
-func NewNoBrowser() Browser { return noBrowser{} }
+// NewBrowser 给依赖注入用。设置了 BROWSER_HUB_URL 和 BROWSER_HUB_TOKEN 时，通过调试接口使用
+// answer browser 进程里的 Hub（和 case 运行器一样）；没设置就没有浏览器，Agent 降级成直接回答。
+// 这是 Hub 挂进 answer run 之前的过渡做法
+func NewBrowser() Browser {
+	hubURL, token := os.Getenv("BROWSER_HUB_URL"), os.Getenv("BROWSER_HUB_TOKEN")
+	if hubURL == "" || token == "" {
+		return noBrowser{}
+	}
+	return browser.NewDebugClient(hubURL, token)
+}

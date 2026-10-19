@@ -217,7 +217,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	collectionController := controller.NewCollectionController(collectionService)
 	questionController := controller.NewQuestionController(questionService, answerService, rankService, siteInfoCommonService, captchaService, rateLimitMiddleware)
 	client := llm.NewClient(siteInfoCommonService)
-	browser := purchaseai.NewNoBrowser()
+	browser := purchaseai.NewBrowser()
 	uploaderService := uploader.NewUploaderService(serviceConf, siteInfoCommonService, fileRecordService)
 	purchaseVoteService := purchasevote.NewPurchaseVoteService(purchaseRepo, questionRepo, noticequeueService)
 	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, browser, uploaderService, purchaseVoteService)

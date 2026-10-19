@@ -274,6 +274,7 @@ func (a *AnswerAPIRouter) RegisterAnswerAPIRouter(r *gin.RouterGroup) {
 	// purchase ai
 	r.POST("/purchase/ai/analyze", a.purchaseAIController.Analyze)
 	r.POST("/purchase/ai/identify", a.purchaseAIController.Identify)
+	r.POST("/purchase/ai/chat", a.purchaseAIController.Chat)
 
 	// purchase vote
 	r.POST("/purchase/vote", a.purchaseVoteController.Vote)

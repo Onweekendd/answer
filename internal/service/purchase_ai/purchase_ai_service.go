@@ -57,6 +57,7 @@ type PurchaseAIService struct {
 	browser         Browser
 	uploaderService uploader.UploaderService
 	voteService     *purchasevote.PurchaseVoteService
+	chatOptions     chatOptions
 }
 
 // NewPurchaseAIService new purchase ai service
@@ -81,6 +82,7 @@ func NewPurchaseAIService(
 		browser:         browser,
 		uploaderService: uploaderService,
 		voteService:     voteService,
+		chatOptions:     chatOptionsFromEnv(),
 	}
 	// the queue calls handlers with a fresh context, so an analysis outlives the
 	// request that asked for it instead of dying when that request returns

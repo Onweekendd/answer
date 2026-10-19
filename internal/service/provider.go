@@ -92,7 +92,7 @@ var ProviderSetService = wire.NewSet(
 	content.NewQuestionService,
 	purchase.NewPurchaseService,
 	purchaseai.NewPurchaseAIService,
-	purchaseai.NewNoBrowser,
+	purchaseai.NewBrowser,
 	purchasevote.NewPurchaseVoteService,
 	purchaseaiqueue.NewService,
 	llm.NewClient,
