@@ -31,6 +31,9 @@ const (
 	// snapshotOmitted 替换旧快照的内容
 	snapshotOmitted = "（这是之前的页面，内容已省略，以最新一份快照为准。）"
 
+	// screenshotOmitted 替换 Agent 自己截的旧截图（用户上传的截图不换）
+	screenshotOmitted = "（这是之前的截图，已省略，以最新一张截图为准。）"
+
 	// skippedText 回复因为页面变了而没有执行的调用（概念 1）
 	skippedText = "没有执行：前一个动作可能改变了页面，这个调用用的编号已经过期。先 snapshot 查看新页面，再决定要不要做。"
 

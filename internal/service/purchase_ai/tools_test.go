@@ -22,6 +22,7 @@ package purchaseai
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/apache/answer/internal/service/browser"
@@ -83,6 +84,101 @@ func Test_hover(t *testing.T) {
 	res, err = r.hover(context.Background(), `{"index":3}`)
 	require.NoError(t, err)
 	require.True(t, res.Failed)
+}
+
+func Test_screenshot(t *testing.T) {
+	t.Run("截当前这一屏：图片放进 Image，文字告诉模型图在下一条消息里，不算改变页面", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+
+		// Act
+		res, err := r.screenshot(context.Background(), `{}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, res.Failed)
+		require.False(t, res.PageChanged)
+		require.Contains(t, res.Text, "下一条消息")
+		require.True(t, strings.HasPrefix(res.Image, "data:image/jpeg;base64,"))
+		require.Equal(t, []string{"open " + jdHome, "screenshot"}, b.calls)
+	})
+
+	t.Run("填了 index 就只截那个元素", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+
+		// Act
+		res, err := r.screenshot(context.Background(), `{"index":3}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.Contains(t, res.Text, "[3]")
+		require.Equal(t, "screenshot 3", b.calls[len(b.calls)-1])
+	})
+
+	t.Run("还没打开网页时不截图，告诉模型先 open", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := newAgentRun(&fakeLLM{}, b, testLimits())
+
+		// Act
+		res, err := r.screenshot(context.Background(), `{}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.True(t, res.Failed)
+		require.Empty(t, b.calls)
+	})
+
+	t.Run("插件报错（比如窗口被最小化）时算一次失败，不带图片", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+		b.fail["screenshot"] = &browser.CommandError{Code: "EXEC_FAILED", Message: "页面不可见"}
+
+		// Act
+		res, err := r.screenshot(context.Background(), `{}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.True(t, res.Failed)
+		require.Empty(t, res.Image)
+	})
+}
+
+func Test_press(t *testing.T) {
+	t.Run("按 Escape：发给插件，算页面变了，告诉模型先 snapshot", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+
+		// Act
+		res, err := r.press(context.Background(), `{"key":"Escape"}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, res.Failed)
+		require.True(t, res.PageChanged)
+		require.Contains(t, res.Text, "snapshot")
+		require.Equal(t, "press Escape", b.calls[len(b.calls)-1])
+	})
+
+	t.Run("别的键不发给插件，告诉模型只能按 Escape", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+		before := len(b.calls)
+
+		// Act
+		res, err := r.press(context.Background(), `{"key":"Delete"}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.True(t, res.Failed)
+		require.Len(t, b.calls, before)
+	})
 }
 
 func Test_open(t *testing.T) {

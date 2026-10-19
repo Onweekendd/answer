@@ -33,6 +33,10 @@ type toolResult struct {
 	Snapshot    bool   // 这是一份快照，下一轮要换成占位语（概念 2）
 	Done        bool   // 模型调用了 done（概念 7）
 
+	// Image 是截图的 data URI。工具消息里放不了图，它放在这一轮全部工具回复之后的一条用户消息里，
+	// 下一轮开始时和旧快照一样换成占位语，只留最新一张（阶段 2 概念 5）
+	Image string
+
 	Answer  string // done 的回答
 	Success bool   // done 说要求的事有没有做成
 

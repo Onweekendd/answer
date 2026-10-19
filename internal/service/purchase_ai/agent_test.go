@@ -21,6 +21,7 @@ package purchaseai
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -99,6 +100,7 @@ type fakeBrowser struct {
 	tabs      map[int]string  // 标签页 id → 现在的网址
 	scrolled  map[int]float64 // 标签页 id → 往下滚了几屏，跳转以后回到顶部
 	calls     []string        // 收到的调用，比如 "open https://www.jd.com"、"click 3"
+	shots     int             // 截过几张图，每张图的内容都不一样
 }
 
 func newFakeBrowser() *fakeBrowser {
@@ -116,6 +118,7 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 		Submit    bool   `json:"submit"`
 		Direction string `json:"direction"`
 		Pages     int    `json:"pages"`
+		Key       string `json:"key"`
 	}
 	_ = json.Unmarshal(raw, &a)
 
@@ -128,6 +131,18 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 	}
 
 	switch cmd {
+	case "screenshot":
+		f.shots++
+		name := "screenshot"
+		if strings.Contains(string(raw), `"index"`) {
+			name = fmt.Sprintf("screenshot %d", a.Index)
+		}
+		f.calls = append(f.calls, name)
+		data := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("shot%d", f.shots)))
+		return json.Marshal(map[string]any{"data": data, "mime": "image/jpeg", "width": 1024, "height": 576, "url": f.tabs[tabID]})
+	case "press":
+		f.calls = append(f.calls, "press "+a.Key)
+		return f.acted(tabID, nil), nil
 	case "hover":
 		f.calls = append(f.calls, fmt.Sprintf("hover %d", a.Index))
 		return f.acted(tabID, nil), nil
@@ -334,7 +349,104 @@ func Test_run(t *testing.T) {
 		for _, tool := range model.reqs[0].Tools {
 			names = append(names, tool.Name)
 		}
-		require.Equal(t, []string{toolOpen, toolNavigate, toolSnapshot, toolClick, toolHover, toolType, toolScroll, toolDone}, names)
+		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolDone}, names)
+	})
+
+	t.Run("截图放在这一轮全部工具回复之后的一条用户消息里，截图不改变页面，同一轮后面的调用照常执行", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			calls(toolCall("c2", toolShot, `{}`), toolCall("c3", toolSnapshot, `{}`)),
+			calls(doneCall("c4", "好")),
+		}}
+		b := newFakeBrowser()
+
+		// Act
+		_, err := runAgentWith(model, b, testLimits())
+
+		// Assert：两个调用都执行了
+		require.NoError(t, err)
+		require.Equal(t, []string{"open " + jdHome, "screenshot", "snapshot"}, b.calls)
+
+		// 第三次请求的结尾：assistant（两个调用）→ 两条工具回复 → 一条放截图的用户消息
+		msgs := model.reqs[2].Messages
+		tail := msgs[len(msgs)-4:]
+		require.Equal(t, llm.RoleAssistant, tail[0].Role)
+		require.Equal(t, []string{"c2", "c3"}, []string{tail[1].ToolCallID, tail[2].ToolCallID})
+		require.Contains(t, tail[1].Parts[0].Text, "下一条消息")
+		require.Equal(t, llm.RoleUser, tail[3].Role)
+		require.Len(t, tail[3].Parts, 2)
+		require.True(t, strings.HasPrefix(tail[3].Parts[1].ImageURL, "data:image/jpeg;base64,"))
+	})
+
+	t.Run("旧截图换成占位语，只留最新一张；用户上传的截图一直保留", func(t *testing.T) {
+		// Arrange：用户上传了一张截图；Agent 截了两次
+		uploaded := "data:image/png;base64,VVBMT0FE"
+		start := []llm.Message{
+			llm.Text(llm.RoleSystem, "sys"),
+			{Role: llm.RoleUser, Parts: []llm.Part{{Text: "这个值得买吗"}, {ImageURL: uploaded}}},
+		}
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			calls(toolCall("c2", toolShot, `{}`)),
+			calls(toolCall("c3", toolShot, `{"index":3}`)),
+			calls(doneCall("c4", "好")),
+		}}
+		b := newFakeBrowser()
+
+		// Act
+		_, err := newAgentRun(model, b, testLimits()).run(context.Background(), start, true)
+
+		// Assert：第四次请求里，第一张截图已经换成占位语，第二张还在，用户上传的那张没动
+		require.NoError(t, err)
+		var shots []llm.Message
+		for _, msg := range model.reqs[3].Messages[2:] {
+			if msg.Role == llm.RoleUser && strings.HasPrefix(msg.Parts[0].Text, "这是第") || msg.Role == llm.RoleUser && msg.Parts[0].Text == screenshotOmitted {
+				shots = append(shots, msg)
+			}
+		}
+		require.Len(t, shots, 2)
+		require.Equal(t, []llm.Part{{Text: screenshotOmitted}}, shots[0].Parts)
+		require.NotEmpty(t, shots[1].Parts[1].ImageURL)
+		require.Equal(t, uploaded, model.reqs[3].Messages[1].Parts[1].ImageURL)
+		require.Equal(t, []string{"open " + jdHome, "screenshot", "screenshot 3"}, b.calls)
+	})
+
+	t.Run("最后一步只回了文字，直接当作回答，不再提醒：提醒了也没有步数去调用 done", func(t *testing.T) {
+		// Arrange：一共只有 2 步
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			{Content: "**买** 京东自营 5999 元"},
+		}}
+		limits := testLimits()
+		limits.maxSteps = 2
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), limits)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, "**买** 京东自营 5999 元", res.Text)
+		require.Empty(t, res.Finish)
+		require.Len(t, model.reqs, 2)
+	})
+
+	t.Run("收尾时模型把 done 当成文字写了出来，取出里面的回答", func(t *testing.T) {
+		// Arrange：只有 1 步，用完以后收尾；收尾的回复是 DSML 标记
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			{Content: leakedDone("**再等等** 双 11 前别买")},
+		}}
+		limits := testLimits()
+		limits.maxSteps = 1
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), limits)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, finishSteps, res.Finish)
+		require.Equal(t, "**再等等** 双 11 前别买", res.Text)
 	})
 
 	t.Run("同一轮里的调用按顺序执行：先填字，再点搜索", func(t *testing.T) {
@@ -681,4 +793,37 @@ func Test_run(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 		require.Len(t, model.reqs, 1)
 	})
+}
+
+// leakedDone 是 deepseek 把调用 done 写成文字时的样子（2026-10-18 小红书那次运行里的原样格式）
+func leakedDone(text string) string {
+	return `<｜｜DSML｜｜ calls>
+<｜｜DSML｜｜ invoke name="done">
+<｜｜DSML｜｜ parameter name="success" string="false">true</｜｜DSML｜｜ parameter>
+<｜｜DSML｜｜ parameter name="text" string="true">` + text + `</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>`
+}
+
+func Test_answerText(t *testing.T) {
+	multiLine := "**不买**\n- 理由一\n- 理由二"
+	notDone := `<｜｜DSML｜｜ invoke name="click"><｜｜DSML｜｜ parameter name="text">x</｜｜DSML｜｜ parameter>`
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"正常的回答原样返回", "**买** 很好", "**买** 很好"},
+		{"done 写成了文字：取出 text，多行也行", leakedDone(multiLine), multiLine},
+		{"写成文字的不是 done：原样返回，不乱取", notDone, notDone},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Act
+			got := answerText(&llm.ChatResp{Content: tc.content})
+
+			// Assert
+			require.Equal(t, tc.want, got)
+		})
+	}
 }

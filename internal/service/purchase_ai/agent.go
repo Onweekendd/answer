@@ -23,7 +23,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/apache/answer/internal/service/llm"
 )
@@ -59,14 +61,16 @@ func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bo
 		}
 	}
 
-	var snapshotAt []int // 快照的工具消息在 messages 里的下标
-	reminded := false    // 已经提醒过一次"调用 done"
+	var snapshotAt []int   // 快照的工具消息在 messages 里的下标
+	var screenshotAt []int // Agent 自己截的图所在的用户消息的下标；用户上传的截图不在里面，永远保留
+	reminded := false      // 已经提醒过一次"调用 done"
 
 	for step := 0; step < r.limits.maxSteps; step++ {
 		r.step = step
 
-		// ① 旧快照换成占位语，只留最新的一份
+		// ① 旧快照换成占位语，只留最新的一份；截图也一样
 		compactSnapshots(messages, snapshotAt)
+		compactScreenshots(messages, screenshotAt)
 
 		// ② 调用模型
 		resp, err := r.chat(ctx, &llm.ChatReq{Messages: messages, Tools: defs})
@@ -76,9 +80,10 @@ func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bo
 		messages = append(messages, assistantMessage(resp))
 
 		if len(resp.ToolCalls) == 0 {
-			// ③ 只回了文字：没给工具，或者已经提醒过一次，就当作答案；否则提醒它调用 done
-			if len(defs) == 0 || reminded {
-				return &agentResult{Text: resp.Content, Success: true, Steps: r.steps, Reasoning: resp.Reasoning}, nil
+			// ③ 只回了文字：没给工具、已经提醒过一次，或者这是最后一步（提醒了也没有步数去调用 done），
+			// 就当作答案；否则提醒它调用 done
+			if len(defs) == 0 || reminded || step == r.limits.maxSteps-1 {
+				return &agentResult{Text: answerText(resp), Success: true, Steps: r.steps, Reasoning: resp.Reasoning}, nil
 			}
 			messages = append(messages, llm.Text(llm.RoleUser, doneReminder))
 			reminded = true
@@ -98,6 +103,13 @@ func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bo
 				snapshotAt = append(snapshotAt, len(messages))
 			}
 			messages = append(messages, toolMessage(call.ID, results[i].Text))
+		}
+		// 截图放在这一轮全部工具回复的后面：assistant 调用了几个工具，紧跟着的就必须是这几条回复
+		for _, res := range results {
+			if res.Image != "" {
+				screenshotAt = append(screenshotAt, len(messages))
+				messages = append(messages, screenshotMessage(step, res.Image))
+			}
 		}
 
 		// ⑥ 插件断开了：这一轮每个调用都已经有回复，对话是完整的，走收尾
@@ -148,6 +160,24 @@ func compactSnapshots(messages []llm.Message, snapshotAt []int) {
 		messages[idx].Parts = []llm.Part{{Text: snapshotOmitted}}
 	}
 
+}
+
+// compactScreenshots 把 Agent 自己截的旧截图换成占位语，只留最新一张，和 compactSnapshots 一样整个换掉 Parts
+func compactScreenshots(messages []llm.Message, screenshotAt []int) {
+	if len(screenshotAt) <= 1 {
+		return
+	}
+	for _, idx := range screenshotAt[:len(screenshotAt)-1] {
+		messages[idx].Parts = []llm.Part{{Text: screenshotOmitted}}
+	}
+}
+
+// screenshotMessage 是放截图的那条用户消息：先说明这是什么，再放图
+func screenshotMessage(step int, image string) llm.Message {
+	return llm.Message{Role: llm.RoleUser, Parts: []llm.Part{
+		{Text: fmt.Sprintf("这是第 %d 步截的图，是页面现在的样子：", step+1)},
+		{ImageURL: image},
+	}}
 }
 
 // chat 调用一次模型，期限是 llmTimeout（②）。
@@ -226,7 +256,7 @@ func (r *agentRun) finish(ctx context.Context, messages []llm.Message, reason fi
 	}
 
 	return &agentResult{
-		Text:      resp.Content,
+		Text:      answerText(resp),
 		Success:   false, // 被迫停下的，要求的事没有做完
 		Finish:    reason,
 		Steps:     r.steps,
@@ -246,6 +276,21 @@ func toolMessage(callID, text string) llm.Message {
 	msg := llm.Text(llm.RoleTool, text)
 	msg.ToolCallID = callID
 	return msg
+}
+
+// leakedDoneText 匹配模型当成文字写出来的 done 调用里的 text 参数。
+// deepseek 在没给工具、对话里却全是工具调用时（收尾就是这样），有时会照着样子把调用 done 写成它内部的
+// DSML 标记，而不是直接回答：<｜｜DSML｜｜ invoke name="done"> … <｜｜DSML｜｜ parameter name="text" …>回答</｜｜DSML｜｜ parameter>
+var leakedDoneText = regexp.MustCompile(`(?s)invoke name="done">.*?parameter name="text"[^>]*>(.*?)</[^<>]*parameter>`)
+
+// answerText 是模型回复里给用户的回答：正常就是 Content；模型把 done 写成了文字时，取出里面的 text
+func answerText(resp *llm.ChatResp) string {
+	if strings.Contains(resp.Content, "DSML") {
+		if m := leakedDoneText.FindStringSubmatch(resp.Content); m != nil {
+			return strings.TrimSpace(m[1])
+		}
+	}
+	return resp.Content
 }
 
 // doneResult 找出这一轮里 done 的结果

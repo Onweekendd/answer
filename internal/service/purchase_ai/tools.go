@@ -70,12 +70,15 @@ func newAgentRun(client llm.Client, b Browser, limits agentLimits) *agentRun {
 }
 
 const (
+	toolSkill    = "skill_read"
 	toolOpen     = "open"
 	toolNavigate = "navigate"
 	toolSnapshot = "snapshot"
+	toolShot     = "screenshot"
 	toolClick    = "click"
 	toolHover    = "hover"
 	toolType     = "type"
+	toolPress    = "press"
 	toolScroll   = "scroll"
 	toolDone     = "done"
 )
@@ -83,9 +86,29 @@ const (
 // snapshotMaxChars 是一份快照最多多少个字符，和插件的默认值一样
 const snapshotMaxChars = 8000
 
+type skillArgs struct {
+	Path string `json:"path" description:"skill 里的文件路径，比如 site-guide/SKILL.md、site-guide/references/taobao.md"`
+}
+
 type urlArgs struct {
 	URL string `json:"url" description:"完整的网址，以 http:// 或 https:// 开头，例如 https://www.jd.com"`
 }
+
+type screenshotArgs struct {
+	Index *int `json:"index,omitempty" description:"只截这个编号的元素，比如一张商品卡片，用来看清小字；不填就截当前这一屏"`
+}
+
+// 截图的尺寸和质量（阶段 2 概念 3）。2026-10-18 用本地测试页实测 deepseek-v4-flash：
+//   - token 大致按面积算，每 1500 多个像素一个，最少 190 左右：1600×555 是 562 个，1024×355 是 236 个
+//   - 缩小以后字很快就看不清：整屏缩到 0.55 倍（1024 宽）还能读出 22px 的价格，缩到 0.41 倍以下什么都读不出；
+//     12px 的小字（月销、地点、标签）整屏截图基本读不全
+//   - 只截一张商品卡片（331×336）约 200 个 token，标题、标签、价格、小字全对
+//
+// 所以整屏截图基本不缩小，只用来看布局和状态；读价格、小字靠只截那个元素
+const (
+	screenshotMaxWidth = 1600 // 输出图片最宽多少像素（实际像素，已经算上屏幕缩放）
+	screenshotQuality  = 80   // jpeg 质量：1600 宽也只有十几 KB，再低字的边缘会糊
+)
 
 type indexArgs struct {
 	Index int `json:"index" description:"元素编号，就是最新一份快照里每行开头方括号中的数字"`
@@ -95,6 +118,10 @@ type typeArgs struct {
 	Index  int    `json:"index" description:"输入框的编号，就是最新一份快照里每行开头方括号中的数字"`
 	Text   string `json:"text" description:"要填入的文字，会替换输入框里原来的内容"`
 	Submit bool   `json:"submit,omitempty" description:"填完以后是否按回车，比如在搜索框里搜索时填 true"`
+}
+
+type pressArgs struct {
+	Key string `json:"key" enum:"Escape" description:"要按的键，现在只有 Escape"`
 }
 
 type scrollArgs struct {
@@ -114,13 +141,19 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 		args              any
 		run               func(context.Context, string) (toolResult, error)
 	}{
+		{toolSkill, "读取 skill 里的文件。系统提示词里列出了可用的 skill：先读它的 SKILL.md，再按里面说的读需要的 reference。" +
+			"去一个网站操作之前，先读这个网站的 reference。", skillArgs{}, r.skillRead},
 		{toolOpen, "在后台新开一个标签页打开网址，之后的操作都在这个标签页里进行。任务开始时用它打开第一个网页。", urlArgs{}, r.open},
 		{toolNavigate, "在当前标签页里打开网址。想回到之前看过的页面时，navigate 到之前记下的网址。", urlArgs{}, r.navigate},
 		{toolSnapshot, "查看当前页面上可以操作的元素（链接、按钮、输入框、选项卡、菜单项），每行一个，开头的 [数字] 是编号，商品卡片的标题和价格也在里面。" +
 			"打开网页、悬停、点击、输入并回车、滚动以后页面都会变，要先 snapshot 再决定下一步：编号只在最新一份快照里有效。", struct{}{}, r.snapshot},
+		// 什么时候该截图（阶段 2 概念 1）；整屏和只截元素各适合看什么，见 screenshotMaxWidth 上面的实测
+		{toolShot, "截图，看页面实际长什么样，用来确认快照里看不到的东西：哪个选项被选中了、有没有弹窗挡住、页面是不是白屏或者还在加载、动作做完有没有生效。" +
+			"不填 index 截当前这一屏，适合看布局和状态，小字看不清；要读价格、优惠券、月销这类小字，填 index 只截那张商品卡片。先用快照，快照说不清楚再截图。", screenshotArgs{}, r.screenshot},
 		{toolClick, "点击最新一份快照里编号为 index 的元素。", indexArgs{}, r.click},
 		{toolHover, "将鼠标悬停在最新快照里编号为 index 的元素上，不点击。用于展开下拉菜单；悬停后先 snapshot 查看新出现的选项，再 click 选项。", indexArgs{}, r.hover},
 		{toolType, "往编号为 index 的输入框里填文字。submit 为 true 时填完按回车，比如在搜索框里搜索。", typeArgs{}, r.typeText},
+		{toolPress, "按键盘上的一个键。现在只有 Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快。按完先 snapshot 再继续。", pressArgs{}, r.press},
 		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
@@ -243,6 +276,61 @@ func (r *agentRun) snapshot(ctx context.Context, _ string) (toolResult, error) {
 	return toolResult{Text: formatSnapshot(snap), Snapshot: true, URL: snap.URL}, nil
 }
 
+// skillRead 读 skill 里的一个文件。不碰浏览器，还没打开网页时也能用
+func (r *agentRun) skillRead(_ context.Context, arguments string) (toolResult, error) {
+	var args skillArgs
+	if res := decodeArgs(arguments, &args, `{"path": "site-guide/SKILL.md"}`); res != nil {
+		return *res, nil
+	}
+	content, err := readSkillFile(skillFiles, args.Path)
+	if err != nil {
+		skill, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(args.Path), "/"), "/")
+		if files := skillFilesOf(skillFiles, skill); len(files) > 0 {
+			return toolResult{Failed: true, Text: fmt.Sprintf("没有 %s。这个 skill 里有：%s。", args.Path, strings.Join(files, "、"))}, nil
+		}
+		return toolResult{Failed: true, Text: fmt.Sprintf("没有 %s。路径的格式是 skill名/文件，比如 site-guide/SKILL.md。", args.Path)}, nil
+	}
+	return toolResult{Text: content}, nil
+}
+
+// screenshotData 是插件 screenshot 命令的结果
+type screenshotData struct {
+	Data   string `json:"data"` // base64，不带 data: 前缀
+	Mime   string `json:"mime"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	URL    string `json:"url"`
+}
+
+// screenshot 截当前这一屏，或者只截一个元素。截图不改变页面，同一轮后面的调用照常执行
+func (r *agentRun) screenshot(ctx context.Context, arguments string) (toolResult, error) {
+	var args screenshotArgs
+	if res := decodeArgs(arguments, &args, `{} 或 {"index": 3}`); res != nil {
+		return *res, nil
+	}
+	if res := r.requireTab(); res != nil {
+		return *res, nil
+	}
+	req := map[string]any{"maxWidth": screenshotMaxWidth, "quality": screenshotQuality}
+	what := "当前这一屏"
+	if args.Index != nil {
+		req["index"] = *args.Index
+		what = fmt.Sprintf("[%d]", *args.Index)
+	}
+	var shot screenshotData
+	if res, err := r.call(ctx, r.tabID, "screenshot", req, &shot); res != nil {
+		return *res, err
+	}
+	if shot.Data == "" || shot.Mime == "" {
+		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
+	}
+	return toolResult{
+		Text:  fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, shot.Width, shot.Height),
+		Image: "data:" + shot.Mime + ";base64," + shot.Data,
+		URL:   shot.URL,
+	}, nil
+}
+
 // formatSnapshot 把快照写给模型看。页面内容来自外部网站，开头标明它只是资料
 func formatSnapshot(snap snapshotData) string {
 	var b strings.Builder
@@ -314,6 +402,25 @@ func (r *agentRun) typeText(ctx context.Context, arguments string) (toolResult, 
 	}
 	// 按了回车，页面多半会跳转
 	return r.afterAct(fmt.Sprintf("已在 [%d] 里填入「%s」并按了回车。", args.Index, args.Text), act), nil
+}
+
+// press 按一个键。按完页面可能变了（浮层关了、网址变回去了），和点击一样要求先 snapshot
+func (r *agentRun) press(ctx context.Context, arguments string) (toolResult, error) {
+	var args pressArgs
+	if res := decodeArgs(arguments, &args, `{"key": "Escape"}`); res != nil {
+		return *res, nil
+	}
+	if args.Key != "Escape" {
+		return toolResult{Failed: true, Text: "现在只能按 Escape。"}, nil
+	}
+	if res := r.requireTab(); res != nil {
+		return *res, nil
+	}
+	var act actResult
+	if res, err := r.call(ctx, r.tabID, "press", args, &act); res != nil {
+		return *res, err
+	}
+	return r.afterAct("已按 Escape。", act), nil
 }
 
 // actResult 是插件 click / type 的结果
