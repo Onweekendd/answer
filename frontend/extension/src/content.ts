@@ -17,6 +17,7 @@
  * under the License.
  */
 
+import { inspect } from "./inspect";
 import {
   CommandError,
   type ProductArea,
@@ -25,6 +26,7 @@ import {
   type TabResponse,
   toErrorBody
 } from "./protocol";
+import { findClosers } from "./snapshot/closers";
 import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
@@ -82,6 +84,8 @@ async function handle(req: TabRequest): Promise<unknown> {
       return screenshotArea(req.index);
     case "productArea":
       return productArea(req.index);
+    case "inspect":
+      return inspect(document, req.text, req.up);
     case "viewport":
       return { width: window.innerWidth, height: window.innerHeight };
     case "scrollPosition":
@@ -94,6 +98,7 @@ interface SnapshotStats {
   strategy?: string;
   strategyMatched?: number;
   strategyError?: string;
+  overlay?: boolean; // 页面中间开着一个浮层（弹窗、笔记浮层），后面的元素多半点不到
   candidates: number; // 选择器选出来的元素
   hidden: number; // 其中看不见、被过滤掉的
   merged: number; // 看得见，但被外层合并掉的
@@ -131,6 +136,12 @@ function snapshot(maxChars = 8000): Snapshot {
   const extras = new Set(strategy.elements);
   labels = strategy.labels;
   links = strategy.links;
+  // 页面被浮层盖住时，把浮层的关闭按钮编进来，名字叫"关闭弹窗"
+  const overlay = topOverlay();
+  for (const closer of overlay ? findClosers(overlay, isVisible) : []) {
+    extras.add(closer);
+    labels.set(closer, "关闭弹窗");
+  }
   const candidates = Array.from(new Set([...document.querySelectorAll(INTERACTIVE), ...extras]));
   candidates.sort((a, b) => {
     const position = a.compareDocumentPosition(b);
@@ -169,6 +180,7 @@ function snapshot(maxChars = 8000): Snapshot {
 
     stats: {
       ...strategy.stats,
+      overlay: overlay !== undefined,
       candidates: candidates.length,
       hidden: candidates.length - shown.length,
       merged: shown.length - visible.length,
@@ -441,9 +453,9 @@ const MIN_MAIN_CHARS = 200;
 // readText 读出一块区域的文字。用 innerText：它按 CSS 排版取字，display:none 的不算，
 // 块级元素之间有换行，滚动容器里没露出来的部分也算（笔记正文很长时，不用滚动就能读完）
 function readText(maxChars: number, index?: number): ReadResult {
-  const { root, scope } = readRoot(index);
-  // 先整理、再打码、最后截断：截断不会切开一个手机号，让一半漏过打码
-  const full = maskPrivate(paragraphs((root as HTMLElement).innerText ?? ""));
+  const { roots, scope } = readRoot(index);
+  // 先整理、再打码、最后截断：截断不会切开一个手机号，让一半漏过打码。几块正文区之间空一行
+  const full = maskPrivate(roots.map((root) => paragraphs((root as HTMLElement).innerText ?? "")).join("\n\n"));
   const truncated = full.length > maxChars;
   return {
     url: displayUrl(location.href),
@@ -452,7 +464,7 @@ function readText(maxChars: number, index?: number): ReadResult {
     text: truncated ? `${full.slice(0, maxChars)}…` : full,
     truncated,
     totalChars: full.length,
-    images: largeImages(root)
+    images: roots.reduce((n, root) => n + largeImages(root), 0)
   };
 }
 
@@ -464,23 +476,27 @@ function largeImages(root: Element): number {
   }).length;
 }
 
-function readRoot(index?: number): { root: Element; scope: ReadScope } {
+function readRoot(index?: number): { roots: Element[]; scope: ReadScope } {
   if (index !== undefined) {
     const el = elementAt(index);
     if (!el.isConnected) {
       throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
     }
-    return { root: el, scope: "element" };
+    return { roots: [el], scope: "element" };
   }
   const overlay = topOverlay();
   if (overlay) {
-    return { root: overlay, scope: "overlay" };
+    return { roots: [overlay], scope: "overlay" };
   }
-  const main = strategyMain(new URL(location.href), document) ?? document.querySelector("main, [role=main], article");
+  const fromStrategy = strategyMain(new URL(location.href), document);
+  if (fromStrategy.length > 0) {
+    return { roots: fromStrategy, scope: "main" };
+  }
+  const main = document.querySelector("main, [role=main], article");
   if (main && ((main as HTMLElement).innerText ?? "").trim().length >= MIN_MAIN_CHARS) {
-    return { root: main, scope: "main" };
+    return { roots: [main], scope: "main" };
   }
-  return { root: document.body, scope: "page" };
+  return { roots: [document.body], scope: "page" };
 }
 
 // topOverlay 找盖在页面中间的浮层：屏幕正中那个点往外，最外层的弹窗或 fixed 定位、占了至少四分之一屏的元素。
@@ -489,7 +505,7 @@ function topOverlay(): Element | undefined {
   const viewportArea = window.innerWidth * window.innerHeight;
   let found: Element | undefined;
   for (
-    let el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    let el = document.elementFromPoint?.(window.innerWidth / 2, window.innerHeight / 2);
     el && el !== document.body && el !== document.documentElement;
     el = el.parentElement
   ) {

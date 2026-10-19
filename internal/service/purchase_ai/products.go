@@ -185,13 +185,14 @@ var productParams = map[string][]string{
 	"npcitem.jd.hk":            {}, // 海外自营的详情页，网址后面带着 pcdk=…
 	"www.ikea.cn":              {},
 	"detail.1688.com":          {},
+	"www.goofish.com":          {"id"}, // 闲鱼，网址里还有 spm、categoryId
 }
 
 // trackingParams 是没列出的网站上要去掉的参数（前缀）
 var trackingParams = []string{"spm", "scm", "utm_", "pvid", "abbucket", "ali_trackid", "ali_refid", "priceTId", "trackInfo", "xsec_"}
 
 // redirectHosts 是广告跳转的域名：链接里只有加密的参数，看不出是哪个商品，跳过去的地方也不一定对
-var redirectHosts = []string{"click.simba.taobao.com", "s.click.taobao.com", "ccc-x.jd.com", "union-click.jd.com"}
+var redirectHosts = []string{"click.simba.taobao.com", "s.click.taobao.com", "ccc-x.jd.com", "union-click.jd.com", "dj.1688.com"}
 
 // productPages 是认识的网站的商品页网址（清洗过以后）。这些网站上的链接不是商品页的一律不要：
 // 京东的搜索结果卡片里唯一的链接是客服，模型在搜索页上不填 index 记下的是搜索页（2026-10-19 实测）。
@@ -204,6 +205,8 @@ var productPages = []struct {
 	{[]string{"taobao.com"}, regexp.MustCompile(`^https?://item\.taobao\.com/item\.htm\?id=\d+$`)},
 	{[]string{"tmall.com", "tmall.hk"}, regexp.MustCompile(`^https?://(chaoshi\.)?detail\.tmall\.(com|hk)/item\.htm\?id=\d+(&skuId=\d+)?$`)},
 	{[]string{"ikea.cn"}, regexp.MustCompile(`^https?://www\.ikea\.cn/cn/zh/p/[^/?]+/?$`)},
+	{[]string{"1688.com"}, regexp.MustCompile(`^https?://detail\.1688\.com/offer/\d+\.html$`)},
+	{[]string{"goofish.com"}, regexp.MustCompile(`^https?://www\.goofish\.com/item\?id=\d+$`)},
 }
 
 // isProductPage 说一个清洗过的链接是不是商品页：认识的网站要对得上格式，不认识的都算

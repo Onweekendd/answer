@@ -28,7 +28,8 @@ export interface SiteStrategy {
   // 商品卡片的商品页链接，给商品卡片（product 命令）用。卡片里没有指向商品页的 <a> 时用得上
   // （京东的卡片靠 JS 跳转，里面唯一的 <a> 是客服）。返回 undefined 就照常在元素里找 <a>
   link?(el: Element): string | undefined;
-  // 页面的正文区，read 不填 index、又没有浮层时读它。页面没有 <main> 又不想读整页时用得上
-  // （京东详情页最上面是这个浏览器账号的"最近感兴趣"）。返回 null 就照常找 <main>，找不到读整页
-  main?(doc: Document): Element | null;
+  // 页面的正文区，read 不填 index、又没有浮层时按顺序读这几块。页面没有 <main> 又不想读整页时用得上
+  // （京东详情页最上面是这个浏览器账号的"最近感兴趣"；1688 详情页的价格在 3000 字以后）。
+  // 一块都没找到就照常找 <main>，找不到读整页
+  main?(doc: Document): (Element | null)[];
 }

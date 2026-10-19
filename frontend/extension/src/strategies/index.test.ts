@@ -168,8 +168,8 @@ it("京东详情页：规格选项编进来，名字带组名和选中状态；r
     "内存频率：[D5 6000]银爵国产颗粒 C36（已选）",
     "内存频率：[6000]星刃白灯条国产颗粒 C36（无此商品）"
   ]);
-  expect(strategyMain(url, document)?.className).toBe("page-right-content");
-  expect(strategyMain(new URL("https://search.jd.com/Search"), document)).toBeNull();
+  expect(strategyMain(url, document).map((el) => el.className)).toEqual(["page-right-content"]);
+  expect(strategyMain(new URL("https://search.jd.com/Search"), document)).toEqual([]);
 });
 
 it("天猫详情页：规格选项编进来，名字带组名、选中和无货，角标不要", () => {
@@ -194,4 +194,64 @@ it("天猫详情页：规格选项编进来，名字带组名、选中和无货�
     "颜色分类：芥末黄色",
     "颜色分类：藏青色（无货）"
   ]);
+});
+
+it("1688 搜索结果：广告卡片标上（广告），正常的商品写上商品编号，链接是商品页", () => {
+  // Arrange
+  document.body.innerHTML = `<a href="https://dj.1688.com/ci_bb?a=7255&e=x">羽绒被 ¥ 180</a>
+    <a href="http://detail.1688.com/offer/828190408511.html">芬兰原装羽绒被 ¥ 688</a>`;
+
+  // Act
+  const result = collectStrategyElements(new URL("https://s.1688.com/selloffer/offer_search.htm?keywords=x"), document);
+
+  // Assert
+  expect(result.elements.map((el) => result.labels.get(el))).toEqual([
+    "（广告）羽绒被 ¥ 180",
+    "商品 828190408511：芬兰原装羽绒被 ¥ 688"
+  ]);
+  expect([...result.links.values()]).toEqual(["https://detail.1688.com/offer/828190408511.html"]);
+});
+
+it("1688 详情页：read 按顺序读下单栏和商品属性，找不到的那块不要", () => {
+  // Arrange
+  document.body.innerHTML = '<div id="productAttributes">填充物 白鹅绒</div><div id="cart">¥ 376</div>';
+  const url = new URL("https://detail.1688.com/offer/828190408511.html");
+
+  // Act & Assert
+  expect(strategyMain(url, document).map((el) => el.id)).toEqual(["cart", "productAttributes"]);
+  document.getElementById("productAttributes")!.remove();
+  expect(strategyMain(url, document).map((el) => el.id)).toEqual(["cart"]);
+});
+
+it("闲鱼搜索结果：卡片名字价格在前，长描述放在后面，不会把价格挤掉", () => {
+  // Arrange：结构照 2026-10-19 用 inspect 看到的写
+  document.body.innerHTML = `<a class="feeds-item-wrap--rGdH_KoF" href="https://www.goofish.com/item?id=1083647455304">
+      <div class="feeds-image-container--biS2HR4Z"><img></div>
+      <div class="feeds-content--blv39SOi">
+        <div class="row1-wrap-title--qIlOySTh"><span class="main-title--sMrtWSJa">iPad Air 11英寸 M3 128G 国行 电池健康97%</span></div>
+        <div class="row2-wrap-cpv--_dKW4c6D"><div class="cpv-wrap--g0kR4uhH">几乎全新</div><div class="cpv-wrap--g0kR4uhH">128GB</div></div>
+        <div class="row3-wrap-price--IZmX7M0K"><div class="price-wrap--YzmU5cUl"><span>¥</span><span class="number--NKh1vXWM">3456</span><span>.78</span></div>
+          <div class="price-desc--hxYyq3i3">累计降价98.77元</div></div>
+        <div class="row4-wrap-seller--E0pIfXoF"><div class="seller-text-wrap--yZYFxBkK">广东</div><div class="credit-container--w3dcSvoi">百分百好评</div></div>
+      </div></a>`;
+
+  // Act
+  const result = collectStrategyElements(new URL("https://www.goofish.com/search?q=ipad"), document);
+
+  // Assert
+  expect(result.elements.map((el) => result.labels.get(el))).toEqual([
+    "¥3456.78 | 累计降价98.77元 | 几乎全新 128GB | iPad Air 11英寸 M3 128G 国行 电池健康97% | 广东百分百好评"
+  ]);
+});
+
+it("闲鱼详情页：read 只读卖家和商品信息，不读按账号兴趣推的「为你推荐」", () => {
+  // Arrange
+  document.body.innerHTML = `<div class="item-user-container--fbTUeNre">卖出31件宝贝</div>
+    <div class="item-main-container--jhpFKlaS">¥ 3456.78</div><div class="item-feeds-container--cYdVMAnU">为你推荐</div>`;
+
+  // Act
+  const roots = strategyMain(new URL("https://www.goofish.com/item?id=1"), document);
+
+  // Assert
+  expect(roots.map((el) => el.textContent)).toEqual(["卖出31件宝贝", "¥ 3456.78"]);
 });

@@ -56,3 +56,17 @@
   expect:
     visited: [item.jd.com] # 京东的卡片里没有指向商品页的链接，靠策略编号才点得进详情页
     min_cards: 1 # 卡片的链接要是商品页，不能是搜索页或者客服
+
+- name: 1688 详情页
+  task: 在 1688 找 200x230 的白鹅绒羽绒被，挑一款看详情，说出这个尺寸的批发价和几件起批
+  expect:
+    visited: [detail.1688.com/offer/] # 要点没有"（广告）"的卡片进详情页
+    min_cards: 1
+    min_prices: 1
+
+- name: 闲鱼二手
+  task: 闲鱼上看看二手 iPad Air M3 11 寸 128G 大概多少钱，推荐一个靠谱的
+  expect:
+    visited: [goofish.com/item] # 详情页在新标签页里打开
+    min_cards: 1
+    min_prices: 2

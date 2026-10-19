@@ -493,3 +493,25 @@ it("商品卡片：图只露出一条时先滚到中间再截，滚过以后还�
   expect(scrollIntoView).toHaveBeenCalled();
   expect(res).toEqual({ ok: true, data: { url: "https://www.ikea.cn/cn/zh/p/x", image: null } });
 });
+
+it("页面被浮层盖住时，浮层的关闭按钮以「关闭弹窗」编进快照", async () => {
+  // Arrange：全屏的 fixed 遮罩里有一个营销弹窗，关闭按钮是没有标签的 div
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  document.body.innerHTML = `<button>搜索</button>
+    <div id="mask" style="position: fixed"><div id="promo">秋冬上新95折</div><div class="dialog-close"></div></div>`;
+  const mask = document.getElementById("mask")!;
+  mask.getBoundingClientRect = square(0, 0, 1280);
+  document.querySelector(".dialog-close")!.getBoundingClientRect = square(900, 100, 24);
+  const promo = document.getElementById("promo")!;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => promo });
+
+  // Act
+  const res = await request({ type: "snapshot", maxChars: 8000 });
+
+  // Assert
+  expect(res.ok).toBe(true);
+  const data = res.ok ? (res.data as { elements: string; stats: { overlay?: boolean } }) : undefined;
+  expect(data?.elements).toMatch(/\[\d+\]<div[^>]*>关闭弹窗/);
+  expect(data?.stats.overlay).toBe(true);
+});

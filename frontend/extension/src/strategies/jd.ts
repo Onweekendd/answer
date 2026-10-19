@@ -64,7 +64,7 @@ export const jdItem: SiteStrategy = {
     const state = classes.includes("--selected") ? "（已选）" : classes.includes("--unavailable") ? "（无此商品）" : "";
     return `${name ? `${name}：` : "规格："}${text}${state}`;
   },
-  main: (doc) => doc.querySelector(".page-right-content")
+  main: (doc) => [doc.querySelector(".page-right-content")]
 };
 
 // groupLabel 往上找到同一组的组名（"系列品""内存频率"）。不用 :has()，测试用的 jsdom 不认

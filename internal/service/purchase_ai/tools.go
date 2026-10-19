@@ -284,6 +284,7 @@ type snapshotData struct {
 		PagesAbove float64 `json:"pagesAbove"`
 		PagesBelow float64 `json:"pagesBelow"`
 		Stable     *bool   `json:"stable"`
+		Overlay    bool    `json:"overlay"` // 页面中间开着一个浮层
 	} `json:"stats"`
 }
 
@@ -446,6 +447,9 @@ func formatSnapshot(snap snapshotData) string {
 	fmt.Fprintf(&b, "\n上面还有 %.1f 屏，下面还有 %.1f 屏。", snap.Stats.PagesAbove, snap.Stats.PagesBelow)
 	if snap.Truncated {
 		b.WriteString("元素太多，只列出了前面一部分，滚动以后可以看到更多。")
+	}
+	if snap.Stats.Overlay {
+		b.WriteString("页面中间开着一个浮层（弹窗、广告、笔记浮层），后面的元素多半点不到。要看后面的页面就先关掉它：有「关闭弹窗」那一行就 click 它，没有就 press Escape。验证码、登录、「访问太频繁」这类不要关，停下来告诉用户。")
 	}
 	if snap.Stats.Stable != nil && !*snap.Stats.Stable {
 		b.WriteString("页面一直在变化（轮播、倒计时，或者还在加载），内容可能不完整。")

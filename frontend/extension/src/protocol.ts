@@ -48,6 +48,8 @@ export interface CommandArgs {
   type: { index: number; text: string; submit?: boolean };
   // 上下滚动 pages 屏（默认 1），触发懒加载、看到下面的内容
   scroll: { direction: "up" | "down"; pages?: number };
+  // 调试用：text 所在的元素往上一层层的样子，up 不为空时再展开往上 up 层那个元素的子树。Agent 不用，写站点策略时用
+  inspect: { text: string; up?: number };
   // 插件从磁盘重新加载自己（开发用：pnpm watch 打包完自动调用）。tabId 填 0
   reload: Record<string, never>;
 }
@@ -147,6 +149,7 @@ export type TabRequest =
   | { type: "viewport" }
   | { type: "screenshotArea"; index?: number }
   | { type: "productArea"; index?: number }
+  | { type: "inspect"; text: string; up?: number }
   | { type: "visibility" }
   | { type: "scrollPosition" };
 

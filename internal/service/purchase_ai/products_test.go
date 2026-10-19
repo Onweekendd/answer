@@ -169,6 +169,9 @@ func Test_cleanProductURL(t *testing.T) {
 		{"京东海外自营也去掉", "https://npcitem.jd.hk/100378972868.html?pcdk=abc", "https://npcitem.jd.hk/100378972868.html", true},
 		{"没列出的网站只去掉追踪参数", "https://shop.example.com/p?sku=9&utm_source=a&spm=b", "https://shop.example.com/p?sku=9", true},
 		{"广告跳转不要", "https://click.simba.taobao.com/cc_im?p=xx&s=yy", "", false},
+		{"闲鱼只留 id", "https://www.goofish.com/item?spm=a21ybx.search.searchFeedList.14&id=1083647455304&categoryId=50023914", "https://www.goofish.com/item?id=1083647455304", true},
+		{"1688 的广告跳转也不要", "https://dj.1688.com/ci_bb?a=7255&e=x", "", false},
+		{"1688 商品页去掉参数", "http://detail.1688.com/offer/828190408511.html?sortType=&pageId=&abBizDataType=cbuOffer", "http://detail.1688.com/offer/828190408511.html", true},
 		{"不是网页地址不要", "javascript:alert(1)", "", false},
 	}
 	for _, c := range cases {
@@ -220,6 +223,11 @@ func Test_isProductPage(t *testing.T) {
 		{"https://muji.tmall.com/shop/view_shop.htm", false},
 		{"https://www.ikea.cn/cn/zh/p/fjaellarnika-30459285/", true},
 		{"https://www.ikea.cn/cn/zh/search/products/?q=x", false},
+		{"http://detail.1688.com/offer/828190408511.html", true},
+		{"https://s.1688.com/selloffer/offer_search.htm?keywords=x", false},
+		{"https://air.1688.com/kapp/1688-search/pc-image-search/", false},
+		{"https://www.goofish.com/item?id=1083647455304", true},
+		{"https://www.goofish.com/search?q=ipad", false},
 		{"https://shop.example.com/anything", true}, // 不认识的网站不管
 	}
 	for _, c := range cases {

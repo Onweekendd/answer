@@ -103,6 +103,8 @@ async function executeCommand(cmd: Command): Promise<unknown> {
         const tab = await chrome.tabs.get(cmd.tabId);
         return { url: found.url, title: tab.title ?? "", image };
       });
+    case "inspect":
+      return sendToTab(cmd.tabId, { type: "inspect", text: cmd.args.text, up: cmd.args.up });
     case "click":
       return actIn(cmd.tabId, { type: "click", index: cmd.args.index });
     case "hover":

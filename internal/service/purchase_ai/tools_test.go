@@ -427,6 +427,21 @@ func Test_formatSnapshot(t *testing.T) {
 	require.Contains(t, text, "没有可以操作的元素")
 	require.Contains(t, text, "只列出了前面一部分")
 	require.Contains(t, text, "一直在变化")
+	require.NotContains(t, text, "浮层")
+}
+
+func Test_formatSnapshot_浮层(t *testing.T) {
+	// Arrange：插件说页面中间开着一个浮层
+	snap := snapshotData{URL: jdHome, Title: "京东", Elements: "[0]<div>关闭弹窗"}
+	snap.Stats.Overlay = true
+
+	// Act
+	text := formatSnapshot(snap)
+
+	// Assert：告诉模型先关掉它，怎么关，以及验证码不要关
+	require.Contains(t, text, "开着一个浮层")
+	require.Contains(t, text, "「关闭弹窗」")
+	require.Contains(t, text, "验证码")
 }
 
 func Test_click(t *testing.T) {

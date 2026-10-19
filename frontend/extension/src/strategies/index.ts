@@ -17,12 +17,24 @@
  * under the License.
  */
 
+import { alibabaDetail, alibabaSearch } from "./alibaba1688";
+import { goofishItem, goofishSearch } from "./goofish";
 import { jd, jdItem } from "./jd";
 import { taobao, taobaoItem } from "./taobao";
 import type { SiteStrategy } from "./types";
 import { xiaohongshu } from "./xiaohongshu";
 
-const strategies: readonly SiteStrategy[] = [taobao, taobaoItem, xiaohongshu, jd, jdItem];
+const strategies: readonly SiteStrategy[] = [
+  taobao,
+  taobaoItem,
+  xiaohongshu,
+  jd,
+  jdItem,
+  alibabaSearch,
+  alibabaDetail,
+  goofishSearch,
+  goofishItem
+];
 
 export function collectStrategyElements(
   url: URL,
@@ -66,12 +78,12 @@ export function collectStrategyElements(
   return { elements: [], labels: new Map(), links: new Map(), stats: {} };
 }
 
-// strategyMain 是匹配到的策略给的正文区；没有匹配的策略、策略没给、或者策略出错，都返回 null
-export function strategyMain(url: URL, doc: Document, registry = strategies): Element | null {
+// strategyMain 是匹配到的策略给的正文区，页面上找不到的那几块去掉；没有匹配的策略、策略没给、或者策略出错，都返回空数组
+export function strategyMain(url: URL, doc: Document, registry = strategies): Element[] {
   const strategy = registry.find((s) => s.matches(url));
   try {
-    return strategy?.main?.(doc) ?? null;
+    return (strategy?.main?.(doc) ?? []).filter((el): el is Element => el !== null);
   } catch {
-    return null;
+    return [];
   }
 }
