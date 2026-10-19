@@ -44,3 +44,5 @@ script/pagebench/redact.txt
 
 # model config for script/agentcase; holds an API key
 script/agentcase/llm.local.json
+# full records from script/agentcase; hold page content
+script/agentcase/out/

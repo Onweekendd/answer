@@ -1,0 +1,32 @@
+# agentcase 的 case：任务 + 对它留下的痕迹的断言。
+# 只放只读任务（搜索、看价格），不下单、不加购。改 task 的措辞等于改测试。
+#
+# expect 里的条件全部满足才算通过：
+#   visited     每一项都要在某一步的网址里出现过（子串匹配，比如 "item.jd.com"）
+#   used        每个工具都要成功执行过至少一次。只在 case 专门测这个动作时才写（能判结果就别判过程）
+#   seen        每一段文字都要在某一份快照里出现过，用来判页面状态（比如某个选项卡被选中了）
+#   min_prices  回答里至少有这么多个不同的价格
+
+- name: 京东搜索
+  task: 打开京东首页，在搜索框搜 iphone 17，说出第一个商品的标题和价格
+  expect:
+    visited: [search.jd.com]
+    used: [type] # 这个 case 测的就是"在搜索框里输入"
+    min_prices: 1
+
+- name: 淘宝排序
+  task: 在淘宝搜 iphone 17，按销量排序，说出销量最高的商品和它的价格
+  expect:
+    seen: ["aria-selected=true>销量"] # 淘宝点"销量"以后网址不变，排序栏里"销量"变成选中状态
+    min_prices: 1
+
+- name: 1688 起批价
+  task: 在 1688 搜 iphone 手机壳，说出前 3 个商品的起批价
+  expect:
+    min_prices: 3
+
+- name: 京东详情页
+  task: 在京东搜 iphone 17，进入第一个商品的详情页，说出店铺名和价格
+  expect:
+    visited: [item.jd.com] # 京东在新标签页里打开详情页，这个 case 专门测跟随新标签页
+    min_prices: 1

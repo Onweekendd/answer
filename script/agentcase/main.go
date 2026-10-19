@@ -17,23 +17,30 @@
  * under the License.
  */
 
-// agentcase 让 Agent 在你自己的浏览器里做一个任务，打印每一步和最后的回答。
-// 现在只能跑一个 -task；1c 会在这里加上 case 文件和"做成了没有"的判定。
+// agentcase 让 Agent 在你自己的浏览器里跑 case，判定通过没有，最后输出每个 case 的通过率。
 //
 // 先启动 Hub（answer browser --console=false），插件连上以后：
 //
-//	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase -task "在淘宝搜 iPhone 17 256GB，看看现在卖多少钱"
+//	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase                      # 跑 cases.yaml 里的全部 case，每个 1 次
+//	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase -case 京东 -n 3      # 名字里带"京东"的，每个 3 次
+//	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase -task "在淘宝搜……"   # 临时跑一个任务，不判定
+//
+// 真实网站只能低频地跑：默认每个 case 1 次，两次运行之间至少等 -gap（默认 30 秒）。
 //
 // 模型从 script/agentcase/llm.local.json 读（不提交，格式见 llm.example.json）。key 不会被打印。
-// 每一步只打印工具、参数、网址和耗时，不打印快照内容：快照里可能有你的昵称、地址。
+// 每次运行的完整记录（每次调用模型的请求和回复）写到 -out 目录（不提交），写之前替换屏蔽词；
+// 里面有页面内容，只在本机看。终端里只打印工具、参数、网址、耗时和回答，不打印快照。
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -43,56 +50,193 @@ import (
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
 )
 
+type options struct {
+	hub, llmConfig, cases, only, task, out, redact string
+	n                                              int
+	gap                                            time.Duration
+}
+
 func main() {
-	hub := flag.String("hub", "http://127.0.0.1:8765", "Hub address")
-	config := flag.String("llm", "script/agentcase/llm.local.json", "model config (not committed)")
-	task := flag.String("task", "", "what the agent should do")
+	var o options
+	flag.StringVar(&o.hub, "hub", "http://127.0.0.1:8765", "Hub address")
+	flag.StringVar(&o.llmConfig, "llm", "script/agentcase/llm.local.json", "model config (not committed)")
+	flag.StringVar(&o.cases, "cases", "script/agentcase/cases.yaml", "case file")
+	flag.StringVar(&o.only, "case", "", "only run cases whose name contains this")
+	flag.StringVar(&o.task, "task", "", "run this one task instead of the case file, without judging")
+	flag.IntVar(&o.n, "n", 1, "runs per case")
+	flag.DurationVar(&o.gap, "gap", 30*time.Second, "pause between two runs (real sites: keep it low-frequency)")
+	flag.StringVar(&o.out, "out", "script/agentcase/out", "where full records go (not committed)")
+	flag.StringVar(&o.redact, "redact", "script/pagebench/redact.txt", "words to hide in records and answers, one per line (not committed)")
 	flag.Parse()
 
-	if err := run(*hub, *config, *task); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	if err := run(ctx, o); err != nil {
 		fmt.Fprintln(os.Stderr, "agentcase:", err)
 		os.Exit(1)
 	}
 }
 
-func run(hubURL, configPath, task string) error {
-	if strings.TrimSpace(task) == "" {
-		return fmt.Errorf("-task is required")
-	}
+// outcome 是一次运行的结果。跑不了的（插件没连上、模型服务报错、插件中途断开）不算失败：
+// 那是环境的问题，不是 Agent 做错了，算进去会把两件事混在一起（概念 2、4）
+type outcome string
+
+const (
+	outcomePass    outcome = "通过"
+	outcomeFail    outcome = "失败"
+	outcomeBlocked outcome = "跑不了"
+	outcomeNone    outcome = "未判定" // -task 临时任务
+)
+
+type attempt struct {
+	c        Case
+	i        int
+	outcome  outcome
+	reason   []string // 失败时没满足的条件；跑不了时的原因
+	res      *purchaseai.TaskResult
+	usage    llm.Usage
+	elapsed  time.Duration
+	ran      bool // 真的让 Agent 跑了（跑不了里有一种是根本没开始）
+	selfPass bool // 模型自己说做成了
+}
+
+func run(ctx context.Context, o options) error {
 	token := os.Getenv("BROWSER_HUB_TOKEN")
 	if token == "" {
 		return fmt.Errorf("BROWSER_HUB_TOKEN is not set")
 	}
-	provider, err := readProvider(configPath)
+	provider, err := readProvider(o.llmConfig)
 	if err != nil {
 		return err
 	}
+	if o.n < 1 {
+		return fmt.Errorf("-n must be at least 1")
+	}
 
-	b := browser.NewDebugClient(hubURL, token)
+	adhoc := strings.TrimSpace(o.task) != ""
+	var cases []Case
+	if adhoc {
+		cases = []Case{{Name: "task", Task: o.task}}
+	} else if cases, err = loadCases(o.cases, o.only); err != nil {
+		return err
+	}
+
+	b := browser.NewDebugClient(o.hub, token)
 	if !b.Connected() {
-		return fmt.Errorf("the extension is not connected to the hub at %s (start answer browser and check the popup)", hubURL)
+		return fmt.Errorf("the extension is not connected to the hub at %s (start answer browser and check the popup)", o.hub)
 	}
-	fmt.Printf("model %s, task: %s\n\n", provider.Model, task)
+	redact := loadRedact(o.redact)
+	runDir := filepath.Join(o.out, time.Now().Format("20060102-150405"))
+	fmt.Printf("model %s，%d 个 case，每个 %d 次，记录写到 %s\n", provider.Model, len(cases), o.n, runDir)
 
-	started := time.Now()
-	res, err := purchaseai.RunTask(context.Background(), llm.NewStaticClient(*provider), b, task)
-	if err != nil {
-		return describe(err)
+	var all []attempt
+	for _, c := range cases {
+		for i := 1; i <= o.n; i++ {
+			if len(all) > 0 {
+				fmt.Printf("\n等 %s 再跑下一次（低频）…\n", o.gap)
+				select {
+				case <-time.After(o.gap):
+				case <-ctx.Done():
+				}
+			}
+			if ctx.Err() != nil {
+				fmt.Println("\n中断了，下面是已经跑完的。")
+				printSummary(all)
+				return nil
+			}
+
+			fmt.Printf("\n==== %s（第 %d/%d 次）====\n任务：%s\n", c.Name, i, o.n, c.Task)
+			path := filepath.Join(runDir, fmt.Sprintf("%s-%d.json", c.Name, i))
+			a, err := runOnce(ctx, b, *provider, c, i, adhoc, func(rec runRecord) {
+				if err := save(path, rec, redact); err != nil {
+					fmt.Fprintln(os.Stderr, "save record:", err)
+				}
+			})
+			if err != nil {
+				return err
+			}
+			all = append(all, a)
+			printAttempt(a, redact)
+		}
 	}
 
-	printSteps(res.Steps)
-	fmt.Printf("\n用时 %s，%d 次工具调用，", time.Since(started).Round(time.Second), len(res.Steps))
-	switch {
-	case res.Finish != "":
-		fmt.Printf("被迫收尾：%s\n", res.Finish)
-	case res.Success:
-		fmt.Println("模型说做成了")
-	default:
-		fmt.Println("模型说没做成")
+	if !adhoc {
+		printSummary(all)
 	}
-	fmt.Println("\n---- 回答 ----")
-	fmt.Println(res.Text)
+	fmt.Printf("\n完整记录在 %s（有页面内容，只在本机看，不要提交）\n", runDir)
 	return nil
+}
+
+// runOnce 跑一次 case。返回的 error 只给"再跑也没用"的情况（模型配置错了），其余都折算成 outcome。
+// 每次调用模型以后、以及结束时，都把当时的记录交给 save：中途被打断也有记录可看
+func runOnce(ctx context.Context, b purchaseai.Browser, p llm.StaticProvider, c Case, i int, adhoc bool, save func(runRecord)) (attempt, error) {
+	a := attempt{c: c, i: i}
+	rec := runRecord{Case: c.Name, Attempt: i, Task: c.Task, Outcome: "进行中"}
+	defer func() { save(rec) }()
+
+	if !b.Connected() {
+		a.outcome, a.reason = outcomeBlocked, []string{"插件没连上 Hub"}
+		rec.Outcome, rec.Problems = string(a.outcome), a.reason
+		return a, nil
+	}
+
+	model := &recorder{inner: llm.NewStaticClient(p)}
+	model.after = func(call recordedCall) {
+		printLive(len(model.calls), call)
+		rec.Usage, rec.Calls = model.usage, model.calls
+		save(rec)
+	}
+	started := time.Now()
+	res, err := purchaseai.RunTask(ctx, model, b, c.Task)
+	a.elapsed, a.usage, a.ran, a.res = time.Since(started), model.usage, true, res
+	rec.Usage, rec.Calls = model.usage, model.calls
+
+	switch {
+	case err != nil:
+		if configError(err) {
+			return a, describe(err)
+		}
+		a.outcome, a.reason = outcomeBlocked, []string{describe(err).Error()}
+		rec.Error = a.reason[0]
+	case res.Finish == "browser_gone":
+		a.outcome, a.reason = outcomeBlocked, []string{"插件中途断开了"}
+	case adhoc:
+		a.outcome = outcomeNone
+	default:
+		a.reason = judge(c, res, model.snapshots())
+		a.outcome = outcomePass
+		if len(a.reason) > 0 {
+			a.outcome = outcomeFail
+		}
+	}
+	if res != nil {
+		a.selfPass = res.Success
+		rec.Result = res
+	}
+	rec.Outcome, rec.Problems = string(a.outcome), a.reason
+	return a, nil
+}
+
+// printLive 在每次调用模型以后打一行：模型要执行哪些工具，或者只回了文字。
+// 不打印快照和回答内容，回答等结束时再打印
+func printLive(n int, call recordedCall) {
+	switch {
+	case call.Error != "":
+		fmt.Printf("  #%d 模型报错\n", n)
+	case call.Response == nil:
+	case len(call.Response.ToolCalls) == 0:
+		fmt.Printf("  #%d 只回了文字（%d 字）\n", n, len([]rune(call.Response.Content)))
+	default:
+		for _, tc := range call.Response.ToolCalls {
+			fmt.Printf("  #%d %s %s\n", n, tc.Name, clip(tc.Arguments, 80))
+		}
+	}
+}
+
+// configError 是模型配置的问题：换哪个 case 都一样，接着跑只是白等
+func configError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "401") || strings.Contains(msg, "404")
 }
 
 // describe 把 Agent 的错误说成一句话。服务商的原话不打印：认证失败时它会带上 key 的最后几位
@@ -103,6 +247,8 @@ func describe(err error) error {
 		return fmt.Errorf("模型服务商认证失败（401）：检查 llm.local.json 里的 api_key 和 api_host 是不是同一家的")
 	case strings.Contains(msg, "404"):
 		return fmt.Errorf("模型服务商返回 404：检查 api_host 和 model 名字")
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("被中断了")
 	case strings.Contains(msg, "context deadline exceeded"):
 		return fmt.Errorf("超时了：整次任务最多 5 分钟，每次调用模型最多 60 秒")
 	}
@@ -129,6 +275,40 @@ func readProvider(path string) (*llm.StaticProvider, error) {
 	return &p, nil
 }
 
+func printAttempt(a attempt, redact []string) {
+	if a.res != nil {
+		printSteps(a.res.Steps)
+	}
+	fmt.Printf("\n结果：%s", a.outcome)
+	if a.ran {
+		fmt.Printf("（%s，%s token", a.elapsed.Round(time.Second), kilo(a.usage.TotalTokens))
+		if a.res != nil {
+			fmt.Printf("，%s", selfReport(a.res))
+		}
+		fmt.Print("）")
+	}
+	fmt.Println()
+	for _, r := range a.reason {
+		fmt.Println("  -", r)
+	}
+	if a.res != nil {
+		fmt.Println("---- 回答 ----")
+		fmt.Println(redactText(a.res.Text, redact))
+	}
+}
+
+// selfReport 是模型对自己的评价，单独一栏，不参与判定
+func selfReport(res *purchaseai.TaskResult) string {
+	switch {
+	case res.Finish != "":
+		return "被迫收尾：" + res.Finish
+	case res.Success:
+		return "模型说做成了"
+	default:
+		return "模型说没做成"
+	}
+}
+
 func printSteps(steps []purchaseai.TaskStep) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "步\t工具\t参数\t结果\t网址\t耗时")
@@ -140,6 +320,97 @@ func printSteps(steps []purchaseai.TaskStep) {
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", s.Step+1, s.Tool, clip(s.Arguments, 60), status, clip(s.URL, 70), s.Duration.Round(100*time.Millisecond))
 	}
 	_ = w.Flush()
+}
+
+// printSummary 每个 case 一行。通过率的分母不含跑不了的；步数、token、耗时是真的跑了的那几次的平均
+func printSummary(all []attempt) {
+	if len(all) == 0 {
+		return
+	}
+	fmt.Println("\n==== 汇总 ====")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "case\t通过率\t跑不了\t模型自评做成\t平均步数\t平均 token\t平均耗时")
+
+	var order []string
+	byCase := map[string][]attempt{}
+	for _, a := range all {
+		if _, ok := byCase[a.c.Name]; !ok {
+			order = append(order, a.c.Name)
+		}
+		byCase[a.c.Name] = append(byCase[a.c.Name], a)
+	}
+	for _, name := range order {
+		s := summarize(byCase[name])
+		rate := "-"
+		if s.judged > 0 {
+			rate = fmt.Sprintf("%d/%d", s.passed, s.judged)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%d/%d\t%s\t%s\t%s\n", name, rate, s.blocked, s.selfPass, s.ran,
+			avg(s.steps, s.ran), kilo(avgInt(s.tokens, s.ran)), avgDuration(s.elapsed, s.ran))
+	}
+	_ = w.Flush()
+}
+
+type caseSummary struct {
+	passed, judged, blocked, selfPass, ran, steps, tokens int
+	elapsed                                               time.Duration
+}
+
+func summarize(attempts []attempt) caseSummary {
+	var s caseSummary
+	for _, a := range attempts {
+		switch a.outcome {
+		case outcomePass:
+			s.passed++
+			s.judged++
+		case outcomeFail:
+			s.judged++
+		case outcomeBlocked:
+			s.blocked++
+		}
+		if !a.ran {
+			continue
+		}
+		s.ran++
+		s.tokens += a.usage.TotalTokens
+		s.elapsed += a.elapsed
+		if a.res != nil {
+			s.steps += len(a.res.Steps)
+			if a.selfPass {
+				s.selfPass++
+			}
+		}
+	}
+	return s
+}
+
+func avg(total, n int) string {
+	if n == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%.1f", float64(total)/float64(n))
+}
+
+func avgInt(total, n int) int {
+	if n == 0 {
+		return 0
+	}
+	return total / n
+}
+
+func avgDuration(total time.Duration, n int) string {
+	if n == 0 {
+		return "-"
+	}
+	return (total / time.Duration(n)).Round(time.Second).String()
+}
+
+// kilo 把 token 数写成 35.2k 这样
+func kilo(n int) string {
+	if n < 1000 {
+		return fmt.Sprint(n)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
 }
 
 func clip(s string, n int) string {
