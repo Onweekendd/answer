@@ -40,6 +40,8 @@ import { collectStrategyElements } from "./strategies";
 let elements: Element[] = [];
 // 策略给元素起的名字，describe 用它代替元素的文字
 let labels = new Map<Element, string>();
+// 策略给商品卡片找的商品页链接，productArea 优先用它
+let links = new Map<Element, string>();
 
 chrome.runtime.onMessage.addListener((req: TabRequest, _sender, sendResponse) => {
   handle(req).then(
@@ -128,6 +130,7 @@ function snapshot(maxChars = 8000): Snapshot {
   const strategy = collectStrategyElements(new URL(location.href), document);
   const extras = new Set(strategy.elements);
   labels = strategy.labels;
+  links = strategy.links;
   const candidates = Array.from(new Set([...document.querySelectorAll(INTERACTIVE), ...extras]));
   candidates.sort((a, b) => {
     const position = a.compareDocumentPosition(b);
@@ -546,7 +549,7 @@ async function productArea(index?: number): Promise<ProductArea> {
   if (el && (!el.isConnected || !isVisible(el))) {
     throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
   }
-  const url = el ? linkOf(el) : location.href;
+  const url = el ? (links.get(el) ?? linkOf(el)) : location.href;
   if (!url) {
     throw new CommandError("EXEC_FAILED", "这个元素里没有链接");
   }

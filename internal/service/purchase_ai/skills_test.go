@@ -102,7 +102,7 @@ func Test_readSkillFile(t *testing.T) {
 		{"不能用 .. 跳出 skills 目录", "../skills.go", false},
 		{"中间带 .. 的路径不接受", "site-guide/../site-guide/SKILL.md", false},
 		{"只能读 .md", "site-guide/references", false},
-		{"不存在的文件", "site-guide/references/jd.md", false},
+		{"不存在的文件", "site-guide/references/pdd.md", false},
 		{"空路径", "", false},
 	}
 	for _, tc := range cases {
@@ -141,7 +141,7 @@ func Test_skillRead(t *testing.T) {
 		r := newAgentRun(&fakeLLM{}, newFakeBrowser(), testLimits())
 
 		// Act
-		res, err := r.skillRead(context.Background(), `{"path":"site-guide/references/jd.md"}`)
+		res, err := r.skillRead(context.Background(), `{"path":"site-guide/references/pdd.md"}`)
 
 		// Assert
 		require.NoError(t, err)

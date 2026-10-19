@@ -37,7 +37,12 @@ it("仅淘宝搜索页补充价格菜单，不匹配其他站点或商品卡片"
     "https://s.taobao.com.evil.test/search",
     "https://s.taobao.com/other"
   ]) {
-    expect(collectStrategyElements(new URL(url), document)).toEqual({ elements: [], labels: new Map(), stats: {} });
+    expect(collectStrategyElements(new URL(url), document)).toEqual({
+      elements: [],
+      labels: new Map(),
+      links: new Map(),
+      stats: {}
+    });
   }
 });
 
@@ -108,4 +113,26 @@ it("小红书：单图笔记没有 2/6 也认得出是图片，视频笔记说�
   // Assert
   expect(single.labels.get(single.elements[0])).toBe("笔记图片（1 张）");
   expect(video.labels.get(video.elements[0])).toBe("笔记视频");
+});
+
+it("京东搜索结果：卡片编进来并给出商品页链接，客服图标起个别点的名字", () => {
+  // Arrange：结构照 2026-10-19 在 DevTools 里看到的写，卡片里唯一的 <a> 是客服
+  document.body.innerHTML = `<div class="_wrapper_1y1ag_3 plugin_goodsCardWrapper" data-sku="100378972868">
+      <div class="_card_1y1ag_92"><div class="_goods_title_container_1k2fi_1">Apple iPad Air M3</div>
+      <span class="_name_3z0zc_15">京东数码海外自营旗舰店</span>
+      <a target="_blank" href="//chat.jd.com/index.action?entry=jd_search&pid=100378972868" class="_customer_service_icon_3z0zc_60"></a>
+      <div data-sku="100378972868">里面也带 data-sku 的元素</div></div>
+    </div>`;
+
+  // Act
+  const result = collectStrategyElements(new URL("https://search.jd.com/Search?keyword=ipad"), document);
+
+  // Assert：只要最外层的卡片，不要里面那个
+  const [card, chat] = result.elements;
+  expect(result.elements).toHaveLength(2);
+  expect(card.getAttribute("class")).toContain("plugin_goodsCardWrapper");
+  expect(result.links.get(card)).toBe("https://item.jd.com/100378972868.html");
+  expect(result.labels.has(card)).toBe(false);
+  expect(result.labels.get(chat)).toContain("客服");
+  expect(result.links.has(chat)).toBe(false);
 });

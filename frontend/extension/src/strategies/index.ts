@@ -17,11 +17,12 @@
  * under the License.
  */
 
+import { jd } from "./jd";
 import { taobao } from "./taobao";
 import type { SiteStrategy } from "./types";
 import { xiaohongshu } from "./xiaohongshu";
 
-const strategies: readonly SiteStrategy[] = [taobao, xiaohongshu];
+const strategies: readonly SiteStrategy[] = [taobao, xiaohongshu, jd];
 
 export function collectStrategyElements(
   url: URL,
@@ -30,6 +31,7 @@ export function collectStrategyElements(
 ): {
   elements: Element[];
   labels: Map<Element, string>;
+  links: Map<Element, string>;
   stats: { strategy?: string; strategyMatched?: number; strategyError?: string };
 } {
   for (const strategy of registry) {
@@ -39,21 +41,27 @@ export function collectStrategyElements(
       }
       const elements = (strategy.interactive?.(doc) ?? []).filter((el) => el.ownerDocument === doc && el.isConnected);
       const labels = new Map<Element, string>();
+      const links = new Map<Element, string>();
       for (const el of elements) {
         const label = strategy.label?.(el);
         if (label) {
           labels.set(el, label);
         }
+        const link = strategy.link?.(el);
+        if (link) {
+          links.set(el, link);
+        }
       }
-      return { elements, labels, stats: { strategy: strategy.name, strategyMatched: elements.length } };
+      return { elements, labels, links, stats: { strategy: strategy.name, strategyMatched: elements.length } };
     } catch (err) {
       // 选择器失效或策略异常不应影响通用快照。
       return {
         elements: [],
         labels: new Map(),
+        links: new Map(),
         stats: { strategy: strategy.name, strategyMatched: 0, strategyError: String(err) }
       };
     }
   }
-  return { elements: [], labels: new Map(), stats: {} };
+  return { elements: [], labels: new Map(), links: new Map(), stats: {} };
 }

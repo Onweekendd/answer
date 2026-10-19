@@ -25,4 +25,7 @@ export interface SiteStrategy {
   // 给补充进来的元素起个名字，快照里代替它的文字。没有文字、或者文字说不清它是什么的元素用得上
   // （小红书的图片区，单图笔记里一个字都没有）。返回 undefined 就照常用它的文字
   label?(el: Element): string | undefined;
+  // 商品卡片的商品页链接，给商品卡片（product 命令）用。卡片里没有指向商品页的 <a> 时用得上
+  // （京东的卡片靠 JS 跳转，里面唯一的 <a> 是客服）。返回 undefined 就照常在元素里找 <a>
+  link?(el: Element): string | undefined;
 }

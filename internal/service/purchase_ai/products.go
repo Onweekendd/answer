@@ -24,6 +24,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/segmentfault/pacman/log"
@@ -99,6 +100,10 @@ func (r *agentRun) pickProduct(ctx context.Context, arguments string) (toolResul
 	link, ok := cleanProductURL(data.URL)
 	if !ok {
 		return toolResult{Failed: true, Text: "这张卡片的链接是广告跳转或者不是网页地址，用户点了打不开对的商品。点进商品详情页，再不填 index 调用 pick_product。"}, nil
+	}
+	if !isProductPage(link) {
+		return toolResult{Failed: true, Text: fmt.Sprintf("这个链接（%s）不是商品页，是搜索结果、店铺或者客服页面，用户点了看不到这个商品。"+
+			"在搜索结果里填那张商品卡片的编号，或者点进商品详情页以后不填 index 再记。", link)}, nil
 	}
 
 	// 同一个商品再做一次，就更新原来那张，不重复
@@ -177,6 +182,7 @@ var productParams = map[string][]string{
 	"detail.tmall.hk":          {"id", "skuId"},
 	"item.jd.com":              {},
 	"item.jd.hk":               {},
+	"npcitem.jd.hk":            {}, // 海外自营的详情页，网址后面带着 pcdk=…
 	"www.ikea.cn":              {},
 	"detail.1688.com":          {},
 }
@@ -186,6 +192,36 @@ var trackingParams = []string{"spm", "scm", "utm_", "pvid", "abbucket", "ali_tra
 
 // redirectHosts 是广告跳转的域名：链接里只有加密的参数，看不出是哪个商品，跳过去的地方也不一定对
 var redirectHosts = []string{"click.simba.taobao.com", "s.click.taobao.com", "ccc-x.jd.com", "union-click.jd.com"}
+
+// productPages 是认识的网站的商品页网址（清洗过以后）。这些网站上的链接不是商品页的一律不要：
+// 京东的搜索结果卡片里唯一的链接是客服，模型在搜索页上不填 index 记下的是搜索页（2026-10-19 实测）。
+// 不认识的网站不管
+var productPages = []struct {
+	domains []string
+	page    *regexp.Regexp
+}{
+	{[]string{"jd.com", "jd.hk"}, regexp.MustCompile(`^https?://(item\.jd\.com|item\.jd\.hk|npcitem\.jd\.hk)/\d+\.html$`)},
+	{[]string{"taobao.com"}, regexp.MustCompile(`^https?://item\.taobao\.com/item\.htm\?id=\d+$`)},
+	{[]string{"tmall.com", "tmall.hk"}, regexp.MustCompile(`^https?://(chaoshi\.)?detail\.tmall\.(com|hk)/item\.htm\?id=\d+(&skuId=\d+)?$`)},
+	{[]string{"ikea.cn"}, regexp.MustCompile(`^https?://www\.ikea\.cn/cn/zh/p/[^/?]+/?$`)},
+}
+
+// isProductPage 说一个清洗过的链接是不是商品页：认识的网站要对得上格式，不认识的都算
+func isProductPage(link string) bool {
+	u, err := url.Parse(link)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	for _, site := range productPages {
+		for _, d := range site.domains {
+			if host == d || strings.HasSuffix(host, "."+d) {
+				return site.page.MatchString(link)
+			}
+		}
+	}
+	return true
+}
 
 // cleanProductURL 去掉商品链接里不需要的参数和锚点。不是 http(s) 的、广告跳转的，返回 false
 func cleanProductURL(raw string) (string, bool) {

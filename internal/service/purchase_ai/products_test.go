@@ -91,7 +91,7 @@ func Test_pickProduct(t *testing.T) {
 		r.images = &fakeImageStore{err: errors.New("disk full")}
 
 		// Act
-		res, _ := r.pickProduct(context.Background(), `{"title":"京东首页上的商品","price":"¥1"}`)
+		res, _ := r.pickProduct(context.Background(), `{"index":3,"title":"商品","price":"¥1"}`)
 
 		// Assert
 		require.False(t, res.Failed)
@@ -112,6 +112,19 @@ func Test_pickProduct(t *testing.T) {
 		// Assert
 		assert.True(t, res.Failed)
 		assert.Len(t, r.products, maxProducts)
+	})
+
+	t.Run("在京东搜索页上不填 index：记下的是搜索页，不要", func(t *testing.T) {
+		// Arrange：openedRun 停在京东首页，和停在搜索页一样不是商品页
+		r := openedRun(t, newFakeBrowser())
+
+		// Act
+		res, _ := r.pickProduct(context.Background(), `{"title":"商品","price":"¥1"}`)
+
+		// Assert
+		assert.True(t, res.Failed)
+		assert.Contains(t, res.Text, "不是商品页")
+		assert.Empty(t, r.products)
 	})
 
 	t.Run("没写标题不调插件", func(t *testing.T) {
@@ -153,6 +166,7 @@ func Test_cleanProductURL(t *testing.T) {
 		{"天猫只留 id 和 skuId", "https://detail.tmall.com/item.htm?id=6123&skuId=5566&spm=a1z10&ali_refid=x#detail", "https://detail.tmall.com/item.htm?id=6123&skuId=5566", true},
 		{"淘宝只留 id", "https://item.taobao.com/item.htm?ns=1&abbucket=3&id=7788", "https://item.taobao.com/item.htm?id=7788", true},
 		{"京东去掉全部参数", "https://item.jd.com/100012.html?bbtf=1&spm=x", "https://item.jd.com/100012.html", true},
+		{"京东海外自营也去掉", "https://npcitem.jd.hk/100378972868.html?pcdk=abc", "https://npcitem.jd.hk/100378972868.html", true},
 		{"没列出的网站只去掉追踪参数", "https://shop.example.com/p?sku=9&utm_source=a&spm=b", "https://shop.example.com/p?sku=9", true},
 		{"广告跳转不要", "https://click.simba.taobao.com/cc_im?p=xx&s=yy", "", false},
 		{"不是网页地址不要", "javascript:alert(1)", "", false},
@@ -189,4 +203,28 @@ func Test_productsMarkdown(t *testing.T) {
 			"\n1. [\\[官方\\] 羽绒被](https://detail.tmall.com/item.htm?id=1) · 无印良品MUJI官方旗舰店 · 200x230cm · ¥588（平台加补后 ¥4??）"+
 			"\n2. [宜家 羽绒被](https://www.ikea.cn/cn/zh/p/x)", got)
 	})
+}
+
+func Test_isProductPage(t *testing.T) {
+	cases := []struct {
+		link string
+		want bool
+	}{
+		{"https://item.jd.com/100378972868.html", true},
+		{"https://search.jd.com/Search?keyword=ipad", false},
+		{"https://chat.jd.com/index.action", false},
+		{"https://mall.jd.com/index-1000000.html", false},
+		{"https://item.taobao.com/item.htm?id=7788", true},
+		{"https://s.taobao.com/search?q=ipad", false},
+		{"https://detail.tmall.com/item.htm?id=6123&skuId=5566", true},
+		{"https://muji.tmall.com/shop/view_shop.htm", false},
+		{"https://www.ikea.cn/cn/zh/p/fjaellarnika-30459285/", true},
+		{"https://www.ikea.cn/cn/zh/search/products/?q=x", false},
+		{"https://shop.example.com/anything", true}, // 不认识的网站不管
+	}
+	for _, c := range cases {
+		t.Run(c.link, func(t *testing.T) {
+			assert.Equal(t, c.want, isProductPage(c.link))
+		})
+	}
 }

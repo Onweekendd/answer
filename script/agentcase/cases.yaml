@@ -50,3 +50,9 @@
   expect:
     visited: [ikea.cn/cn/zh/p/]
     min_cards: 2 # 卡片的链接和图由插件从页面上取，判定里还会查链接是不是在去过的网站上
+
+- name: 京东卡片
+  task: 我想买 iPad Air M3 11 英寸 128GB WLAN 版，在京东帮我挑一款推荐给我
+  expect:
+    visited: [item.jd.com] # 京东的卡片里没有指向商品页的链接，靠策略编号才点得进详情页
+    min_cards: 1 # 卡片的链接要是商品页，不能是搜索页或者客服
