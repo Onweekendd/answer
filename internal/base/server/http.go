@@ -73,7 +73,8 @@ func NewHTTPServer(debug bool,
 		r.SetHTMLTemplate(htmlTemplate)
 	}
 	r.Use(middleware.HeadersByRequestURI())
-	// the new front end under /app, ahead of the old ui's catch-all route
+	// the new front end under /app, and / redirects to it; the old ui keeps the
+	// other paths through its catch-all route (the admin pages at /admin)
 	router.RegisterWeb(r)
 	viewRouter.Register(r, uiConf.BaseURL)
 

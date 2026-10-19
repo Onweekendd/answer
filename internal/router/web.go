@@ -41,8 +41,10 @@ const (
 	defaultWebDir = "/usr/share/maibumai/web"
 )
 
-// RegisterWeb serves the new front end under /app. It returns false when there
-// is no build to serve.
+// RegisterWeb serves the new front end under /app and makes it the home page:
+// / redirects there, while the old ui keeps every other path, the admin pages
+// at /admin among them. It returns false when there is no build to serve, and
+// then / stays the old ui's.
 func RegisterWeb(r *gin.Engine) bool {
 	dir := os.Getenv(webDirEnv)
 	if dir == "" {
@@ -53,6 +55,17 @@ func RegisterWeb(r *gin.Engine) bool {
 		return false
 	}
 	r.GET(webBasePath, func(c *gin.Context) { c.Redirect(http.StatusMovedPermanently, webBasePath+"/") })
+	// / already belongs to the template router (the page rendered for search
+	// engines), and gin refuses a second handler, so a middleware answers it
+	// first. It only reaches the routes registered after it, which is why the
+	// server calls RegisterWeb before the template router.
+	// 302, not 301: a browser keeps a 301 for good, and the home page may move back
+	r.Use(func(c *gin.Context) {
+		if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/" {
+			c.Redirect(http.StatusFound, webBasePath+"/")
+			c.Abort()
+		}
+	})
 	r.GET(webBasePath+"/*filepath", webHandler(dir))
 	return true
 }

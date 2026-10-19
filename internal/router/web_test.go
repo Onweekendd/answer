@@ -89,6 +89,19 @@ func Test_RegisterWeb(t *testing.T) {
 		assert.Equal(t, "/app/", w.Header().Get("Location"))
 	})
 
+	t.Run("首页跳到新前端，旧 ui 的别的路径不管", func(t *testing.T) {
+		// Arrange：/ 已经有模板路由的 handler，和真实服务器一样在 RegisterWeb 之后注册
+		r := webServer(t)
+		r.GET("/", func(c *gin.Context) { c.String(http.StatusOK, "template index") })
+
+		home := get(r, "/")
+		admin := get(r, "/admin")
+
+		assert.Equal(t, http.StatusFound, home.Code)
+		assert.Equal(t, "/app/", home.Header().Get("Location"))
+		assert.Equal(t, http.StatusNotFound, admin.Code) // 这里没注册旧 ui，真实服务器上由它的 NoRoute 接住
+	})
+
 	t.Run("没有打包结果就不注册", func(t *testing.T) {
 		t.Setenv(webDirEnv, t.TempDir())
 
