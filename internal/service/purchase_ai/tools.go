@@ -58,6 +58,7 @@ type agentRun struct {
 
 	images   ImageStore    // 存商品卡片的图；nil 就不存，卡片没有图
 	products []ProductCard // 做好的商品卡片
+	shots    []Shot        // 存下来、回答里要引用的截图
 
 	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
 	events        chan<- Event
@@ -91,6 +92,7 @@ const (
 	toolPress    = "press"
 	toolScroll   = "scroll"
 	toolProduct  = "pick_product"
+	toolCite     = "cite_screenshot"
 	toolDone     = "done"
 )
 
@@ -179,6 +181,9 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
 		{toolProduct, "记下一个值得推荐给用户的商品：用户会在回答上方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
 			"在商品详情页上不填 index；在搜索结果里填那张商品卡片的编号。只记看过价格的商品，最多 6 个。", productArgs{}, r.pickProduct},
+		{toolCite, "把对用户有用、能给你的结论作证的画面截下来，放进回答里给用户看：价格和优惠的条件、参数表、差评、价格走势、官方说明。" +
+			"填 index 只截那个元素（推荐），不填截当前这一屏。返回「图几」，回答里在用到的地方单独写一行 [图几]。最多 4 张。" +
+			"不要截登录、账号、订单、聊天这类有个人信息的地方。", citeArgs{}, r.citeShot},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
 

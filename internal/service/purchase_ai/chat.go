@@ -104,7 +104,8 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 			log.Infof("purchase ai: chat finished early (%s) after %d tool calls", res.Finish, len(res.Steps))
 		}
 		// 回答是模型写的，也可能复述页面内容，和思考一样过一遍打码和屏蔽词
-		send(Event{Type: EventText, Delta: r.view(fixNumberRanges(res.Text))})
+		// 图片在打码之后放进去：网址里的数字不能被当成手机号
+		send(Event{Type: EventText, Delta: withShots(r.view(fixNumberRanges(res.Text)), res.Shots)})
 		send(Event{Type: EventDone})
 	}()
 	return out

@@ -44,6 +44,7 @@ func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bo
 	res, err := r.loop(ctx, messages, browserOn)
 	if res != nil {
 		res.Products = r.products
+		res.Shots = r.shots
 	}
 	return res, err
 }

@@ -81,6 +81,8 @@ type agentResult struct {
 	Steps   []stepRecord
 	// Products 是做好的商品卡片，不管怎么结束的都带上：收尾时卡片照样有用
 	Products []ProductCard
+	// Shots 是存下来的截图，回答里的 [图N] 指的就是它们
+	Shots []Shot
 	// Reasoning 是最后一次模型调用的思考过程，只用于回答为空时排查
 	Reasoning string
 }

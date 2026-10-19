@@ -152,7 +152,7 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 			WithError(fmt.Errorf("model returned empty content, reasoning length: %d", len(result.Reasoning))).
 			WithStack()
 	}
-	originalText += productsMarkdown(result.Products)
+	originalText = withShots(originalText, result.Shots) + productsMarkdown(result.Products)
 
 	_, err = pas.commentService.AddComment(ctx, &schema.AddCommentReq{
 		// the controller deshortens this id before calling AddComment, and

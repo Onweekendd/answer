@@ -90,6 +90,19 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   );
 };
 
+/**
+ * An image this site stores: under /uploads/ on this host. The port is not compared: in
+ * development the page comes from vite and the images from the Go server on another port.
+ */
+function isOwnUpload(src: string): boolean {
+  try {
+    const url = new URL(src, window.location.href);
+    return url.hostname === window.location.hostname && url.pathname.startsWith("/uploads/");
+  } catch {
+    return false;
+  }
+}
+
 const defaultComponents = memoizeMarkdownComponents({
   h1: ({ className, ...props }) => (
     <h1
@@ -163,6 +176,24 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
+  // 回答里的图是 Agent 存证的截图，都在本站的 /uploads/ 下；别处的网址不加载，只给一个链接
+  img: ({ className, src, alt, ...props }) =>
+    typeof src === "string" && isOwnUpload(src) ? (
+      <a href={src} target="_blank" rel="noreferrer" className="aui-md-img-link my-3 block w-fit">
+        <img
+          className={cn(
+            "aui-md-img border-border max-h-[28rem] max-w-full rounded-lg border object-contain",
+            className,
+          )}
+          src={src}
+          alt={alt ?? ""}
+          loading="lazy"
+          {...props}
+        />
+      </a>
+    ) : (
+      <span className="text-muted-foreground">[{alt || "图片"}]</span>
+    ),
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(
