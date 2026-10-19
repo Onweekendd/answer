@@ -16,6 +16,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { ZoomableImage } from "@/components/ZoomableImage";
+import { isOwnUpload } from "@/lib/uploads";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
@@ -90,19 +91,6 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
     </div>
   );
 };
-
-/**
- * An image this site stores: under /uploads/ on this host. The port is not compared: in
- * development the page comes from vite and the images from the Go server on another port.
- */
-function isOwnUpload(src: string): boolean {
-  try {
-    const url = new URL(src, window.location.href);
-    return url.hostname === window.location.hostname && url.pathname.startsWith("/uploads/");
-  } catch {
-    return false;
-  }
-}
 
 const defaultComponents = memoizeMarkdownComponents({
   h1: ({ className, ...props }) => (

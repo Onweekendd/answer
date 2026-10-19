@@ -1,3 +1,4 @@
+import { isDraftResult, PUBLISH_TOOL } from "./draft";
 import { type ChatEvent, ChatStreamError, type ProductCard, PRODUCTS_PART } from "./mapper";
 import { eventsFromSSE } from "./stream";
 
@@ -11,7 +12,14 @@ export interface ChatMessageReq {
 /** The slice of an assistant-ui thread message we read; ThreadMessage satisfies it structurally. */
 export interface ThreadMessageLike {
   role: string;
-  content: readonly { type: string; text?: string; name?: string; data?: unknown }[];
+  content: readonly {
+    type: string;
+    text?: string;
+    name?: string;
+    data?: unknown;
+    toolName?: string;
+    result?: unknown;
+  }[];
   attachments?: readonly { content?: readonly { type: string; image?: string }[] }[];
 }
 
@@ -37,6 +45,14 @@ export function toChatMessages(messages: readonly ThreadMessageLike[]): ChatMess
         }
         if (p.type === "data" && p.name === PRODUCTS_PART && Array.isArray(p.data)) {
           return [cardsText(p.data as ProductCard[])];
+        }
+        // what became of a draft, so "改一下标题" after it has something to go on
+        if (p.type === "tool-call" && p.toolName === PUBLISH_TOOL && isDraftResult(p.result)) {
+          return [
+            p.result.status === "published"
+              ? `（用户已经把帖子「${p.result.title}」发到了社区）`
+              : "（用户放弃了这份帖子草稿）"
+          ];
         }
         return [];
       })

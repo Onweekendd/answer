@@ -2,6 +2,8 @@
  * The events the chat endpoint streams, one JSON object per SSE `data:` line. The Go side
  * must emit exactly these; they are the contract between the two.
  */
+import { isPostDraft, type PostDraft, PUBLISH_TOOL } from "./draft";
+
 export type ChatEvent =
   | { type: "text"; delta: string }
   /** The model's thinking for one step, sent whole once the step's reply is in. */
@@ -11,6 +13,8 @@ export type ChatEvent =
   | { type: "tool_end"; id: string; result: unknown }
   /** A product the agent picked; a card the user can open. Sent again with the same id when it changes. */
   | { type: "product"; product: ProductCard }
+  /** A call the agent stopped at for the user to decide: the post draft, in `input`. */
+  | { type: "tool_suspend"; id: string; name: string; input: PostDraft }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -57,7 +61,7 @@ export class ChatStreamError extends Error {
 
 /** Folds one event into the message so far; never mutates `parts`. */
 export function applyEvent(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
-  return placeProducts(fold(parts, event));
+  return placeDrafts(placeProducts(fold(parts, event)));
 }
 
 function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
@@ -94,6 +98,18 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
       cards.sort((a, b) => a.id - b.id);
       return [...parts.filter((p) => p !== old), { type: "data", name: PRODUCTS_PART, data: cards }];
     }
+    case "tool_suspend":
+      // a part of its own, not the step: the step stays in the process box, the draft goes below the answer
+      return [
+        ...parts,
+        {
+          type: "tool-call",
+          toolCallId: `${event.id}:review`,
+          toolName: PUBLISH_TOOL,
+          args: { ...event.input },
+          argsText: JSON.stringify(event.input)
+        }
+      ];
     case "error":
       throw new ChatStreamError(event.message);
     case "done":
@@ -114,6 +130,15 @@ function placeProducts(parts: ContentPart[]): ContentPart[] {
   const rest = parts.filter((p) => p !== products);
   const at = rest.findLastIndex((p) => p.type === "reasoning" || p.type === "tool-call") + 1;
   return [...rest.slice(0, at), products, ...rest.slice(at)];
+}
+
+/** A draft waits below the answer, the last thing in the message. */
+function placeDrafts(parts: ContentPart[]): ContentPart[] {
+  const isDraft = (p: ContentPart) => p.type === "tool-call" && p.toolName === PUBLISH_TOOL;
+  if (!parts.some(isDraft)) {
+    return parts;
+  }
+  return [...parts.filter((p) => !isDraft(p)), ...parts.filter(isDraft)];
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -157,6 +182,10 @@ export function parseEvent(data: string): ChatEvent | null {
       return typeof raw.id === "string" ? { type: "tool_end", id: raw.id, result: raw.result } : null;
     case "product":
       return isProductCard(raw.product) ? { type: "product", product: raw.product } : null;
+    case "tool_suspend":
+      return typeof raw.id === "string" && typeof raw.name === "string" && isPostDraft(raw.input)
+        ? { type: "tool_suspend", id: raw.id, name: raw.name, input: raw.input }
+        : null;
     case "error":
       return { type: "error", message: typeof raw.message === "string" ? raw.message : "出错了" };
     case "done":

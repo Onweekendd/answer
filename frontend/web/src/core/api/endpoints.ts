@@ -1,3 +1,4 @@
+import type { toQuestionAdd } from "../chat/draft";
 import type { Choice, MyChoice } from "../vote/tally";
 import type { ApiClient } from "./client";
 
@@ -98,6 +99,13 @@ export function createEndpoints(client: ApiClient) {
         parent_id: parentId ?? "",
         message
       }),
+
+    /** Publishes a post; the usual post rules apply (tags, rank, captcha after many posts). */
+    publishPost: (body: ReturnType<typeof toQuestionAdd>) => client.post<{ id: string }>("/question", body),
+
+    /** Asks the AI to cast the vote it kept with the draft, on the post just published from it. */
+    draftVote: (draftId: string, questionId: string) =>
+      client.post<null>("/purchase/ai/draft/vote", { draft_id: draftId, question_id: questionId }),
 
     /** Uploads an image for a post and returns its url. */
     uploadImage: (file: File) => {
