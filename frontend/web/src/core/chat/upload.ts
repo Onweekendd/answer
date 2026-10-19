@@ -5,6 +5,19 @@ import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from "@
  * upload returns: the chat endpoint, like a post, only takes images uploaded to this site.
  * Until then the composer previews the local file, as the built-in image adapter does.
  */
+/**
+ * An id for an attachment. crypto.randomUUID exists only in a secure context (https or
+ * localhost): on the demo site, plain http on an IP, it is undefined, and picking an image
+ * threw. getRandomValues has no such limit.
+ */
+export function attachmentId(): string {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export class UploadImageAdapter implements AttachmentAdapter {
   accept = "image/*";
 
@@ -16,7 +29,7 @@ export class UploadImageAdapter implements AttachmentAdapter {
 
   async add({ file }: { file: File }): Promise<PendingAttachment> {
     return {
-      id: crypto.randomUUID(),
+      id: attachmentId(),
       type: "image",
       name: file.name,
       contentType: file.type,
