@@ -15,6 +15,7 @@ import type { TextMessagePartProps } from "@assistant-ui/react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { ZoomableImage } from "@/components/ZoomableImage";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
@@ -176,21 +177,11 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  // 回答里的图是 Agent 存证的截图，都在本站的 /uploads/ 下；别处的网址不加载，只给一个链接
-  img: ({ className, src, alt, ...props }) =>
+  // 回答里的图是 Agent 存证的截图，都在本站的 /uploads/ 下；别处的网址不加载，只写出说明。
+  // 点开在页面里放大，不跳走
+  img: ({ className, src, alt }) =>
     typeof src === "string" && isOwnUpload(src) ? (
-      <a href={src} target="_blank" rel="noreferrer" className="aui-md-img-link my-3 block w-fit">
-        <img
-          className={cn(
-            "aui-md-img border-border max-h-[28rem] max-w-full rounded-lg border object-contain",
-            className,
-          )}
-          src={src}
-          alt={alt ?? ""}
-          loading="lazy"
-          {...props}
-        />
-      </a>
+      <ZoomableImage src={src} alt={alt} className={className} />
     ) : (
       <span className="text-muted-foreground">[{alt || "图片"}]</span>
     ),
