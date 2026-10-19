@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { CommandError, type TabRequest, type TabResponse, toErrorBody } from "./protocol";
+import { CommandError, type ShotArea, type TabRequest, type TabResponse, toErrorBody } from "./protocol";
 import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
@@ -63,6 +63,8 @@ async function handle(req: TabRequest): Promise<unknown> {
     }
     case "visibility":
       return document.visibilityState;
+    case "screenshotArea":
+      return screenshotArea(req.index);
     case "viewport":
       return { width: window.innerWidth, height: window.innerHeight };
     case "scrollPosition":
@@ -307,13 +309,32 @@ function prepareInput(index: number, editable: boolean): { x: number; y: number 
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
   const centered = clickablePoint(el);
   if (!centered) {
-    throw new CommandError("EXEC_FAILED", "元素被遮挡或不在可点击区域，请先处理页面弹窗并重新 snapshot");
+    const center = visibleCenter(el);
+    if (!center) {
+      throw new CommandError("EXEC_FAILED", "元素不在可点击区域，请重新 snapshot");
+    }
+    // 说清楚被什么盖住：模型才分得清是普通弹窗（关掉就行），还是验证码、登录、风控提示（该停下来）
+    throw new CommandError(
+      "EXEC_FAILED",
+      `元素被遮挡，盖在上面的是 ${describeCover(center.x, center.y)}。` +
+        "如果是普通弹窗，先关掉它再重新 snapshot；如果是验证码、登录，或者“访问太频繁”这类提示，不要再试，告诉用户。"
+    );
   }
   return centered;
 }
 
 // 元素在视口里那一部分的中心点；这个点上最上层的是它自己（或它里面的元素）才算点得到
 function clickablePoint(el: Element): { x: number; y: number } | undefined {
+  const center = visibleCenter(el);
+  if (!center) {
+    return undefined;
+  }
+  const hit = document.elementFromPoint(center.x, center.y);
+  return hit && el.contains(hit) ? center : undefined;
+}
+
+// 元素在视口里那一部分的中心点，完全不在视口里时没有
+function visibleCenter(el: Element): { x: number; y: number } | undefined {
   const rect = el.getBoundingClientRect();
   const left = Math.max(0, rect.left);
   const right = Math.min(window.innerWidth, rect.right);
@@ -322,10 +343,60 @@ function clickablePoint(el: Element): { x: number; y: number } | undefined {
   if (right <= left || bottom <= top) {
     return undefined;
   }
-  const x = (left + right) / 2;
-  const y = (top + bottom) / 2;
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
+// describeCover 说明盖在 (x, y) 上的是什么。不认识任何网站，只描述元素本身：
+// iframe 给来源和路径（风控、验证码、登录框常常是别的域名的 iframe，内容 content script 读不到）；
+// 不带查询参数，那里常有用户 id 之类的东西。其他元素在弹窗里就描述弹窗，带一小段文字
+function describeCover(x: number, y: number): string {
   const hit = document.elementFromPoint(x, y);
-  return hit && el.contains(hit) ? { x, y } : undefined;
+  if (!hit) {
+    return "不明元素";
+  }
+  if (hit instanceof HTMLIFrameElement) {
+    try {
+      const src = new URL(hit.src, location.href);
+      return `<iframe>，来自 ${src.host}${clip(src.pathname, 80)}`;
+    } catch {
+      return "<iframe>";
+    }
+  }
+  const target = hit.closest('dialog, [role=dialog], [role=alertdialog], [aria-modal="true"]') ?? hit;
+  const attrs = ["id", "role", "aria-label"]
+    .map((name) => [name, target.getAttribute(name)] as const)
+    .filter(([, value]) => value)
+    .map(([name, value]) => `${name}=${clip(value ?? "", 40)}`);
+  const text = clip(maskPrivate((target.textContent ?? "").replace(/\s+/g, " ").trim()), 40);
+  return `<${[target.tagName.toLowerCase(), ...attrs].join(" ")}>${text}`;
+}
+
+// 截元素时四周留的边：卡片的边框、角标贴着边，留一点才看得出是一张完整的卡片
+const SHOT_PADDING = 8;
+
+// screenshotArea 是要截的区域。不填 index 是当前这一屏；填了是那个元素在视口里的部分加上一圈边。
+// 元素完全不在屏幕上时才滚到中间：截图不应该无故移动页面（hover 出来的菜单会收起）
+function screenshotArea(index?: number): ShotArea {
+  const dpr = window.devicePixelRatio || 1;
+  if (index === undefined) {
+    return { x: window.scrollX, y: window.scrollY, width: window.innerWidth, height: window.innerHeight, dpr };
+  }
+  const el = elementAt(index);
+  if (!el.isConnected || !isVisible(el)) {
+    throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
+  }
+  if (!intersectsViewport(el)) {
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  }
+  const rect = el.getBoundingClientRect();
+  const left = Math.max(0, rect.left - SHOT_PADDING);
+  const right = Math.min(window.innerWidth, rect.right + SHOT_PADDING);
+  const top = Math.max(0, rect.top - SHOT_PADDING);
+  const bottom = Math.min(window.innerHeight, rect.bottom + SHOT_PADDING);
+  if (right <= left || bottom <= top) {
+    throw new CommandError("EXEC_FAILED", "元素不在屏幕上，截不到");
+  }
+  return { x: left + window.scrollX, y: top + window.scrollY, width: right - left, height: bottom - top, dpr };
 }
 
 Object.assign(globalThis, { __pagehand: { snapshot } });

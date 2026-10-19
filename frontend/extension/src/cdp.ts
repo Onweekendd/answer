@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { CommandError, type InputTarget } from "./protocol";
+import { CommandError, type InputTarget, PRESS_KEYS, type PressKey, type ShotArea } from "./protocol";
 
 // 一个动作最多做多久。比 Go 那边的工具超时（30 秒）短：插件自己先放弃，才能断开会话、让后面排队的命令接着走，
 // 否则卡住的那条（比如后台标签页不出帧，滚动手势一直等）会把这个标签页的队列整个堵住
@@ -131,6 +131,17 @@ export async function cdpClick(target: chrome.debugger.Debuggee, point: InputTar
   });
 }
 
+// 按一个键：一次按下、一次松开。不带 text，不会往输入框里输入字符
+export async function cdpPress(target: chrome.debugger.Debuggee, key: PressKey): Promise<void> {
+  const spec = PRESS_KEYS[key];
+  if (!spec) {
+    throw new CommandError("BAD_MESSAGE", `Unsupported key ${String(key)}`);
+  }
+  const event = { key, code: spec.code, windowsVirtualKeyCode: spec.keyCode };
+  await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...event });
+  await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", { type: "keyUp", ...event });
+}
+
 export async function cdpType(target: chrome.debugger.Debuggee, text: string, submit: boolean): Promise<void> {
   // Replace the selected value; insertText supports Chinese text without synthetic DOM events.
   if (text) {
@@ -166,6 +177,52 @@ export async function cdpType(target: chrome.debugger.Debuggee, text: string, su
       windowsVirtualKeyCode: 13
     });
   }
+}
+
+// 截图参数。clip 用 CSS 像素；输出的实际像素 = 宽 × scale × dpr，scale 让它不超过 maxWidth。
+// 小区域不放大（scale 最大 1）：放大不会多出细节
+export function screenshotParams(area: ShotArea, maxWidth: number, quality: number) {
+  if (!(maxWidth >= 64 && maxWidth <= 4096) || !(quality >= 1 && quality <= 100)) {
+    throw new CommandError("BAD_MESSAGE", "Invalid screenshot maxWidth or quality");
+  }
+  if (!(area.width > 0 && area.height > 0 && area.dpr > 0)) {
+    throw new CommandError("EXEC_FAILED", "截图区域是空的");
+  }
+  const scale = Math.min(1, maxWidth / (area.width * area.dpr));
+  return {
+    format: "jpeg",
+    quality: Math.round(quality),
+    captureBeyondViewport: false,
+    clip: { x: area.x, y: area.y, width: area.width, height: area.height, scale }
+  };
+}
+
+export interface Shot {
+  data: string; // base64，不带 data: 前缀
+  mime: string;
+  width: number; // 输出图片的实际像素
+  height: number;
+}
+
+// 用 CDP 截图：Chrome 直接输出缩小过的 jpeg，不用在插件里再解码、缩放、编码一遍
+export async function cdpScreenshot(
+  target: chrome.debugger.Debuggee,
+  area: ShotArea,
+  maxWidth: number,
+  quality: number
+): Promise<Shot> {
+  const params = screenshotParams(area, maxWidth, quality);
+  const res = (await chrome.debugger.sendCommand(target, "Page.captureScreenshot", params)) as { data?: string };
+  if (!res?.data) {
+    throw new CommandError("EXEC_FAILED", "截图没有返回图片");
+  }
+  const factor = params.clip.scale * area.dpr;
+  return {
+    data: res.data,
+    mime: "image/jpeg",
+    width: Math.round(area.width * factor),
+    height: Math.round(area.height * factor)
+  };
 }
 
 export async function cdpScroll(

@@ -17,12 +17,13 @@
  * under the License.
  */
 
-import { cdpClick, cdpHover, cdpScroll, cdpType, withDebugger } from "./cdp";
+import { cdpClick, cdpHover, cdpPress, cdpScreenshot, cdpScroll, cdpType, withDebugger } from "./cdp";
 import {
   type Command,
   CommandError,
   type InputAction,
   type InputTarget,
+  type ShotArea,
   type TabRequest,
   type TabResponse
 } from "./protocol";
@@ -31,6 +32,11 @@ import {
 // 分工：跟"标签页"有关的（跳转、开关）在这里做；跟"页面内容"有关的转给 content script。
 
 const DEFAULT_MAX_CHARS = 8000;
+// 截图的默认尺寸和质量，Go 一般会自己指定
+const DEFAULT_SHOT_WIDTH = 1600;
+const DEFAULT_SHOT_QUALITY = 80;
+// 按键以后等多久再读网址
+const PRESS_SETTLE_MS = 500;
 
 type ListenerOf<E> = E extends chrome.events.Event<infer F> ? F : never;
 
@@ -59,10 +65,32 @@ async function executeCommand(cmd: Command): Promise<unknown> {
         type: "snapshot",
         maxChars: cmd.args.maxChars ?? DEFAULT_MAX_CHARS
       });
+    case "screenshot":
+      return withDebugger(cmd.tabId, async (target) => {
+        await bringToFront(cmd.tabId);
+        const area = (await sendToTab(cmd.tabId, { type: "screenshotArea", index: cmd.args.index })) as ShotArea;
+        const shot = await cdpScreenshot(
+          target,
+          area,
+          cmd.args.maxWidth ?? DEFAULT_SHOT_WIDTH,
+          cmd.args.quality ?? DEFAULT_SHOT_QUALITY
+        );
+        const tab = await chrome.tabs.get(cmd.tabId);
+        return { ...shot, url: tab.url ?? "" };
+      });
     case "click":
       return actIn(cmd.tabId, { type: "click", index: cmd.args.index });
     case "hover":
       return actIn(cmd.tabId, { type: "hover", index: cmd.args.index });
+    case "press":
+      return withDebugger(cmd.tabId, async (target) => {
+        await bringToFront(cmd.tabId);
+        await cdpPress(target, cmd.args.key);
+        // 关浮层常常带一个动画、改一下网址（小红书的笔记浮层就是 history.back），等一下再报网址
+        await new Promise((resolve) => setTimeout(resolve, PRESS_SETTLE_MS));
+        const tab = await chrome.tabs.get(cmd.tabId);
+        return { url: tab.pendingUrl ?? tab.url ?? "" };
+      });
     case "type":
       return actIn(cmd.tabId, {
         type: "type",

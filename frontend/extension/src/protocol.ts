@@ -28,8 +28,12 @@
 export interface CommandArgs {
   navigate: { url: string };
   snapshot: { maxChars?: number };
+  // 截图：不填 index 截当前这一屏，填了只截那个元素。输出 jpeg，宽不超过 maxWidth 个实际像素
+  screenshot: { index?: number; maxWidth?: number; quality?: number };
   click: { index: number };
   hover: { index: number };
+  // 按一个键，发给页面当前有焦点的地方。现在只有 Escape：关弹窗、浮层、下拉菜单，大多数网站都认
+  press: { key: PressKey };
   // 在后台新开一个标签页打开 url，等它加载完，返回新标签页的 id。tabId 填 0，不会用到
   open: { url: string };
   // 关掉 tabId 这个标签页
@@ -98,6 +102,19 @@ export type OutgoingMessage = Result | AgentEvent;
 
 // ---------- background ⇄ content script ----------
 
+// 要截的区域：CSS 像素，相对整个文档（CDP 的 clip 要这样），dpr 是屏幕缩放
+export interface ShotArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  dpr: number;
+}
+
+// press 能按的键。先只放用得上的，要加别的键在这里加
+export const PRESS_KEYS = { Escape: { code: "Escape", keyCode: 27 } } as const;
+export type PressKey = keyof typeof PRESS_KEYS;
+
 export interface InputTarget {
   x: number;
   y: number;
@@ -111,6 +128,7 @@ export type TabRequest =
   | { type: "prepareInput"; index: number; editable: boolean }
   | { type: "selectInput"; index: number }
   | { type: "viewport" }
+  | { type: "screenshotArea"; index?: number }
   | { type: "visibility" }
   | { type: "scrollPosition" };
 

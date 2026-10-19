@@ -173,6 +173,85 @@ describe("cdpType", () => {
   });
 });
 
+describe("cdpPress", () => {
+  it("Escape：一次按下、一次松开，带上键码，不带 text（不会输入字符）", async () => {
+    // Act
+    await cdp.cdpPress({ tabId: 1 }, "Escape");
+
+    // Assert
+    expect(sendCommand.mock.calls.map((call) => call[2])).toEqual([
+      { type: "rawKeyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+      { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }
+    ]);
+  });
+
+  it("不支持的键报 BAD_MESSAGE，不发命令", async () => {
+    // Act + Assert
+    await expect(cdp.cdpPress({ tabId: 1 }, "Delete" as never)).rejects.toMatchObject({ code: "BAD_MESSAGE" });
+    expect(sendCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe("screenshotParams", () => {
+  it("整屏按 maxWidth 缩小，算上屏幕缩放：1280 宽、dpr 1.25 的视口缩到 1024 实际像素", () => {
+    // Act
+    const params = cdp.screenshotParams({ x: 0, y: 300, width: 1280, height: 720, dpr: 1.25 }, 1024, 80);
+
+    // Assert
+    expect(params.clip).toEqual({ x: 0, y: 300, width: 1280, height: 720, scale: 0.64 });
+    expect(params.format).toBe("jpeg");
+    expect(params.captureBeyondViewport).toBe(false);
+  });
+
+  it("比 maxWidth 小的区域不放大", () => {
+    // Act
+    const params = cdp.screenshotParams({ x: 10, y: 20, width: 300, height: 200, dpr: 1 }, 1024, 80);
+
+    // Assert
+    expect(params.clip.scale).toBe(1);
+  });
+
+  it("尺寸或质量不合法时报 BAD_MESSAGE，区域是空的报 EXEC_FAILED", () => {
+    // Arrange
+    const area = { x: 0, y: 0, width: 100, height: 100, dpr: 1 };
+
+    // Act + Assert
+    expect(() => cdp.screenshotParams(area, 0, 80)).toThrow(expect.objectContaining({ code: "BAD_MESSAGE" }));
+    expect(() => cdp.screenshotParams(area, 1024, 101)).toThrow(expect.objectContaining({ code: "BAD_MESSAGE" }));
+    expect(() => cdp.screenshotParams({ ...area, width: 0 }, 1024, 80)).toThrow(
+      expect.objectContaining({ code: "EXEC_FAILED" })
+    );
+  });
+});
+
+describe("cdpScreenshot", () => {
+  it("发一条 Page.captureScreenshot，返回图片和输出的实际像素尺寸", async () => {
+    // Arrange
+    sendCommand.mockResolvedValue({ data: "QUJD" });
+
+    // Act
+    const shot = await cdp.cdpScreenshot({ tabId: 1 }, { x: 0, y: 0, width: 1280, height: 720, dpr: 1.25 }, 1024, 80);
+
+    // Assert
+    expect(sendCommand).toHaveBeenCalledWith(
+      { tabId: 1 },
+      "Page.captureScreenshot",
+      expect.objectContaining({ format: "jpeg", quality: 80 })
+    );
+    expect(shot).toEqual({ data: "QUJD", mime: "image/jpeg", width: 1024, height: 576 });
+  });
+
+  it("没有返回图片时报错，不返回空图", async () => {
+    // Arrange
+    sendCommand.mockResolvedValue({});
+
+    // Act + Assert
+    await expect(
+      cdp.cdpScreenshot({ tabId: 1 }, { x: 0, y: 0, width: 100, height: 100, dpr: 1 }, 1024, 80)
+    ).rejects.toMatchObject({ code: "EXEC_FAILED" });
+  });
+});
+
 describe("cdpScroll", () => {
   it("向下滚是负的 yDistance，一屏按 0.9 个视口高", async () => {
     // Act

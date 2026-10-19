@@ -156,3 +156,83 @@ it("视口中的弹出菜单优先于屏外商品，不会被长度预算截掉"
   const res = await request({ type: "snapshot", maxChars: 35 });
   expect(res).toMatchObject({ ok: true, data: { elements: "[0]<div role=menuitem>从低到高", truncated: true } });
 });
+
+it("截图区域：不填 index 是当前这一屏，坐标相对整个文档", async () => {
+  // Arrange
+  vi.stubGlobal("scrollX", 0);
+  vi.stubGlobal("scrollY", 500);
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  vi.stubGlobal("devicePixelRatio", 1.25);
+
+  // Act
+  const res = await request({ type: "screenshotArea" });
+
+  // Assert
+  expect(res).toEqual({ ok: true, data: { x: 0, y: 500, width: 1280, height: 720, dpr: 1.25 } });
+});
+
+it("截图区域：填了 index 是那个元素加一圈边，在屏幕上就不滚动", async () => {
+  // Arrange：元素在视口里的 (10,10)-(110,40)
+  vi.stubGlobal("scrollX", 0);
+  vi.stubGlobal("scrollY", 500);
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  vi.stubGlobal("devicePixelRatio", 1);
+  document.body.innerHTML = "<button>销量</button>";
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "screenshotArea", index: 0 });
+
+  // Assert：四周各留 8 像素，左边和上边被视口截到 2
+  expect(res).toEqual({ ok: true, data: { x: 2, y: 502, width: 116, height: 46, dpr: 1 } });
+  expect(scrollIntoView).not.toHaveBeenCalled();
+});
+
+it("截图区域：元素已经失效时报 ELEMENT_NOT_FOUND", async () => {
+  // Arrange
+  document.body.innerHTML = "<button>销量</button>";
+  await snapshot();
+  document.querySelector("button")!.remove();
+
+  // Act
+  const res = await request({ type: "screenshotArea", index: 0 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: false, error: { code: "ELEMENT_NOT_FOUND" } });
+});
+
+it("被 iframe 盖住时说出它的来源和路径，不带查询参数", async () => {
+  // Arrange：风控提示是别的域名的 iframe，盖在整个页面上
+  document.body.innerHTML =
+    '<button>区间</button><iframe src="https://h5api.example.com/h5/x/punish?userid=123&token=abc"></iframe>';
+  const frame = document.querySelector("iframe")!;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => frame });
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "prepareInput", index: 0, editable: false });
+
+  // Assert
+  expect(res).toMatchObject({ ok: false, error: { code: "EXEC_FAILED" } });
+  const message = res.ok ? "" : res.error.message;
+  expect(message).toContain("<iframe>，来自 h5api.example.com/h5/x/punish");
+  expect(message).not.toContain("userid");
+  expect(message).toContain("不要再试");
+});
+
+it("被弹窗盖住时描述弹窗本身，带一小段文字", async () => {
+  // Arrange
+  document.body.innerHTML = '<button>区间</button><div role="dialog" aria-label="登录"><p>请先登录后再操作</p></div>';
+  const p = document.querySelector("p")!;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => p });
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "prepareInput", index: 0, editable: false });
+
+  // Assert
+  const message = res.ok ? "" : res.error.message;
+  expect(message).toContain("<div role=dialog aria-label=登录>请先登录后再操作");
+});

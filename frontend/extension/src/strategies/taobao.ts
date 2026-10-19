@@ -23,6 +23,18 @@ export const taobao: SiteStrategy = {
   name: "taobao-search",
   matches: (url) => url.hostname === "s.taobao.com" && url.pathname === "/search",
   interactive: (doc) =>
-    // 实测价格菜单是没有 role 的 div；只匹配该菜单的类名前缀，不依赖构建 hash。
-    Array.from(doc.querySelectorAll('[class*="priceTagWrap--"] > [class*="priceTag--"]'))
+    // 实测这些都是没有 role 的 div，只按类名前缀匹配，不依赖构建 hash：
+    //   价格菜单：从低到高 / 从高到低
+    //   价格区间面板（hover"区间"后挂在 body 末尾）：预设区间，和"重置""确定"。
+    //   回车不会提交区间，填完最低价、最高价必须点"确定"（2026-10-18 实测）
+    Array.from(
+      doc.querySelectorAll(
+        [
+          '[class*="priceTagWrap--"] > [class*="priceTag--"]',
+          '[class*="sectionPriceSelecter--"] [class*="priceSelectItemWrapper--"] > *',
+          '[class*="sectionPriceSelecter--"] [class*="buttonWrapper--"] > [class*="resetButton--"]',
+          '[class*="sectionPriceSelecter--"] [class*="buttonWrapper--"] > [class*="confirmButton--"]'
+        ].join(", ")
+      )
+    )
 };
