@@ -29,7 +29,7 @@ import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
 import { clip, paragraphs } from "./snapshot/text";
-import { collectStrategyElements } from "./strategies";
+import { collectStrategyElements, strategyMain } from "./strategies";
 
 // content script：Go 第一次要操作某个页面时，由 background 注入进去（commands.ts 的 inject），
 // 和网页跑在同一个渲染进程，能读写 DOM，但看不到网页自己的 JS 变量（isolated world）。
@@ -476,7 +476,7 @@ function readRoot(index?: number): { root: Element; scope: ReadScope } {
   if (overlay) {
     return { root: overlay, scope: "overlay" };
   }
-  const main = document.querySelector("main, [role=main], article");
+  const main = strategyMain(new URL(location.href), document) ?? document.querySelector("main, [role=main], article");
   if (main && ((main as HTMLElement).innerText ?? "").trim().length >= MIN_MAIN_CHARS) {
     return { root: main, scope: "main" };
   }

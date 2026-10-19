@@ -40,3 +40,43 @@ export const jd: SiteStrategy = {
     return /^\d+$/.test(sku) ? `https://item.jd.com/${sku}.html` : undefined;
   }
 };
+
+// 京东商品详情（2026-10-19 在 DevTools 里看的，item.jd.com 和海外自营的 npcitem.jd.hk）：
+//   - 右边一栏 .page-right-content 是标题、价格、优惠、规格、服务；页面最上面是顶栏和这个浏览器账号的
+//     "最近感兴趣""最近收藏"。read 整页时前 3000 字全是后者，价格一个字都读不到，还把账号看过的东西给了模型
+//   - 规格在 .page-right-spec 里，有两种写法，都是 div，快照里一个都没有，模型没法换规格看价格：
+//       第一组：.layout-label（"系列品"）加一排 .specification-series-item
+//       下面几组：.specification-group，组名在 .specification-group-label（"内存频率"），
+//       选项是 .specification-item-sku，没有这个组合的类名带 --unavailable（title 里写着"无此商品"）
+//     选中的那个类名都带 --selected
+const SPEC_OPTIONS = ".page-right-spec .specification-series-item, .page-right-spec .specification-item-sku";
+const SPEC_GROUP_LABEL = ":scope > .layout-label, :scope > .specification-group-label";
+
+export const jdItem: SiteStrategy = {
+  name: "jd-item",
+  matches: (url) => url.hostname === "item.jd.com" || url.hostname === "npcitem.jd.hk",
+  interactive: (doc) => Array.from(doc.querySelectorAll(SPEC_OPTIONS)),
+  // "内存频率：[D5 6000]银爵国产颗粒 C36（已选）"：组名从同一组的标签来，选中、没有这个组合从类名来
+  label: (el) => {
+    const text = (el.querySelector('[class$="-text"]')?.textContent ?? el.textContent ?? "").trim();
+    const name = groupLabel(el);
+    const classes = el.className.toString();
+    const state = classes.includes("--selected") ? "（已选）" : classes.includes("--unavailable") ? "（无此商品）" : "";
+    return `${name ? `${name}：` : "规格："}${text}${state}`;
+  },
+  main: (doc) => doc.querySelector(".page-right-content")
+};
+
+// groupLabel 往上找到同一组的组名（"系列品""内存频率"）。不用 :has()，测试用的 jsdom 不认
+function groupLabel(el: Element): string | undefined {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const label = p.querySelector(SPEC_GROUP_LABEL);
+    if (label) {
+      return label.textContent?.trim() || undefined;
+    }
+    if (p.classList.contains("page-right-spec")) {
+      return undefined;
+    }
+  }
+  return undefined;
+}

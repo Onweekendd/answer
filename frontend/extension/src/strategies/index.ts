@@ -17,12 +17,12 @@
  * under the License.
  */
 
-import { jd } from "./jd";
-import { taobao } from "./taobao";
+import { jd, jdItem } from "./jd";
+import { taobao, taobaoItem } from "./taobao";
 import type { SiteStrategy } from "./types";
 import { xiaohongshu } from "./xiaohongshu";
 
-const strategies: readonly SiteStrategy[] = [taobao, xiaohongshu, jd];
+const strategies: readonly SiteStrategy[] = [taobao, taobaoItem, xiaohongshu, jd, jdItem];
 
 export function collectStrategyElements(
   url: URL,
@@ -64,4 +64,14 @@ export function collectStrategyElements(
     }
   }
   return { elements: [], labels: new Map(), links: new Map(), stats: {} };
+}
+
+// strategyMain 是匹配到的策略给的正文区；没有匹配的策略、策略没给、或者策略出错，都返回 null
+export function strategyMain(url: URL, doc: Document, registry = strategies): Element | null {
+  const strategy = registry.find((s) => s.matches(url));
+  try {
+    return strategy?.main?.(doc) ?? null;
+  } catch {
+    return null;
+  }
 }
