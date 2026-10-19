@@ -63,13 +63,14 @@ fi
 old_tag="$(current_tag)"
 echo "deploying $new_tag (running $old_tag)"
 
-# 1. 先备份：新版本的迁移出了问题，还能把数据恢复回来
-./backup.sh
-
-# Garage 的密钥：第一次部署时生成，以后一直用 .env 里的
+# Garage 的密钥：第一次部署时生成，以后一直用 .env 里的。要在第一条 docker compose 之前：
+# compose 文件里这几个变量是必填的，缺了连备份（docker compose exec）都跑不了
 ensure_env GARAGE_RPC_SECRET "$(openssl rand -hex 32)"
 ensure_env S3_ACCESS_KEY_ID "GK$(openssl rand -hex 12)"
 ensure_env S3_SECRET_ACCESS_KEY "$(openssl rand -hex 32)"
+
+# 1. 先备份：新版本的迁移出了问题，还能把数据恢复回来
+./backup.sh
 
 # 2. 切到新版本
 set_tag "$new_tag"
