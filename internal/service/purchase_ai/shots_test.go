@@ -20,8 +20,13 @@
 package purchaseai
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"strings"
 	"testing"
 
@@ -112,6 +117,54 @@ func Test_citeShot(t *testing.T) {
 
 		// Assert
 		assert.True(t, res.Failed)
+	})
+}
+
+// jpegOf 画一张 w×h 的图：底色 bg，左上角 1/4 画成 fg
+func jpegOf(t *testing.T, w, h int, bg, fg color.Color) string {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for x := 0; x < w; x++ {
+		for y := 0; y < h; y++ {
+			c := bg
+			if x < w/2 && y < h/2 {
+				c = fg
+			}
+			img.Set(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	require.NoError(t, jpeg.Encode(&buf, img, &jpeg.Options{Quality: 80}))
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+func Test_looksBlank(t *testing.T) {
+	white := color.RGBA{255, 255, 255, 255}
+
+	t.Run("一片白算空白", func(t *testing.T) {
+		// Act
+		blank, err := looksBlank(jpegOf(t, 400, 200, white, white))
+
+		// Assert
+		require.NoError(t, err)
+		assert.True(t, blank)
+	})
+
+	t.Run("四分之一有内容就不算", func(t *testing.T) {
+		// Act
+		blank, err := looksBlank(jpegOf(t, 400, 200, white, color.RGBA{230, 80, 30, 255}))
+
+		// Assert
+		require.NoError(t, err)
+		assert.False(t, blank)
+	})
+
+	t.Run("不是 jpeg 时报错，不当成空白", func(t *testing.T) {
+		// Act
+		_, err := looksBlank(base64.StdEncoding.EncodeToString([]byte("shot1")))
+
+		// Assert
+		assert.Error(t, err)
 	})
 }
 

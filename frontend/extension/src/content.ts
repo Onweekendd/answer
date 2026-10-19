@@ -528,7 +528,7 @@ const SHOT_PADDING = 8;
 
 // screenshotArea 是要截的区域。不填 index 是当前这一屏；填了是那个元素在视口里的部分加上一圈边。
 // 元素完全不在屏幕上时才滚到中间：截图不应该无故移动页面（hover 出来的菜单会收起）
-function screenshotArea(index?: number): ShotArea {
+async function screenshotArea(index?: number): Promise<ShotArea> {
   const dpr = window.devicePixelRatio || 1;
   if (index === undefined) {
     return { x: window.scrollX, y: window.scrollY, width: window.innerWidth, height: window.innerHeight, dpr };
@@ -537,8 +537,29 @@ function screenshotArea(index?: number): ShotArea {
   if (!el.isConnected || !isVisible(el)) {
     throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
   }
+  await settleForShot(el);
   return elementArea(el, SHOT_PADDING);
 }
+
+// 元素截图前的准备：只露出一部分时先滚到中间，再等里面的图加载完。
+// 2026-10-20 淘宝首页的轮播图直接截，图还没画出来，截下来一片白
+async function settleForShot(el: Element): Promise<void> {
+  const rect = el.getBoundingClientRect();
+  const fits = rect.width <= window.innerWidth && rect.height <= window.innerHeight;
+  if (fits && !fullyInViewport(el)) {
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    await new Promise((resolve) => setTimeout(resolve, SCROLL_SETTLE_MS));
+  }
+  const images = [...(el.matches("img") ? [el] : []), ...el.querySelectorAll("img")].slice(0, SHOT_IMAGE_WAIT);
+  if (images.some((img) => img instanceof HTMLImageElement && !img.complete)) {
+    await Promise.all(images.map(imageLoaded));
+    // 加载完到画出来还差一帧，淡入的图还要更久
+    await new Promise((resolve) => setTimeout(resolve, SCROLL_SETTLE_MS));
+  }
+}
+
+// 截图前最多等元素里几张图：一个列表里几十张图，等前几张就够了
+const SHOT_IMAGE_WAIT = 6;
 
 // elementArea 是元素在视口里的部分，四周加 padding。元素完全不在屏幕上时先滚到中间
 function elementArea(el: Element, padding: number): ShotArea {

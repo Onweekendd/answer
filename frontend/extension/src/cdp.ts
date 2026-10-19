@@ -225,6 +225,27 @@ export async function cdpScreenshot(
   };
 }
 
+// cdpResource 是页面已经加载好的一个资源（主框架里的），拿不到返回 null。
+// 图片走这里不用重新下载，请求时页面带的 Referer、cookie 都已经用过了
+export async function cdpResource(target: chrome.debugger.Debuggee, url: string): Promise<Uint8Array | null> {
+  try {
+    await chrome.debugger.sendCommand(target, "Page.enable");
+    const tree = (await chrome.debugger.sendCommand(target, "Page.getFrameTree")) as {
+      frameTree: { frame: { id: string } };
+    };
+    const res = (await chrome.debugger.sendCommand(target, "Page.getResourceContent", {
+      frameId: tree.frameTree.frame.id,
+      url
+    })) as { content: string; base64Encoded: boolean };
+    if (!res.base64Encoded) {
+      return new TextEncoder().encode(res.content);
+    }
+    return Uint8Array.from(atob(res.content), (c) => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
 export async function cdpScroll(
   target: chrome.debugger.Debuggee,
   viewport: { width: number; height: number },

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { cdpClick, cdpHover, cdpPress, cdpScreenshot, cdpScroll, cdpType, withDebugger } from "./cdp";
+import { cdpClick, cdpHover, cdpPress, cdpResource, cdpScreenshot, cdpScroll, cdpType, withDebugger } from "./cdp";
 import { downloadImage } from "./imagefile";
 import {
   type Command,
@@ -108,16 +108,18 @@ async function executeCommand(cmd: Command): Promise<unknown> {
         const tab = await chrome.tabs.get(cmd.tabId);
         return { url: found.url, title: tab.title ?? "", image };
       });
-    case "image": {
-      const found = (await sendToTab(cmd.tabId, { type: "imageSource", index: cmd.args.index })) as ImageSource;
-      const image = await downloadImage(
-        found.src,
-        cmd.args.maxWidth ?? DEFAULT_IMAGE_WIDTH,
-        cmd.args.quality ?? DEFAULT_IMAGE_QUALITY
-      );
-      const tab = await chrome.tabs.get(cmd.tabId);
-      return { ...image, url: tab.url ?? "", src: found.src };
-    }
+    case "image":
+      return withDebugger(cmd.tabId, async (target) => {
+        const found = (await sendToTab(cmd.tabId, { type: "imageSource", index: cmd.args.index })) as ImageSource;
+        const image = await downloadImage(
+          found.src,
+          cmd.args.maxWidth ?? DEFAULT_IMAGE_WIDTH,
+          cmd.args.quality ?? DEFAULT_IMAGE_QUALITY,
+          { fromPage: (src) => cdpResource(target, src) }
+        );
+        const tab = await chrome.tabs.get(cmd.tabId);
+        return { ...image, url: tab.url ?? "", src: found.src };
+      });
     case "inspect":
       return sendToTab(cmd.tabId, { type: "inspect", text: cmd.args.text, up: cmd.args.up });
     case "click":

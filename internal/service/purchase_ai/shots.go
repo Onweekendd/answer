@@ -20,8 +20,11 @@
 package purchaseai
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"image/jpeg"
 	"regexp"
 	"strconv"
 	"strings"
@@ -108,6 +111,10 @@ func (r *agentRun) keepPicture(ctx context.Context, cmd string, index *int, capt
 	if shot.Data == "" || shot.Mime == "" {
 		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
+	if blank, err := looksBlank(shot.Data); err == nil && blank {
+		return toolResult{Failed: true, Text: "截出来几乎是一片空白：图可能还没加载出来，或者轮播已经切走了。" +
+			"页面上本来是图片的（轮播图、商品图）用 cite_image 取原图；不是图片的，先 screenshot 看一眼再截。"}, nil
+	}
 	image := r.saveImage(ctx, &shot.screenshotData)
 	if image == "" {
 		return toolResult{Failed: true, Text: "图片没存成，这张图用不了。回答里照常用文字说明。"}, nil
@@ -128,6 +135,39 @@ func (r *agentRun) keepPicture(ctx context.Context, cmd string, index *int, capt
 		Image:   "data:" + shot.Mime + ";base64," + shot.Data,
 		URL:     shot.URL,
 	}, nil
+}
+
+// blankShare 是一张图里同一种颜色占多少才算空白。真的截图里，大片留白的价格区也就七八成
+const blankShare = 0.94
+
+// looksBlank 看一张 jpeg（base64）是不是几乎只有一种颜色：抽 48×48 个点，颜色粗分以后数最多的那种
+func looksBlank(data string) (bool, error) {
+	raw, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return false, err
+	}
+	img, err := jpeg.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return false, err
+	}
+	b := img.Bounds()
+	if b.Dx() == 0 || b.Dy() == 0 {
+		return true, nil
+	}
+	const grid = 48
+	counts := map[[3]uint32]int{}
+	most := 0
+	for i := 0; i < grid; i++ {
+		for j := 0; j < grid; j++ {
+			x := b.Min.X + (2*i+1)*b.Dx()/(2*grid)
+			y := b.Min.Y + (2*j+1)*b.Dy()/(2*grid)
+			r, g, bl, _ := img.At(x, y).RGBA()
+			key := [3]uint32{r >> 12, g >> 12, bl >> 12} // 16 级，jpeg 的噪点和渐变不算不同的颜色
+			counts[key]++
+			most = max(most, counts[key])
+		}
+	}
+	return float64(most) >= blankShare*grid*grid, nil
 }
 
 // shotRef 是回答里的 [图N]，全角的括号、【】、中间有空格也算

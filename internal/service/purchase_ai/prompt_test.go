@@ -54,6 +54,17 @@ func Test_buildSystemPrompt(t *testing.T) {
 		}
 	})
 
+	t.Run("聊天不下买不买的结论，帖子分析要把结论放在第一行（AI 拿它投票）", func(t *testing.T) {
+		// Act
+		chat := buildSystemPrompt(now, true)
+		post := buildPostPrompt(now, true)
+
+		// Assert
+		require.Contains(t, chat, "社区投票决定")
+		require.NotContains(t, chat, "放在回答的第一行")
+		require.Contains(t, post, "放在回答的第一行")
+	})
+
 	t.Run("插件没连上时不提工具，要求说明价格没有实时核实", func(t *testing.T) {
 		// Act
 		prompt := buildSystemPrompt(now, false)

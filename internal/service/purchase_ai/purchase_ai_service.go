@@ -133,7 +133,7 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 	// answers from what it knows, saying the prices are not checked live
 	browserOn := pas.browser.Connected()
 	messages := []llm.Message{
-		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn)),
+		llm.Text(llm.RoleSystem, buildPostPrompt(time.Now(), browserOn)),
 		pas.userMessage(ctx, question),
 	}
 
