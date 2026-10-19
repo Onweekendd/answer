@@ -77,15 +77,27 @@ func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bo
 		if err != nil {
 			return nil, err
 		}
-		messages = append(messages, assistantMessage(resp))
+		msg := assistantMessage(resp)
+		empty := len(resp.ToolCalls) == 0 && strings.TrimSpace(answerText(resp)) == ""
+		if empty {
+			msg.Parts = []llm.Part{{Text: emptyReply}}
+		}
+		messages = append(messages, msg)
 
 		if len(resp.ToolCalls) == 0 {
 			// ③ 只回了文字：没给工具、已经提醒过一次，或者这是最后一步（提醒了也没有步数去调用 done），
-			// 就当作答案；否则提醒它调用 done
+			// 就当作答案；否则提醒它调用 done。空回复当不了答案：最后再问一次，不给工具，让它把回答写出来
 			if len(defs) == 0 || reminded || step == r.limits.maxSteps-1 {
+				if empty {
+					return r.finish(ctx, messages, finishEmpty)
+				}
 				return &agentResult{Text: answerText(resp), Success: true, Steps: r.steps, Reasoning: resp.Reasoning}, nil
 			}
-			messages = append(messages, llm.Text(llm.RoleUser, doneReminder))
+			reminder := doneReminder
+			if empty {
+				reminder = emptyReminder
+			}
+			messages = append(messages, llm.Text(llm.RoleUser, reminder))
 			reminded = true
 			continue
 		}

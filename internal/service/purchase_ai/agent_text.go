@@ -51,6 +51,12 @@ const (
 
 	// doneReminder 模型操作过浏览器以后只回了文字（概念 7）
 	doneReminder = "如果已经查完了，请调用 done，把完整的回答写在 text 里；如果还没查完，请接着操作浏览器。"
+
+	// emptyReply 代替一条空回复放回对话：服务商会拒绝既没有内容、也没有工具调用的 assistant 消息
+	// （2026-10-19 实测：模型把输出全花在思考上，正文是空的，下一次请求被拒，整次任务报错）
+	emptyReply = "（这一步没有写出内容）"
+	// emptyReminder 模型回了空回复（概念 7）
+	emptyReminder = "你上一条回复是空的，什么都没写出来。如果已经查完了，请调用 done，把完整的回答写在 text 里；如果还没查完，请接着操作浏览器。"
 )
 
 // stepWarningText 在还剩 remaining 步时追加一次（概念 4）
@@ -71,4 +77,5 @@ var finishPrompts = map[finishReason]string{
 	finishFailures:    "浏览器操作连续失败，不再继续。请根据已经看到的信息作答，并说明哪些信息没能查到。",
 	finishLoop:        "你一直在重复同样的操作，不再继续。请根据已经看到的信息作答，并说明哪些信息没能查到。",
 	finishBrowserGone: "浏览器断开了，不能再操作。请根据已经看到的信息作答，并说明价格等信息没能实时核实。",
+	finishEmpty:       "你的回复又是空的。不能再操作浏览器了，请直接把回答写出来：根据已经看到的信息作答，没查到的直接说明未能核实。",
 }

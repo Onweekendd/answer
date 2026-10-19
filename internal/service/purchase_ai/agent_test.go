@@ -595,6 +595,45 @@ func Test_run(t *testing.T) {
 		require.Equal(t, doneReminder, model.lastMessage(2))
 	})
 
+	t.Run("空回复不原样放回对话：换成占位语，提醒它是空的", func(t *testing.T) {
+		// Arrange：思考写完了，正文是空的
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			{Reasoning: "Final answer"},
+			calls(doneCall("c2", "**买**")),
+		}}
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), testLimits())
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, "**买**", res.Text)
+		msgs := model.reqs[2].Messages
+		require.Equal(t, emptyReply, msgs[len(msgs)-2].Parts[0].Text)
+		require.Equal(t, emptyReminder, model.lastMessage(2))
+	})
+
+	t.Run("提醒过还是空回复：收尾，不给工具让它写出回答", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			{Content: "我再想想"},
+			{Reasoning: "Final answer"},
+			{Content: "**再等等**"},
+		}}
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), testLimits())
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, finishEmpty, res.Finish)
+		require.Equal(t, "**再等等**", res.Text)
+		require.Empty(t, model.reqs[3].Tools)
+		require.Equal(t, finishPrompts[finishEmpty], model.lastMessage(3))
+	})
+
 	t.Run("给了工具，第一步就只回文字：也要先提醒调用 done", func(t *testing.T) {
 		// Arrange：还没操作过浏览器，模型只说了一句要去做什么
 		model := &fakeLLM{replies: []*llm.ChatResp{

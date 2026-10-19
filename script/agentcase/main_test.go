@@ -20,10 +20,12 @@
 package main
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/apache/answer/internal/service/llm"
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
+	pacmanerrors "github.com/segmentfault/pacman/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,5 +52,19 @@ func Test_summarize(t *testing.T) {
 		require.Equal(t, 2, s.selfPass)
 		require.Equal(t, "15.0", avg(s.steps, s.ran))
 		require.Equal(t, 4000, avgInt(s.tokens, s.ran))
+	})
+}
+
+func Test_describe(t *testing.T) {
+	t.Run("模型服务商的报错藏在 Answer 错误的 Err 里，要取出来，不能是空字符串", func(t *testing.T) {
+		// Arrange：Answer 的错误类型 Message 为空，Error() 就是空字符串
+		err := pacmanerrors.InternalServer("error.ai.request_failed").
+			WithError(errors.New("error, status code: 400, message: invalid assistant message"))
+
+		// Act
+		got := describe(err)
+
+		// Assert
+		require.Equal(t, "error, status code: 400, message: invalid assistant message", got.Error())
 	})
 }

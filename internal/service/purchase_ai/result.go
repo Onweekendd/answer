@@ -54,6 +54,7 @@ const (
 	finishSteps       finishReason = "steps"        // 步数用完了
 	finishFailures    finishReason = "failures"     // 连续失败
 	finishLoop        finishReason = "loop"         // 一直在重复同一个动作
+	finishEmpty       finishReason = "empty"        // 提醒过以后还是回了空回复（只有思考，没有正文）
 	finishBrowserGone finishReason = "browser_gone" // 做到一半插件断开了
 )
 

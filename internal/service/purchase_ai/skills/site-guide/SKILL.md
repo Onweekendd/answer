@@ -9,7 +9,7 @@ description: 在电商和内容网站上查资料的做法。打开淘宝、小�
 
 | 网站 | reference | 什么时候读 |
 |---|---|---|
-| 淘宝、天猫 | references/taobao.md | 查价格、销量，要在淘宝搜索、排序、筛选价格区间时 |
+| 淘宝、天猫 | references/taobao.md | 查价格、销量、旗舰店同款，要在淘宝搜索、排序、筛选价格区间、看商品详情时 |
 | 小红书 | references/xiaohongshu.md | 看用户的使用体验、口碑、避坑经验时 |
 | 宜家 | references/ikea.md | 查宜家商品的价格、尺寸、填充物和材料时 |
 

@@ -48,6 +48,7 @@ import (
 	"github.com/apache/answer/internal/service/browser"
 	"github.com/apache/answer/internal/service/llm"
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
+	pacmanerrors "github.com/segmentfault/pacman/errors"
 )
 
 type options struct {
@@ -242,6 +243,11 @@ func configError(err error) bool {
 // describe 把 Agent 的错误说成一句话。服务商的原话不打印：认证失败时它会带上 key 的最后几位
 func describe(err error) error {
 	msg := err.Error()
+	// Answer 的错误类型 Error() 只返回 Message，模型服务商的报错在 Err 里：不取出来就是一行空字符串
+	var pe *pacmanerrors.Error
+	if errors.As(err, &pe) && pe.Err != nil {
+		msg = pe.Err.Error()
+	}
 	switch {
 	case strings.Contains(msg, "401"):
 		return fmt.Errorf("模型服务商认证失败（401）：检查 llm.local.json 里的 api_key 和 api_host 是不是同一家的")
