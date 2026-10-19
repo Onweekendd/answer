@@ -32,6 +32,7 @@ import {
 // 分工：跟"标签页"有关的（跳转、开关）在这里做；跟"页面内容"有关的转给 content script。
 
 const DEFAULT_MAX_CHARS = 8000;
+const DEFAULT_READ_CHARS = 3000;
 // 截图的默认尺寸和质量，Go 一般会自己指定
 const DEFAULT_SHOT_WIDTH = 1600;
 const DEFAULT_SHOT_QUALITY = 80;
@@ -64,6 +65,12 @@ async function executeCommand(cmd: Command): Promise<unknown> {
       return sendToTab(cmd.tabId, {
         type: "snapshot",
         maxChars: cmd.args.maxChars ?? DEFAULT_MAX_CHARS
+      });
+    case "read":
+      return sendToTab(cmd.tabId, {
+        type: "read",
+        index: cmd.args.index,
+        maxChars: cmd.args.maxChars ?? DEFAULT_READ_CHARS
       });
     case "screenshot":
       return withDebugger(cmd.tabId, async (target) => {

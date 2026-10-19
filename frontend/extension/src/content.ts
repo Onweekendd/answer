@@ -21,7 +21,7 @@ import { CommandError, type ShotArea, type TabRequest, type TabResponse, toError
 import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
-import { clip } from "./snapshot/text";
+import { clip, paragraphs } from "./snapshot/text";
 import { collectStrategyElements } from "./strategies";
 
 // content script：Go 第一次要操作某个页面时，由 background 注入进去（commands.ts 的 inject），
@@ -50,6 +50,10 @@ async function handle(req: TabRequest): Promise<unknown> {
       result.stats.stable = settle.stable;
       return result;
     }
+    case "read":
+      // 和 snapshot 一样先等页面安静：浮层刚打开时正文常常还在加载
+      await waitForStable(document.body);
+      return readText(req.maxChars, req.index);
     case "prepareInput":
       return prepareInput(req.index, req.editable);
     case "selectInput": {
@@ -369,6 +373,80 @@ function describeCover(x: number, y: number): string {
     .map(([name, value]) => `${name}=${clip(value ?? "", 40)}`);
   const text = clip(maskPrivate((target.textContent ?? "").replace(/\s+/g, " ").trim()), 40);
   return `<${[target.tagName.toLowerCase(), ...attrs].join(" ")}>${text}`;
+}
+
+// ---------- 读文字 ----------
+
+// 读的是哪一块：element 是 index 指定的元素，overlay 是盖在页面上的浮层，main 是 <main>/<article>，page 是整页
+type ReadScope = "element" | "overlay" | "main" | "page";
+
+interface ReadResult {
+  url: string;
+  title: string;
+  scope: ReadScope;
+  text: string;
+  truncated: boolean;
+  totalChars: number; // 没截断时一共多少字，模型据此知道还剩多少没读
+}
+
+// <main>/<article> 里的字少于这么多，多半只是个空壳（内容是 JS 渲染在别处的），改读整页
+const MIN_MAIN_CHARS = 200;
+
+// readText 读出一块区域的文字。用 innerText：它按 CSS 排版取字，display:none 的不算，
+// 块级元素之间有换行，滚动容器里没露出来的部分也算（笔记正文很长时，不用滚动就能读完）
+function readText(maxChars: number, index?: number): ReadResult {
+  const { root, scope } = readRoot(index);
+  // 先整理、再打码、最后截断：截断不会切开一个手机号，让一半漏过打码
+  const full = maskPrivate(paragraphs((root as HTMLElement).innerText ?? ""));
+  const truncated = full.length > maxChars;
+  return {
+    url: displayUrl(location.href),
+    title: document.title,
+    scope,
+    text: truncated ? `${full.slice(0, maxChars)}…` : full,
+    truncated,
+    totalChars: full.length
+  };
+}
+
+function readRoot(index?: number): { root: Element; scope: ReadScope } {
+  if (index !== undefined) {
+    const el = elementAt(index);
+    if (!el.isConnected) {
+      throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
+    }
+    return { root: el, scope: "element" };
+  }
+  const overlay = topOverlay();
+  if (overlay) {
+    return { root: overlay, scope: "overlay" };
+  }
+  const main = document.querySelector("main, [role=main], article");
+  if (main && ((main as HTMLElement).innerText ?? "").trim().length >= MIN_MAIN_CHARS) {
+    return { root: main, scope: "main" };
+  }
+  return { root: document.body, scope: "page" };
+}
+
+// topOverlay 找盖在页面中间的浮层：屏幕正中那个点往外，最外层的弹窗或 fixed 定位、占了至少四分之一屏的元素。
+// 不认识任何网站：小红书的笔记浮层、各种详情弹窗都是这个样子；背后被盖住的列表不读
+function topOverlay(): Element | undefined {
+  const viewportArea = window.innerWidth * window.innerHeight;
+  let found: Element | undefined;
+  for (
+    let el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    el && el !== document.body && el !== document.documentElement;
+    el = el.parentElement
+  ) {
+    const layer =
+      el.matches('dialog[open], [role=dialog], [role=alertdialog], [aria-modal="true"]') ||
+      getComputedStyle(el).position === "fixed";
+    const rect = el.getBoundingClientRect();
+    if (layer && rect.width * rect.height >= viewportArea / 4) {
+      found = el;
+    }
+  }
+  return found;
 }
 
 // 截元素时四周留的边：卡片的边框、角标贴着边，留一点才看得出是一张完整的卡片

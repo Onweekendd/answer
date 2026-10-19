@@ -236,3 +236,82 @@ it("被弹窗盖住时描述弹窗本身，带一小段文字", async () => {
   const message = res.ok ? "" : res.error.message;
   expect(message).toContain("<div role=dialog aria-label=登录>请先登录后再操作");
 });
+
+async function read(index?: number, maxChars = 3000) {
+  const res = await request({ type: "read", index, maxChars });
+  expect(res.ok).toBe(true);
+  return res.ok ? (res.data as { scope: string; text: string; truncated: boolean; totalChars: number }) : undefined;
+}
+
+it("读文字：页面中间盖着浮层时只读浮层，背后的列表不读", async () => {
+  // Arrange：笔记浮层是 fixed 定位，占满整屏；屏幕正中是浮层里的正文
+  vi.stubGlobal("innerWidth", 1000);
+  vi.stubGlobal("innerHeight", 800);
+  document.body.innerHTML = `<div id="list"><a>笔记一</a><a>笔记二</a></div>
+    <div id="mask" style="position: fixed"><div id="note"><h1>用了半年的感受</h1><p>续航一般，拍照很好</p></div></div>`;
+  const mask = document.getElementById("mask")!;
+  mask.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 1000,
+    bottom: 800,
+    width: 1000,
+    height: 800,
+    toJSON: () => ({})
+  });
+  const body = document.querySelector("p")!;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => body });
+
+  // Act
+  const got = await read();
+
+  // Assert
+  expect(got).toMatchObject({ scope: "overlay", truncated: false });
+  expect(got?.text).toContain("续航一般，拍照很好");
+  expect(got?.text).not.toContain("笔记一");
+});
+
+it("读文字：没有浮层时读 <main>，太短的 <main> 改读整页", async () => {
+  // Arrange
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
+  document.body.innerHTML = `<nav>首页 分类</nav><main><p>${"正文".repeat(150)}</p></main>`;
+
+  // Act
+  const withMain = await read();
+  document.body.innerHTML = "<nav>首页 分类</nav><main><p>加载中</p></main><div>别处渲染的正文</div>";
+  const shell = await read();
+
+  // Assert
+  expect(withMain?.scope).toBe("main");
+  expect(withMain?.text).not.toContain("首页");
+  expect(shell?.scope).toBe("page");
+  expect(shell?.text).toContain("别处渲染的正文");
+});
+
+it("读文字：填 index 读那个元素的全部文字，快照里的 120 字上限不管用", async () => {
+  // Arrange
+  const title = "很长的商品标题".repeat(30);
+  document.body.innerHTML = `<a>${title}</a>`;
+  await snapshot();
+
+  // Act
+  const got = await read(0);
+
+  // Assert
+  expect(got).toMatchObject({ scope: "element", text: title, truncated: false });
+});
+
+it("读文字：先打码再截断，超出的部分不返回", async () => {
+  // Arrange
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
+  document.body.innerHTML = "<p>联系 13812345678 了解更多</p>";
+
+  // Act
+  const got = await read(undefined, 8);
+
+  // Assert
+  expect(got).toMatchObject({ text: "联系 [手机号]…", truncated: true, totalChars: 13 });
+  expect(got?.text).not.toContain("138");
+});

@@ -28,6 +28,9 @@
 export interface CommandArgs {
   navigate: { url: string };
   snapshot: { maxChars?: number };
+  // 读页面上的文字（正文、评论），快照里没有这些。不填 index：开着浮层只读浮层，否则读主要内容；
+  // 填了只读那个元素。最多 maxChars 个字
+  read: { index?: number; maxChars?: number };
   // 截图：不填 index 截当前这一屏，填了只截那个元素。输出 jpeg，宽不超过 maxWidth 个实际像素
   screenshot: { index?: number; maxWidth?: number; quality?: number };
   click: { index: number };
@@ -125,6 +128,7 @@ export type InputAction =
 
 export type TabRequest =
   | { type: "snapshot"; maxChars: number }
+  | { type: "read"; index?: number; maxChars: number }
   | { type: "prepareInput"; index: number; editable: boolean }
   | { type: "selectInput"; index: number }
   | { type: "viewport" }

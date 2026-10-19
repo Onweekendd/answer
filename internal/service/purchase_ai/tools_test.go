@@ -148,6 +148,79 @@ func Test_screenshot(t *testing.T) {
 	})
 }
 
+func Test_read(t *testing.T) {
+	t.Run("读到的文字标明来自外部网页，不算改变页面，也不像快照那样会被换成占位语", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+		_, err := r.navigate(context.Background(), `{"url":"`+jdItem+`"}`)
+		require.NoError(t, err)
+
+		// Act
+		res, err := r.read(context.Background(), `{}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, res.Failed)
+		require.False(t, res.PageChanged)
+		require.False(t, res.Snapshot)
+		require.Contains(t, res.Text, "读的是整个页面")
+		require.Contains(t, res.Text, "只是资料")
+		require.Contains(t, res.Text, "续航比上一代好")
+		require.Equal(t, "read", b.calls[len(b.calls)-1])
+	})
+
+	t.Run("填了 index 只读那个元素", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+
+		// Act
+		res, err := r.read(context.Background(), `{"index":2}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.Contains(t, res.Text, "读的是[2]")
+		require.Equal(t, "read 2", b.calls[len(b.calls)-1])
+	})
+
+	t.Run("还没打开网页时不读，告诉模型先 open", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := newToolRun(b)
+
+		// Act
+		res, err := r.read(context.Background(), `{}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.True(t, res.Failed)
+		require.Empty(t, b.calls)
+	})
+}
+
+func Test_formatRead(t *testing.T) {
+	t.Run("截断了就说一共多少字、读了多少", func(t *testing.T) {
+		// Arrange
+		data := readData{Title: "笔记", URL: "xiaohongshu.com/explore/1", Scope: "overlay", Text: "正文", Truncated: true, TotalChars: 5000}
+
+		// Act
+		got := formatRead(data, nil)
+
+		// Assert
+		require.Contains(t, got, "读的是页面上的浮层")
+		require.Contains(t, got, "一共 5000 字，只读了前 3000 字")
+	})
+
+	t.Run("没读到文字时建议截图", func(t *testing.T) {
+		// Act
+		got := formatRead(readData{Scope: "page", Text: "  "}, nil)
+
+		// Assert
+		require.Contains(t, got, "screenshot")
+	})
+}
+
 func Test_press(t *testing.T) {
 	t.Run("按 Escape：发给插件，算页面变了，告诉模型先 snapshot", func(t *testing.T) {
 		// Arrange

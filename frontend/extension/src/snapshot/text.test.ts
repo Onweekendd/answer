@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clip } from "./text";
+import { clip, paragraphs } from "./text";
 
 describe("clip", () => {
   it("把卡片里的换行拼成一行", () => {
@@ -68,5 +68,22 @@ describe("clip", () => {
 
   it("不超长的原样返回", () => {
     expect(clip("  搜索  ", 10)).toBe("搜索");
+  });
+});
+
+describe("paragraphs", () => {
+  it("保留分段，去掉空行、图标字符和多余空白", () => {
+    // Arrange
+    const innerText = "  标题 \n\n\n第一段  正文\n 点赞\n";
+
+    // Act
+    const got = paragraphs(innerText);
+
+    // Assert
+    expect(got).toBe("标题\n第一段 正文\n点赞");
+  });
+
+  it("连着重复的行只留一行", () => {
+    expect(paragraphs("评论\n评论\n好用\n评论")).toBe("评论\n好用\n评论");
   });
 });

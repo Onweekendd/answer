@@ -78,6 +78,7 @@ func (f *fakeLLM) lastMessage(i int) string {
 type fakePage struct {
 	title    string
 	elements string         // 快照里的文字，一行一个元素
+	text     string         // read 读到的文字
 	links    map[int]string // 点几号元素会跳到哪个网址
 	submitTo string         // 在这一页输入并回车会跳到哪个网址
 	screens  float64        // 页面有几屏高，滚到底就不再动；0 表示 3 屏
@@ -140,6 +141,17 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 		f.calls = append(f.calls, name)
 		data := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("shot%d", f.shots)))
 		return json.Marshal(map[string]any{"data": data, "mime": "image/jpeg", "width": 1024, "height": 576, "url": f.tabs[tabID]})
+	case "read":
+		name, scope := "read", "page"
+		if strings.Contains(string(raw), `"index"`) {
+			name, scope = fmt.Sprintf("read %d", a.Index), "element"
+		}
+		f.calls = append(f.calls, name)
+		url := f.tabs[tabID]
+		return mustJSON(map[string]any{
+			"url": url, "title": f.pages[url].title, "scope": scope,
+			"text": f.pages[url].text, "truncated": false, "totalChars": len([]rune(f.pages[url].text)),
+		}), nil
 	case "press":
 		f.calls = append(f.calls, "press "+a.Key)
 		return f.acted(tabID, nil), nil
@@ -263,7 +275,11 @@ func shopPages() map[string]fakePage {
 			elements: "[0]<a>Apple iPhone 17 256GB ¥5999 自营\n[1]<a>销量\n[2]<a>下一页",
 			links:    map[int]string{0: jdItem},
 		},
-		jdItem: {title: "Apple iPhone 17", elements: "[0]<a>Apple 京东自营旗舰店\n[1]<button>加入购物车"},
+		jdItem: {
+			title:    "Apple iPhone 17",
+			elements: "[0]<a>Apple 京东自营旗舰店\n[1]<button>加入购物车",
+			text:     "Apple iPhone 17\n商品评价\n用了一个月，续航比上一代好",
+		},
 		// 淘宝首页：搜索结果在新标签页里打开
 		tbHome: {
 			title:    "淘宝",
@@ -349,7 +365,7 @@ func Test_run(t *testing.T) {
 		for _, tool := range model.reqs[0].Tools {
 			names = append(names, tool.Name)
 		}
-		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolDone}, names)
+		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolDone}, names)
 	})
 
 	t.Run("截图放在这一轮全部工具回复之后的一条用户消息里，截图不改变页面，同一轮后面的调用照常执行", func(t *testing.T) {

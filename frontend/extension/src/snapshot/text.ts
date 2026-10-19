@@ -32,3 +32,16 @@ export function clip(s: string, max: number): string {
     .trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
+
+// paragraphs 整理 read 读出来的一大段文字：和 clip 不同，换行要留着，分段才看得出哪句是哪段。
+// 每行去掉图标字符、压掉多余空白；空行去掉；和上一行一样的也去掉（"点赞 点赞"这类按钮文字常常重复）
+export function paragraphs(s: string): string {
+  const out: string[] = [];
+  for (const raw of s.split("\n")) {
+    const line = raw.replace(PRIVATE_USE, "").replace(/\s+/g, " ").trim();
+    if (line && line !== out[out.length - 1]) {
+      out.push(line);
+    }
+  }
+  return out.join("\n");
+}
