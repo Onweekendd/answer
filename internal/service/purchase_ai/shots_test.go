@@ -51,6 +51,28 @@ func Test_citeShot(t *testing.T) {
 		assert.Equal(t, Shot{ID: 1, Caption: "京东自营 1849 元", Image: "https://buy.example.com/uploads/agent/1.jpg", Source: jdHome}, r.shots[0])
 	})
 
+	t.Run("cite_image 下载原图，和截图共用编号", func(t *testing.T) {
+		// Arrange
+		b := newFakeBrowser()
+		r := openedRun(t, b)
+		store := &fakeImageStore{}
+		r.images = store
+		_, _ = r.citeShot(context.Background(), `{"caption":"价格区"}`)
+
+		// Act
+		res, err := r.citeImage(context.Background(), `{"index":5,"caption":"详情页参数图"}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, res.Failed, res.Text)
+		assert.Contains(t, res.Text, "图2")
+		assert.Contains(t, b.calls, "image 5")
+		assert.Equal(t, []byte("original"), store.saved[1])
+		require.Len(t, r.shots, 2)
+		assert.Equal(t, 2, r.shots[1].ID)
+		assert.Equal(t, "保存原图：详情页参数图", res.Display)
+	})
+
 	t.Run("存不了图就算失败，不记下", func(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())

@@ -20,6 +20,7 @@
 import { inspect } from "./inspect";
 import {
   CommandError,
+  type ImageSource,
   type ProductArea,
   type ShotArea,
   type TabRequest,
@@ -84,6 +85,8 @@ async function handle(req: TabRequest): Promise<unknown> {
       return screenshotArea(req.index);
     case "productArea":
       return productArea(req.index);
+    case "imageSource":
+      return imageSource(req.index);
     case "inspect":
       return inspect(document, req.text, req.up);
     case "viewport":
@@ -571,6 +574,45 @@ async function productArea(index?: number): Promise<ProductArea> {
   }
   const image = largestImage(el ?? document.body);
   return { url, image: image ? await wholeImageArea(image) : null };
+}
+
+// imageSource 找一张图的原始地址，插件拿去下载原图。不填 index 是屏幕上最大的图。
+// 懒加载的图先滚到屏幕上、等它加载完，不然拿到的是占位图的地址
+async function imageSource(index?: number): Promise<ImageSource> {
+  const el = index === undefined ? undefined : elementAt(index);
+  if (el && (!el.isConnected || !isVisible(el))) {
+    throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
+  }
+  const img = largestImage(el ?? document.body);
+  if (!(img instanceof HTMLImageElement)) {
+    throw new CommandError("EXEC_FAILED", "这里没有够大的图片，可以用截图");
+  }
+  await wholeImageArea(img);
+  const src = largestSource(img);
+  if (!src) {
+    throw new CommandError("EXEC_FAILED", "这张图没有可以下载的地址（可能是画出来的或者内嵌的），可以用截图");
+  }
+  return { src, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight };
+}
+
+// largestSource 是 srcset 里最大的那张，没有 srcset 就是正在显示的那张。只要 http(s) 的地址
+export function largestSource(img: HTMLImageElement): string | null {
+  let best = img.currentSrc || img.src;
+  let bestW = 0;
+  for (const candidate of (img.getAttribute("srcset") ?? "").split(",")) {
+    const [url, size] = candidate.trim().split(/\s+/);
+    const w = size?.endsWith("w") ? parseFloat(size) : size?.endsWith("x") ? parseFloat(size) * 1000 : 0;
+    if (url && w > bestW) {
+      best = new URL(url, location.href).href;
+      bestW = w;
+    }
+  }
+  try {
+    const url = new URL(best, location.href);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
 // 滚动以后等多久再截：滚动是同步的，画面要等下一帧才更新

@@ -93,6 +93,7 @@ const (
 	toolScroll   = "scroll"
 	toolProduct  = "pick_product"
 	toolCite     = "cite_screenshot"
+	toolCiteImg  = "cite_image"
 	toolDone     = "done"
 )
 
@@ -183,7 +184,10 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 			"在商品详情页上不填 index；在搜索结果里填那张商品卡片的编号。只记看过价格的商品，最多 6 个。", productArgs{}, r.pickProduct},
 		{toolCite, "把对用户有用、能给你的结论作证的画面截下来，放进回答里给用户看：价格和优惠的条件、参数表、差评、价格走势、官方说明。" +
 			"填 index 只截那个元素（推荐），不填截当前这一屏。返回「图几」，回答里在用到的地方单独写一行 [图几]。最多 4 张。" +
-			"不要截登录、账号、订单、聊天这类有个人信息的地方。", citeArgs{}, r.citeShot},
+			"不要截登录、账号、订单、聊天这类有个人信息的地方。页面上本来就是图片的，用 cite_image 下载原图，比截图清楚。", citeArgs{}, r.citeShot},
+		{toolCiteImg, "把页面上的一张图片下载原图放进回答里给用户看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
+			"填 index 取那个元素里最大的图，不填取屏幕上最大的图。和 cite_screenshot 共用编号，返回「图几」，回答里单独写一行 [图几]。" +
+			"价格区、表格这类不是图片的，或者下载失败了，用 cite_screenshot。", citeImageArgs{}, r.citeImage},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
 

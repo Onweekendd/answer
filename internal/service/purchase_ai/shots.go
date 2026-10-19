@@ -28,7 +28,9 @@ import (
 )
 
 // 引用截图：Agent 觉得对用户有用、能给结论作证的画面（价格和优惠的条件、参数表、差评、价格走势、官方说明），
-// 截下来存到我们的服务器，回答里写 [图N]，服务端把它换成图片。
+// 存到我们的服务器，回答里写 [图N]，服务端把它换成图片。图有两种来法：
+//   - cite_screenshot：截屏，什么都能截（价格区、表格），但受屏幕缩放限制，小字会糊
+//   - cite_image：页面上本来就是图片的（商品图、详情长图、买家秀），插件下载原图，清楚得多
 // 和商品卡片一样，图片网址由系统给，模型只写占位：让模型抄网址，抄错一个字就是一张裂图
 
 // Shot 是存下来的一张截图
@@ -44,20 +46,49 @@ type citeArgs struct {
 	Caption string `json:"caption" description:"一句话说明这张图证明了什么，比如「京东自营 1849 元，含 200 元券后价」"`
 }
 
+type citeImageArgs struct {
+	Index   *int   `json:"index,omitempty" description:"图片所在元素的编号，取这个元素里最大的那张图；不填取屏幕上最大的图"`
+	Caption string `json:"caption" description:"一句话说明这张图证明了什么，比如「详情页的参数图：屏幕 11 英寸，重 460 克」"`
+}
+
+// imageData 是插件 image 命令的结果：下载下来、转成 jpeg 的原图
+type imageData struct {
+	screenshotData
+	Src string `json:"src"` // 图片原来的地址，只记日志用
+}
+
 const (
 	maxShots        = 4    // 一次回答最多几张图：再多就喧宾夺主了
 	shotMaxWidth    = 1200 // 给用户看的图，比给模型看的窄一点，手机上也够清楚
 	shotQuality     = 80
+	imageMaxWidth   = 1600 // 下载的原图：详情长图里的字要看清，宽一点
+	imageQuality    = 85
 	shotCaptionRune = 60
 )
 
-// citeShot 截一张图存下来，告诉模型它是「图几」。图片也给模型看一眼，确认截对了
+// citeShot 截一张图存下来，告诉模型它是「图几」
 func (r *agentRun) citeShot(ctx context.Context, arguments string) (toolResult, error) {
 	var args citeArgs
 	if res := decodeArgs(arguments, &args, `{"caption": "..."} 或 {"index": 3, "caption": "..."}`); res != nil {
 		return *res, nil
 	}
-	if oneLine(args.Caption) == "" {
+	return r.keepPicture(ctx, "screenshot", args.Index, args.Caption, shotMaxWidth, shotQuality, "截图存证：")
+}
+
+// citeImage 下载页面上的原图存下来，告诉模型它是「图几」
+func (r *agentRun) citeImage(ctx context.Context, arguments string) (toolResult, error) {
+	var args citeImageArgs
+	if res := decodeArgs(arguments, &args, `{"caption": "..."} 或 {"index": 3, "caption": "..."}`); res != nil {
+		return *res, nil
+	}
+	return r.keepPicture(ctx, "image", args.Index, args.Caption, imageMaxWidth, imageQuality, "保存原图：")
+}
+
+// keepPicture 让插件截图（cmd 是 screenshot）或者下载原图（image），存到服务器，记成下一张图。
+// 图片也给模型看一眼，确认是对的
+func (r *agentRun) keepPicture(ctx context.Context, cmd string, index *int, caption string,
+	maxWidth, quality int, display string) (toolResult, error) {
+	if oneLine(caption) == "" {
 		return toolResult{Failed: true, Text: "参数无效：caption 不能为空，写一句这张图证明了什么。"}, nil
 	}
 	if len(r.shots) >= maxShots {
@@ -66,23 +97,23 @@ func (r *agentRun) citeShot(ctx context.Context, arguments string) (toolResult, 
 	if res := r.requireTab(); res != nil {
 		return *res, nil
 	}
-	req := map[string]any{"maxWidth": shotMaxWidth, "quality": shotQuality}
-	if args.Index != nil {
-		req["index"] = *args.Index
+	req := map[string]any{"maxWidth": maxWidth, "quality": quality}
+	if index != nil {
+		req["index"] = *index
 	}
-	var shot screenshotData
-	if res, err := r.call(ctx, r.tabID, "screenshot", req, &shot); res != nil {
+	var shot imageData
+	if res, err := r.call(ctx, r.tabID, cmd, req, &shot); res != nil {
 		return *res, err
 	}
 	if shot.Data == "" || shot.Mime == "" {
 		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
-	image := r.saveImage(ctx, &shot)
+	image := r.saveImage(ctx, &shot.screenshotData)
 	if image == "" {
 		return toolResult{Failed: true, Text: "图片没存成，这张图用不了。回答里照常用文字说明。"}, nil
 	}
 
-	caption := oneLine(args.Caption)
+	caption = oneLine(caption)
 	if clipped := clipRunes(caption, shotCaptionRune); clipped != caption {
 		caption = clipped + "…"
 	}
@@ -93,7 +124,7 @@ func (r *agentRun) citeShot(ctx context.Context, arguments string) (toolResult, 
 	return toolResult{
 		Text: fmt.Sprintf("已存为「图%d」（%d×%d），图片在下一条消息里，确认截对了。"+
 			"回答里在用到它的地方单独写一行 [图%d]，用户会在那里看到这张图；截错了就不要引用。", s.ID, shot.Width, shot.Height, s.ID),
-		Display: "截图存证：" + s.Caption,
+		Display: display + s.Caption,
 		Image:   "data:" + shot.Mime + ";base64," + shot.Data,
 		URL:     shot.URL,
 	}, nil

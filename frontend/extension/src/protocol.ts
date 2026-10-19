@@ -36,6 +36,9 @@ export interface CommandArgs {
   // 商品卡片要的链接和商品图。不填 index 是当前页面（商品详情页）：网址和页面上最大的那张图；
   // 填了是那个元素（搜索结果里的一张卡片）：它的链接和它里面最大的那张图。只截图片，不截整屏
   product: { index?: number; maxWidth?: number; quality?: number };
+  // 页面上的原图：填 index 是那个元素里最大的图，不填是屏幕上最大的图。插件自己下载图片文件、转成 jpeg，
+  // 比截图清楚（截图受屏幕缩放限制）。宽不超过 maxWidth
+  image: { index?: number; maxWidth?: number; quality?: number };
   click: { index: number };
   hover: { index: number };
   // 按一个键，发给页面当前有焦点的地方。Escape 关弹窗、浮层、下拉菜单；左右方向键翻轮播图（小红书笔记的图片）
@@ -125,6 +128,13 @@ export interface ProductArea {
   image: ShotArea | null;
 }
 
+// 页面上一张图的原始地址和它本身的尺寸（不是显示出来的尺寸）
+export interface ImageSource {
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+}
+
 // press 能按的键。先只放用得上的，要加别的键在这里加
 export const PRESS_KEYS = {
   Escape: { code: "Escape", keyCode: 27 },
@@ -149,6 +159,7 @@ export type TabRequest =
   | { type: "viewport" }
   | { type: "screenshotArea"; index?: number }
   | { type: "productArea"; index?: number }
+  | { type: "imageSource"; index?: number }
   | { type: "inspect"; text: string; up?: number }
   | { type: "visibility" }
   | { type: "scrollPosition" };

@@ -18,9 +18,11 @@
  */
 
 import { cdpClick, cdpHover, cdpPress, cdpScreenshot, cdpScroll, cdpType, withDebugger } from "./cdp";
+import { downloadImage } from "./imagefile";
 import {
   type Command,
   CommandError,
+  type ImageSource,
   type InputAction,
   type InputTarget,
   type ProductArea,
@@ -39,6 +41,9 @@ const DEFAULT_SHOT_WIDTH = 1600;
 const DEFAULT_SHOT_QUALITY = 80;
 // 商品卡片的图只当缩略图用，不用看清小字
 const DEFAULT_PRODUCT_WIDTH = 480;
+// 下载的原图：要看清图里的字，比截图宽
+const DEFAULT_IMAGE_WIDTH = 1600;
+const DEFAULT_IMAGE_QUALITY = 85;
 // 按键以后等多久再读网址
 const PRESS_SETTLE_MS = 500;
 
@@ -103,6 +108,16 @@ async function executeCommand(cmd: Command): Promise<unknown> {
         const tab = await chrome.tabs.get(cmd.tabId);
         return { url: found.url, title: tab.title ?? "", image };
       });
+    case "image": {
+      const found = (await sendToTab(cmd.tabId, { type: "imageSource", index: cmd.args.index })) as ImageSource;
+      const image = await downloadImage(
+        found.src,
+        cmd.args.maxWidth ?? DEFAULT_IMAGE_WIDTH,
+        cmd.args.quality ?? DEFAULT_IMAGE_QUALITY
+      );
+      const tab = await chrome.tabs.get(cmd.tabId);
+      return { ...image, url: tab.url ?? "", src: found.src };
+    }
     case "inspect":
       return sendToTab(cmd.tabId, { type: "inspect", text: cmd.args.text, up: cmd.args.up });
     case "click":

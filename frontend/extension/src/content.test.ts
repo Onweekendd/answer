@@ -494,6 +494,51 @@ it("商品卡片：图只露出一条时先滚到中间再截，滚过以后还�
   expect(res).toEqual({ ok: true, data: { url: "https://www.ikea.cn/cn/zh/p/x", image: null } });
 });
 
+it("原图：取元素里最大那张图 srcset 里最大的地址", async () => {
+  // Arrange
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  document.body.innerHTML =
+    '<a href="https://item.example.com/1"><img id="main" src="/img/a_220.jpg" ' +
+    'srcset="/img/a_220.jpg 220w, /img/a_800.jpg 800w, /img/a_400.jpg 400w">商品</a>';
+  document.getElementById("main")!.getBoundingClientRect = square(20, 30, 240);
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "imageSource", index: 0 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: true, data: { src: new URL("/img/a_800.jpg", location.href).href } });
+});
+
+it("原图：内嵌的 data: 图不能下载，报错让模型改用截图", async () => {
+  // Arrange
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  document.body.innerHTML =
+    '<a href="https://item.example.com/1"><img id="main" src="data:image/png;base64,AAAA">商品</a>';
+  document.getElementById("main")!.getBoundingClientRect = square(20, 30, 240);
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "imageSource", index: 0 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: false, error: { code: "EXEC_FAILED" } });
+});
+
+it("原图：没有够大的图时报错", async () => {
+  // Arrange
+  document.body.innerHTML = '<a href="https://item.example.com/1">无图商品</a>';
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "imageSource", index: 0 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: false, error: { code: "EXEC_FAILED" } });
+});
+
 it("页面被浮层盖住时，浮层的关闭按钮以「关闭弹窗」编进快照", async () => {
   // Arrange：全屏的 fixed 遮罩里有一个营销弹窗，关闭按钮是没有标签的 div
   vi.stubGlobal("innerWidth", 1280);

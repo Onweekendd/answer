@@ -1,0 +1,97 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import type { Shot } from "./cdp";
+import { CommandError } from "./protocol";
+
+// 下载页面上的原图，转成 jpeg（阶段 3 的引用图片）。
+// 在 background 里下载：插件有 <all_urls> 权限，不受跨域限制；页面里的 canvas 画了别的域名的图就读不出来。
+// 统一转成 jpeg：服务器只收 jpeg（webp、png 也转），透明的地方铺白底
+
+// 原图最大多少字节才下载：再大的不是商品图
+const MAX_SOURCE_BYTES = 15 << 20;
+// 转出来的 jpeg 不超过多少字节：服务器最多收 2MB，经过 Hub 时还要变成 base64
+const MAX_JPEG_BYTES = 1536 << 10;
+// 太大时降到这个质量再试一次
+const FALLBACK_QUALITY = 60;
+
+export async function downloadImage(
+  src: string,
+  maxWidth: number,
+  quality: number,
+  doFetch: typeof fetch = (...args) => fetch(...args)
+): Promise<Shot> {
+  if (!(maxWidth >= 64 && maxWidth <= 4096) || !(quality >= 1 && quality <= 100)) {
+    throw new CommandError("BAD_MESSAGE", "Invalid image maxWidth or quality");
+  }
+  let res: Response;
+  try {
+    // 不带这个浏览器的 cookie：图片是公开的，没必要把账号带出去
+    res = await doFetch(src, { credentials: "omit" });
+  } catch {
+    throw new CommandError("EXEC_FAILED", "图片下载失败，可以用截图");
+  }
+  if (!res.ok) {
+    throw new CommandError("EXEC_FAILED", `图片下载失败（HTTP ${res.status}），可以用截图`);
+  }
+  const blob = await res.blob();
+  if (!blob.type.startsWith("image/") || blob.type === "image/svg+xml") {
+    throw new CommandError("EXEC_FAILED", "下载到的不是图片，可以用截图");
+  }
+  if (blob.size > MAX_SOURCE_BYTES) {
+    throw new CommandError("EXEC_FAILED", "图片太大，可以用截图");
+  }
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    throw new CommandError("EXEC_FAILED", "图片解不开，可以用截图");
+  }
+  const scale = Math.min(1, maxWidth / bitmap.width);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new CommandError("EXEC_FAILED", "没法转换图片");
+  }
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+
+  let jpeg = await canvas.convertToBlob({ type: "image/jpeg", quality: quality / 100 });
+  if (jpeg.size > MAX_JPEG_BYTES) {
+    jpeg = await canvas.convertToBlob({ type: "image/jpeg", quality: FALLBACK_QUALITY / 100 });
+  }
+  if (jpeg.size > MAX_JPEG_BYTES) {
+    throw new CommandError("EXEC_FAILED", "图片转出来还是太大，可以用截图");
+  }
+  return { data: toBase64(new Uint8Array(await jpeg.arrayBuffer())), mime: "image/jpeg", width, height };
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000; // 一次转太多，String.fromCharCode 的参数会超过上限
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
