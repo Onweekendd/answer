@@ -59,6 +59,8 @@ var (
 		&entity.SiteInfo{},
 		&entity.PurchaseDetail{},
 		&entity.PurchaseVote{},
+		&entity.PurchaseChat{},
+		&entity.PurchaseChatMessage{},
 		&entity.Tag{},
 		&entity.TagRel{},
 		&entity.Uniqid{},

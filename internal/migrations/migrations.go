@@ -115,6 +115,7 @@ var migrations = []Migration{
 	NewMigration("v2.0.6", "add purchase vote", addPurchaseVote, true),
 	NewMigration("v2.0.7", "sync user id sequence", syncUserIDSequence, false),
 	NewMigration("v2.0.8", "drop badge tables and badge notifications", dropBadges, true),
+	NewMigration("v2.0.9", "add purchase chat", addPurchaseChat, false),
 }
 
 func GetMigrations() []Migration {

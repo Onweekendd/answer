@@ -38,6 +38,7 @@ type AnswerAPIRouter struct {
 	questionController            *controller.QuestionController
 	purchaseAIController          *controller.PurchaseAIController
 	purchaseVoteController        *controller.PurchaseVoteController
+	purchaseChatController        *controller.PurchaseChatController
 	answerController              *controller.AnswerController
 	searchController              *controller.SearchController
 	revisionController            *controller.RevisionController
@@ -76,6 +77,7 @@ func NewAnswerAPIRouter(
 	questionController *controller.QuestionController,
 	purchaseAIController *controller.PurchaseAIController,
 	purchaseVoteController *controller.PurchaseVoteController,
+	purchaseChatController *controller.PurchaseChatController,
 	answerController *controller.AnswerController,
 	searchController *controller.SearchController,
 	revisionController *controller.RevisionController,
@@ -113,6 +115,7 @@ func NewAnswerAPIRouter(
 		questionController:            questionController,
 		purchaseAIController:          purchaseAIController,
 		purchaseVoteController:        purchaseVoteController,
+		purchaseChatController:        purchaseChatController,
 		answerController:              answerController,
 		searchController:              searchController,
 		revisionController:            revisionController,
@@ -278,6 +281,12 @@ func (a *AnswerAPIRouter) RegisterAnswerAPIRouter(r *gin.RouterGroup) {
 
 	// purchase vote
 	r.POST("/purchase/vote", a.purchaseVoteController.Vote)
+
+	// purchase chat history
+	r.GET("/purchase/chats", a.purchaseChatController.List)
+	r.GET("/purchase/chat", a.purchaseChatController.Get)
+	r.POST("/purchase/chat", a.purchaseChatController.Create)
+	r.POST("/purchase/chat/message", a.purchaseChatController.SaveMessage)
 
 	// answer
 	r.POST("/answer", a.answerController.AddAnswer)

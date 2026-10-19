@@ -38,6 +38,7 @@ import (
 	"github.com/apache/answer/internal/repo/notification"
 	"github.com/apache/answer/internal/repo/plugin_config"
 	"github.com/apache/answer/internal/repo/purchase"
+	purchasechat "github.com/apache/answer/internal/repo/purchase_chat"
 	"github.com/apache/answer/internal/repo/question"
 	"github.com/apache/answer/internal/repo/rank"
 	"github.com/apache/answer/internal/repo/reason"
@@ -73,6 +74,7 @@ var ProviderSetRepo = wire.NewSet(
 	user.NewUserAdminRepo,
 	rank.NewUserRankRepo,
 	purchase.NewPurchaseRepo,
+	purchasechat.NewPurchaseChatRepo,
 	question.NewQuestionRepo,
 	answer.NewAnswerRepo,
 	activity_common.NewActivityRepo,

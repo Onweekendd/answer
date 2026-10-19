@@ -43,6 +43,25 @@ export interface VoteResp {
   closed: boolean;
 }
 
+/** One row of the conversation list; updated_at is unix seconds. */
+export interface ChatItem {
+  id: string;
+  title: string;
+  updated_at: number;
+}
+
+/** A saved message: the thread message's own JSON, and the id of the one it follows ("" for the first). */
+export interface SavedChatMessage {
+  parent_id: string;
+  message: unknown;
+}
+
+export interface SavedChat {
+  id: string;
+  title: string;
+  messages: SavedChatMessage[];
+}
+
 /** Registering may leave the account waiting for its verification mail. */
 export const needsEmailVerification = (resp: LoginResp) => resp.mail_status === 2 || !resp.access_token;
 
@@ -61,6 +80,24 @@ export function createEndpoints(client: ApiClient) {
 
     vote: (questionId: string, choice: Choice) =>
       client.post<VoteResp>("/purchase/vote", { question_id: questionId, choice }),
+
+    chatList: async (signal?: AbortSignal) => {
+      const list = await client.get<ChatItem[] | null>("/purchase/chats", undefined, signal ? { signal } : undefined);
+      return list ?? [];
+    },
+
+    chatGet: (id: string) => client.get<SavedChat>("/purchase/chat", { id }),
+
+    chatCreate: (title: string) => client.post<{ id: string }>("/purchase/chat", { title }),
+
+    /** Saving the same message id again overwrites it. */
+    chatSaveMessage: (chatId: string, messageId: string, parentId: string | null, message: unknown) =>
+      client.post<null>("/purchase/chat/message", {
+        chat_id: chatId,
+        message_id: messageId,
+        parent_id: parentId ?? "",
+        message
+      }),
 
     /** Uploads an image for a post and returns its url. */
     uploadImage: (file: File) => {

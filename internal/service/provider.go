@@ -52,6 +52,7 @@ import (
 	"github.com/apache/answer/internal/service/plugin_common"
 	"github.com/apache/answer/internal/service/purchase"
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
+	purchasechat "github.com/apache/answer/internal/service/purchase_chat"
 	purchasevote "github.com/apache/answer/internal/service/purchase_vote"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
@@ -94,6 +95,7 @@ var ProviderSetService = wire.NewSet(
 	purchaseai.NewPurchaseAIService,
 	purchaseai.NewBrowser,
 	purchasevote.NewPurchaseVoteService,
+	purchasechat.NewPurchaseChatService,
 	purchaseaiqueue.NewService,
 	llm.NewClient,
 	content.NewAnswerService,

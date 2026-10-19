@@ -33,6 +33,7 @@ import (
 	notification2 "github.com/apache/answer/internal/repo/notification"
 	"github.com/apache/answer/internal/repo/plugin_config"
 	"github.com/apache/answer/internal/repo/purchase"
+	"github.com/apache/answer/internal/repo/purchase_chat"
 	"github.com/apache/answer/internal/repo/question"
 	"github.com/apache/answer/internal/repo/rank"
 	"github.com/apache/answer/internal/repo/reason"
@@ -81,6 +82,7 @@ import (
 	"github.com/apache/answer/internal/service/plugin_common"
 	purchase2 "github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/purchase_ai"
+	purchasechat2 "github.com/apache/answer/internal/service/purchase_chat"
 	"github.com/apache/answer/internal/service/purchase_vote"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	"github.com/apache/answer/internal/service/question_common"
@@ -223,6 +225,9 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, browser, uploaderService, purchaseVoteService)
 	purchaseAIController := controller.NewPurchaseAIController(purchaseAIService)
 	purchaseVoteController := controller.NewPurchaseVoteController(purchaseVoteService)
+	purchaseChatRepo := purchasechat.NewPurchaseChatRepo(dataData)
+	purchaseChatService := purchasechat2.NewPurchaseChatService(purchaseChatRepo)
+	purchaseChatController := controller.NewPurchaseChatController(purchaseChatService)
 	answerController := controller.NewAnswerController(answerService, rankService, captchaService, siteInfoCommonService, rateLimitMiddleware)
 	searchParser := search_parser.NewSearchParser(tagCommonService, userCommon)
 	searchRepo := search_common.NewSearchRepo(dataData, uniqueIDRepo, userCommon, tagCommonService)
@@ -275,7 +280,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	aiController := controller.NewAIController(searchService, siteInfoCommonService, tagCommonService, questionCommon, commentRepo, userCommon, answerRepo, mcpController, aiConversationService, featureToggleService)
 	aiConversationController := controller.NewAIConversationController(aiConversationService, featureToggleService)
 	aiConversationAdminController := controller_admin.NewAIConversationAdminController(aiConversationService, featureToggleService)
-	answerAPIRouter := router.NewAnswerAPIRouter(langController, userController, commentController, reportController, voteController, tagController, followController, collectionController, questionController, purchaseAIController, purchaseVoteController, answerController, searchController, revisionController, rankController, userAdminController, reasonController, themeController, siteInfoController, controllerSiteInfoController, notificationController, dashboardController, uploadController, activityController, roleController, pluginController, permissionController, userPluginController, reviewController, metaController, adminAPIKeyController, aiController, aiConversationController, aiConversationAdminController, mcpController)
+	answerAPIRouter := router.NewAnswerAPIRouter(langController, userController, commentController, reportController, voteController, tagController, followController, collectionController, questionController, purchaseAIController, purchaseVoteController, purchaseChatController, answerController, searchController, revisionController, rankController, userAdminController, reasonController, themeController, siteInfoController, controllerSiteInfoController, notificationController, dashboardController, uploadController, activityController, roleController, pluginController, permissionController, userPluginController, reviewController, metaController, adminAPIKeyController, aiController, aiConversationController, aiConversationAdminController, mcpController)
 	swaggerRouter := router.NewSwaggerRouter(swaggerConf)
 	uiRouter := router.NewUIRouter(controllerSiteInfoController, siteInfoCommonService)
 	authUserMiddleware := middleware.NewAuthUserMiddleware(authService, siteInfoCommonService)
