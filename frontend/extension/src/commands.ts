@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { cdpClick, cdpScroll, cdpType, withDebugger } from "./cdp";
+import { cdpClick, cdpHover, cdpScroll, cdpType, withDebugger } from "./cdp";
 import {
   type Command,
   CommandError,
@@ -61,6 +61,8 @@ async function executeCommand(cmd: Command): Promise<unknown> {
       });
     case "click":
       return actIn(cmd.tabId, { type: "click", index: cmd.args.index });
+    case "hover":
+      return actIn(cmd.tabId, { type: "hover", index: cmd.args.index });
     case "type":
       return actIn(cmd.tabId, {
         type: "type",
@@ -188,7 +190,11 @@ async function actIn(tabId: number, req: InputAction): Promise<ActResult> {
         index: req.index,
         editable: req.type === "type"
       })) as InputTarget;
-      await cdpClick(target, point);
+      if (req.type === "hover") {
+        await cdpHover(target, point);
+      } else {
+        await cdpClick(target, point);
+      }
       if (req.type === "type") {
         await sendToTab(tabId, { type: "selectInput", index: req.index });
         await cdpType(target, req.text, req.submit);

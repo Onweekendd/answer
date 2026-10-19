@@ -67,6 +67,24 @@ func Test_tools(t *testing.T) {
 	})
 }
 
+func Test_hover(t *testing.T) {
+	b := newFakeBrowser()
+	r := openedRun(t, b)
+	tools, _, err := r.tools()
+	require.NoError(t, err)
+	res, err := tools[toolHover].run(context.Background(), `{"index":3}`)
+	require.NoError(t, err)
+	require.False(t, res.Failed)
+	require.True(t, res.PageChanged, "hover 后可能展开菜单，必须让模型重新 snapshot")
+	require.Contains(t, res.Text, "snapshot")
+	require.Equal(t, []string{"open " + jdHome, "hover 3"}, b.calls)
+
+	b.fail["hover"] = &browser.CommandError{Code: "ELEMENT_NOT_FOUND", Message: "stale"}
+	res, err = r.hover(context.Background(), `{"index":3}`)
+	require.NoError(t, err)
+	require.True(t, res.Failed)
+}
+
 func Test_open(t *testing.T) {
 	t.Run("打开以后记下标签页，告诉模型下一步先看页面", func(t *testing.T) {
 		// Arrange

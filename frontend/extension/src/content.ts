@@ -22,6 +22,7 @@ import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
 import { clip } from "./snapshot/text";
+import { collectStrategyElements } from "./strategies";
 
 // content script：Go 第一次要操作某个页面时，由 background 注入进去（commands.ts 的 inject），
 // 和网页跑在同一个渲染进程，能读写 DOM，但看不到网页自己的 JS 变量（isolated world）。
@@ -71,6 +72,9 @@ async function handle(req: TabRequest): Promise<unknown> {
 
 // 压缩前后的数字：调规则时看效果，也是面试时的硬数据。只给 Go 记录，不一定发给模型
 interface SnapshotStats {
+  strategy?: string;
+  strategyMatched?: number;
+  strategyError?: string;
   candidates: number; // 选择器选出来的元素
   hidden: number; // 其中看不见、被过滤掉的
   merged: number; // 看得见，但被外层合并掉的
@@ -94,7 +98,9 @@ interface Snapshot {
   stats: SnapshotStats;
 }
 
-const INTERACTIVE = "a, button, input, select, textarea, [role=button]";
+const ARIA_INTERACTIVE =
+  "[role=button], [role=link], [role=tab], [role=menuitem], [role=menuitemradio], [role=menuitemcheckbox], [role=option], [role=combobox], [role=checkbox], [role=radio], [role=switch]";
+const INTERACTIVE = `a, button, input, select, textarea, ${ARIA_INTERACTIVE}, [aria-haspopup]`;
 const MAX_TEXT = 120; // 每个元素的文字最多几个字：商品卡片的文字比普通按钮长
 const MAX_ATTR = 60; // 每个属性值最多几个字
 
@@ -102,9 +108,19 @@ function snapshot(maxChars = 8000): Snapshot {
   const started = performance.now();
 
   // 先过滤、再编号：编号就是 elements 的下标，click(i) 靠它找回元素
-  const candidates = Array.from(document.querySelectorAll(INTERACTIVE));
+  const strategy = collectStrategyElements(new URL(location.href), document);
+  const extras = new Set(strategy.elements);
+  const candidates = Array.from(new Set([...document.querySelectorAll(INTERACTIVE), ...extras]));
+  candidates.sort((a, b) => {
+    const position = a.compareDocumentPosition(b);
+    return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : position & Node.DOCUMENT_POSITION_PRECEDING ? 1 : 0;
+  });
   const shown = candidates.filter(isVisible);
-  const visible = shown.filter((el) => !insideNumberedParent(el));
+  const visible = shown.filter((el) => extras.has(el) || !insideNumberedParent(el));
+  // 弹出菜单常被挂到 body 最后，不能被前面的屏外商品耗尽预算。
+  // 视口内优先；各组仍按 DOM 顺序排列，滚动后屏外内容自然进入优先组。
+  const inViewport = new Set(visible.filter(intersectsViewport));
+  visible.sort((a, b) => Number(inViewport.has(b)) - Number(inViewport.has(a)));
 
   // 每个元素转成一行，总长度超过 maxChars 就停
   const lines: string[] = [];
@@ -131,6 +147,7 @@ function snapshot(maxChars = 8000): Snapshot {
     truncated,
 
     stats: {
+      ...strategy.stats,
       candidates: candidates.length,
       hidden: candidates.length - shown.length,
       merged: shown.length - visible.length,
@@ -148,7 +165,13 @@ function snapshot(maxChars = 8000): Snapshot {
 // 宽高都是 0 的元素（display:none、折叠起来的菜单）用户看不见，也点不了
 function isVisible(el: Element): boolean {
   const rect = el.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
+  const style = getComputedStyle(el);
+  return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.visibility !== "collapse";
+}
+
+function intersectsViewport(el: Element): boolean {
+  const rect = el.getBoundingClientRect();
+  return rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
 }
 
 // ---------- 精华：一个可操作对象一行（你来写） ----------
@@ -164,7 +187,7 @@ function insideNumberedParent(el: Element): boolean {
   // 已知没处理的情况：a1（看得见）> a2（看不见）> el 时，el 会单独编号，文字和 a1 那一行重复。
 
   // 输入框永远单独编号，要能往里输入
-  if (el.matches("input, select, textarea")) {
+  if (el.matches(`input, select, textarea, ${ARIA_INTERACTIVE}, [aria-haspopup]`)) {
     return false;
   }
 
@@ -192,7 +215,19 @@ function describe(i: number, el: Element): string {
 
 // 属性白名单，顺序就是输出顺序。没有 class、style、href、src。
 // 和 browser-use 一样保留 id：很多网站会在 id 里写有意义的名字（比如商品编号）
-const ATTRS = ["id", "name", "placeholder", "aria-label", "title"];
+const ATTRS = [
+  "id",
+  "name",
+  "placeholder",
+  "aria-label",
+  "title",
+  "role",
+  "aria-selected",
+  "aria-expanded",
+  "aria-haspopup",
+  "aria-checked",
+  "aria-disabled"
+];
 
 function attributesOf(el: Element, text: string): string[] {
   const out: string[] = [];
@@ -259,25 +294,38 @@ function editableAt(index: number): HTMLInputElement | HTMLTextAreaElement {
 
 function prepareInput(index: number, editable: boolean): { x: number; y: number } {
   const el = editable ? editableAt(index) : elementAt(index);
-  if (!el.isConnected || el.matches(":disabled")) {
+  if (!el.isConnected || el.matches(':disabled, [aria-disabled="true"]') || !isVisible(el)) {
     throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效或被禁用，请重新 snapshot");
   }
+  // 已经能点到的不滚动：移动页面会让 hover 菜单收起。
+  // 点不到（在屏幕外，或者被吸顶的搜索栏这类东西盖住）才滚到屏幕中间再试一次；
+  // 滚到边上（block: nearest）正好会被吸顶栏盖住
+  const point = clickablePoint(el);
+  if (point) {
+    return point;
+  }
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  const centered = clickablePoint(el);
+  if (!centered) {
+    throw new CommandError("EXEC_FAILED", "元素被遮挡或不在可点击区域，请先处理页面弹窗并重新 snapshot");
+  }
+  return centered;
+}
+
+// 元素在视口里那一部分的中心点；这个点上最上层的是它自己（或它里面的元素）才算点得到
+function clickablePoint(el: Element): { x: number; y: number } | undefined {
   const rect = el.getBoundingClientRect();
   const left = Math.max(0, rect.left);
   const right = Math.min(window.innerWidth, rect.right);
   const top = Math.max(0, rect.top);
   const bottom = Math.min(window.innerHeight, rect.bottom);
   if (right <= left || bottom <= top) {
-    throw new CommandError("EXEC_FAILED", "元素不在可点击区域，请重新 snapshot");
+    return undefined;
   }
   const x = (left + right) / 2;
   const y = (top + bottom) / 2;
   const hit = document.elementFromPoint(x, y);
-  if (!hit || !el.contains(hit)) {
-    throw new CommandError("EXEC_FAILED", "元素被遮挡，请先处理页面弹窗并重新 snapshot");
-  }
-  return { x, y };
+  return hit && el.contains(hit) ? { x, y } : undefined;
 }
 
 Object.assign(globalThis, { __pagehand: { snapshot } });

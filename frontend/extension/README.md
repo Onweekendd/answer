@@ -2,6 +2,10 @@
 
 让 Go 后端的 Agent 通过你自己的浏览器查看任意网页。插件本身不认识任何网站，站点适配放在 `src/strategies/`（见 [docs/page-snapshot-design.md](../../docs/page-snapshot-design.md) 第 4 节）。设计见 [docs/buy-or-not-design.md](../../docs/buy-or-not-design.md) 第 5 节。
 
+通用快照识别原生控件和 ARIA 交互角色（如 `tab`、`menuitem`），保留选中、展开状态。视口内元素优先输出，避免挂在 DOM 末尾的弹出菜单被屏外商品挤出长度预算。站点策略通过 `interactive(doc)` 补充候选元素，仍走统一的可见性、编号、隐私过滤；未匹配或异常会退回通用逻辑，并在 `stats` 中报告。当前淘宝搜索策略仅补充没有语义角色的价格菜单选项。
+
+悬停菜单的操作顺序是 `snapshot → hover(index) → snapshot → click(新编号)`。`hover` 通过 CDP 只移动鼠标，不按下；点击菜单项仅做必要滚动。每次重新构建后重载插件；验证更新时建议新开测试页，以排除已有页面交互状态的影响。
+
 仅供个人学习、低频使用。遇到验证码或登录页要停下来请人处理，不尝试绕过。
 
 ## 先看进程：谁在哪里跑

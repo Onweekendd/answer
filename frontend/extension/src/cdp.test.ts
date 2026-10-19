@@ -61,6 +61,19 @@ async function act<T>(tabId: number, run: () => Promise<T>): Promise<T> {
 }
 
 describe("withDebugger", () => {
+  it("hover 只移动鼠标，随后 click 才按下和释放", async () => {
+    const target = { tabId: 1 };
+    await cdp.cdpHover(target, { x: 20, y: 30 });
+    expect(sendCommand.mock.calls.map((call) => call[2].type)).toEqual(["mouseMoved"]);
+    await cdp.cdpClick(target, { x: 20, y: 60 });
+    expect(sendCommand.mock.calls.map((call) => call[2].type)).toEqual([
+      "mouseMoved",
+      "mouseMoved",
+      "mousePressed",
+      "mouseReleased"
+    ]);
+  });
+
   it("同一个标签页连续两个动作只挂上一次，中间不断开", async () => {
     // Act
     await act(1, async () => "a");

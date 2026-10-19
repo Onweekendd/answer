@@ -74,6 +74,7 @@ const (
 	toolNavigate = "navigate"
 	toolSnapshot = "snapshot"
 	toolClick    = "click"
+	toolHover    = "hover"
 	toolType     = "type"
 	toolScroll   = "scroll"
 	toolDone     = "done"
@@ -115,9 +116,10 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 	}{
 		{toolOpen, "在后台新开一个标签页打开网址，之后的操作都在这个标签页里进行。任务开始时用它打开第一个网页。", urlArgs{}, r.open},
 		{toolNavigate, "在当前标签页里打开网址。想回到之前看过的页面时，navigate 到之前记下的网址。", urlArgs{}, r.navigate},
-		{toolSnapshot, "查看当前页面上可以操作的元素（链接、按钮、输入框），每行一个，开头的 [数字] 是编号，商品卡片的标题和价格也在里面。" +
-			"打开网页、点击、输入并回车、滚动以后页面都会变，要先 snapshot 再决定下一步：编号只在最新一份快照里有效。", struct{}{}, r.snapshot},
+		{toolSnapshot, "查看当前页面上可以操作的元素（链接、按钮、输入框、选项卡、菜单项），每行一个，开头的 [数字] 是编号，商品卡片的标题和价格也在里面。" +
+			"打开网页、悬停、点击、输入并回车、滚动以后页面都会变，要先 snapshot 再决定下一步：编号只在最新一份快照里有效。", struct{}{}, r.snapshot},
 		{toolClick, "点击最新一份快照里编号为 index 的元素。", indexArgs{}, r.click},
+		{toolHover, "将鼠标悬停在最新快照里编号为 index 的元素上，不点击。用于展开下拉菜单；悬停后先 snapshot 查看新出现的选项，再 click 选项。", indexArgs{}, r.hover},
 		{toolType, "往编号为 index 的输入框里填文字。submit 为 true 时填完按回车，比如在搜索框里搜索。", typeArgs{}, r.typeText},
 		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
@@ -275,6 +277,21 @@ func (r *agentRun) click(ctx context.Context, arguments string) (toolResult, err
 		return *res, err
 	}
 	return r.afterAct(fmt.Sprintf("已点击 [%d]。", args.Index), act), nil
+}
+
+func (r *agentRun) hover(ctx context.Context, arguments string) (toolResult, error) {
+	var args indexArgs
+	if res := decodeArgs(arguments, &args, `{"index": 3}`); res != nil {
+		return *res, nil
+	}
+	if res := r.requireTab(); res != nil {
+		return *res, nil
+	}
+	var act actResult
+	if res, err := r.call(ctx, r.tabID, "hover", args, &act); res != nil {
+		return *res, err
+	}
+	return r.afterAct(fmt.Sprintf("已悬停在 [%d]，没有点击。", args.Index), act), nil
 }
 
 func (r *agentRun) typeText(ctx context.Context, arguments string) (toolResult, error) {

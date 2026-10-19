@@ -128,6 +128,9 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 	}
 
 	switch cmd {
+	case "hover":
+		f.calls = append(f.calls, fmt.Sprintf("hover %d", a.Index))
+		return f.acted(tabID, nil), nil
 	case "open":
 		f.calls = append(f.calls, "open "+a.URL)
 		f.nextTab++
@@ -331,7 +334,7 @@ func Test_run(t *testing.T) {
 		for _, tool := range model.reqs[0].Tools {
 			names = append(names, tool.Name)
 		}
-		require.Equal(t, []string{toolOpen, toolNavigate, toolSnapshot, toolClick, toolType, toolScroll, toolDone}, names)
+		require.Equal(t, []string{toolOpen, toolNavigate, toolSnapshot, toolClick, toolHover, toolType, toolScroll, toolDone}, names)
 	})
 
 	t.Run("同一轮里的调用按顺序执行：先填字，再点搜索", func(t *testing.T) {

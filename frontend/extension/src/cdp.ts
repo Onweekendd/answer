@@ -109,8 +109,12 @@ export async function withDebugger<T>(
   }
 }
 
-export async function cdpClick(target: chrome.debugger.Debuggee, point: InputTarget): Promise<void> {
+export async function cdpHover(target: chrome.debugger.Debuggee, point: InputTarget): Promise<void> {
   await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+}
+
+export async function cdpClick(target: chrome.debugger.Debuggee, point: InputTarget): Promise<void> {
+  await cdpHover(target, point);
   await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
     type: "mousePressed",
     ...point,

@@ -129,7 +129,7 @@ stats: 2554 elements, 61 interactive, 45 links, 0.0 pages above, 1.4 pages below
 | 图片 | 只有图片没有文字的元素，用图片的 `alt` 当文字。**不输出图片地址和文件名** | 7.5 节：文件名占 47.7% |
 | 每个元素的文字 | 最多 120 字，超出加 `…` | 卡片文字较长，比普通按钮宽松 |
 | 属性值 | 最多 60 字 | |
-| 总长度 | 默认 8000 字。按 DOM 顺序输出，满了就停，并说明还剩多少个没输出 | 坑 1：丢了什么要说出来 |
+| 总长度 | 默认 8000 字。视口内元素优先，视口内和屏外各自按 DOM 顺序输出，满了就停并标记截断；避免 body 末尾的弹出菜单被屏外商品挤掉 | 坑 1：丢了什么要说出来 |
 | 编号 | 本次快照内从 0 开始连续编号，编号 = `elements` 数组下标 | 已实现 |
 | 状态文字 | 除了可交互元素，再输出少量**说明页面状态的文字**，不带编号：标题（`h1`~`h3`）、弹窗和提示（`dialog`、`role=dialog`、`role=alert`、`role=status`）、表单旁的 `label`。和可交互元素一起按页面顺序排列，计入总预算 | 2026-10-15 决定。只看按钮，模型看不懂"请先选择规格""已下架""确定要离开吗"这类状态；browser-use 的交互列表里也带文字（第 4 站第 5 节） |
 
@@ -192,6 +192,7 @@ frontend/extension/src/
 export interface SiteStrategy {
   name: string;
   matches(url: URL): boolean;
+  interactive?(doc: Document): Element[]; // snapshot：补充缺少语义角色的可操作元素
   skip?(el: Element): boolean;          // 遍历时跳过这棵子树（噪音、账号区）
   extraAttrs?(el: Element): string[];   // snapshot：给元素补充属性，比如 item=<id>
   blocks?(doc: Document): Element[];    // read：怎么分块，比如按商品卡片
@@ -204,6 +205,10 @@ export interface SiteStrategy {
 1. **内核只 import 策略表**（`strategies/index.ts`），不直接 import 某个网站的策略。以后用 ESLint 的 `no-restricted-imports` 检查。
 2. **策略只能增强。** 没匹配到就走通用逻辑；钩子抛异常就当它不存在，退回通用逻辑；选择器一个都没选中也退回。这些情况都记进 `stats`（`strategy: taobao, error: …` / `matched: 0`），让 Go 能发现策略坏了。
 3. **先有数据再加策略。** 加之前在那个网站上量一次通用版，确认有一个通用规则解决不了的具体问题；加之后再量一次，两次的 `stats` 都记进第 9 节。
+
+2026-10-18 已实现 `interactive` 钩子和策略表，其余钩子仍是设计。首个策略仅匹配 `s.taobao.com/search`：价格菜单实测为 `priceTagWrap--…` 下的 `priceTag--…` 普通 div，按类名前缀补充候选，不依赖 hash。内核不含淘宝选择器，额外候选仍经过可见性和隐私过滤，并独立编号。`stats.strategy`、`strategyMatched`、`strategyError` 用于检查策略命中或失效情况。
+
+此次 debug 实测同一淘宝搜索页：仅通用规则时为 201 个候选、105 个编号、8466 字；补充策略后为 203 个候选、107 个编号、8496 字，新增的两项正是“从低到高 / 从高到低”。随后在新页按 8000 字预算验证视口优先：两个选项位于编号 47、48，均保留；hover 后点击价格选项更新了商品列表，点击销量后 `aria-selected=true`。当前页面排序点击没有改变 URL，不能只用 `sort=sale-desc` 判定成功。
 
 可能的第一批策略（都要等实测确认）：淘宝页头账号区的 `skip`；商品链接的 `extraAttrs`（`item=<id>`）；商品卡片的 `blocks` 和价格的 `fields`。
 

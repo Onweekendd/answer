@@ -29,6 +29,7 @@ export interface CommandArgs {
   navigate: { url: string };
   snapshot: { maxChars?: number };
   click: { index: number };
+  hover: { index: number };
   // 在后台新开一个标签页打开 url，等它加载完，返回新标签页的 id。tabId 填 0，不会用到
   open: { url: string };
   // 关掉 tabId 这个标签页
@@ -103,7 +104,7 @@ export interface InputTarget {
 }
 
 export type InputAction =
-  { type: "click"; index: number } | { type: "type"; index: number; text: string; submit: boolean };
+  { type: "click" | "hover"; index: number } | { type: "type"; index: number; text: string; submit: boolean };
 
 export type TabRequest =
   | { type: "snapshot"; maxChars: number }
