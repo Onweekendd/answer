@@ -320,6 +320,11 @@ function prepareInput(index: number, editable: boolean): { x: number; y: number 
     if (!center) {
       throw new CommandError("EXEC_FAILED", "元素不在可点击区域，请重新 snapshot");
     }
+    // 盖在上面的东西整个落在元素自己身上，是叠在它上面的装饰（宜家搜索框上轮播提示词的 div，2026-10-19 实测）：
+    // 真人也是点在它上面的，照样点。比元素大的（cookie 横幅、浮层）、弹窗、iframe 照旧报错
+    if (isDecoration(el, center.x, center.y)) {
+      return center;
+    }
     // 说清楚被什么盖住：模型才分得清是普通弹窗（关掉就行），还是验证码、登录、风控提示（该停下来）
     throw new CommandError(
       "EXEC_FAILED",
@@ -351,6 +356,28 @@ function visibleCenter(el: Element): { x: number; y: number } | undefined {
     return undefined;
   }
   return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
+// 装饰可以比元素大一点点（边框、阴影）
+const DECORATION_SLACK_PX = 4;
+
+function isDecoration(el: Element, x: number, y: number): boolean {
+  const hit = document.elementFromPoint(x, y);
+  if (
+    !hit ||
+    hit instanceof HTMLIFrameElement ||
+    hit.closest('dialog, [role=dialog], [role=alertdialog], [aria-modal="true"]')
+  ) {
+    return false;
+  }
+  const cover = hit.getBoundingClientRect();
+  const target = el.getBoundingClientRect();
+  return (
+    cover.left >= target.left - DECORATION_SLACK_PX &&
+    cover.right <= target.right + DECORATION_SLACK_PX &&
+    cover.top >= target.top - DECORATION_SLACK_PX &&
+    cover.bottom <= target.bottom + DECORATION_SLACK_PX
+  );
 }
 
 // describeCover 说明盖在 (x, y) 上的是什么。不认识任何网站，只描述元素本身：

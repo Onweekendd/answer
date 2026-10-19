@@ -108,6 +108,18 @@ it("被吸顶栏这类东西盖住时滚到屏幕中间再定位，还盖着就�
   document.body.innerHTML = '<div id="bar">吸顶栏</div><button>销量</button>';
   const button = document.querySelector("button")!;
   const bar = document.getElementById("bar")!;
+  // 吸顶栏横跨整个页面，比按钮大得多：不是叠在按钮身上的装饰
+  bar.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 1000,
+    bottom: 60,
+    width: 1000,
+    height: 60,
+    toJSON: () => ({})
+  });
   let covered = true;
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => (covered ? bar : button) });
   scrollIntoView.mockImplementation(() => {
@@ -342,4 +354,43 @@ it("读文字：数出露在屏幕上的大图，头像这种小图和屏幕外�
 
   // Assert
   expect(res).toMatchObject({ ok: true, data: { images: 1 } });
+});
+
+it("盖在元素身上的装饰照样点：宜家搜索框上叠着轮播提示词", async () => {
+  // Arrange：提示词的 div 和输入框一样大（jsdom 里每个元素的位置都是同一个假值）
+  document.body.innerHTML = '<input aria-label="search"><div id="hint">遮光窗帘</div>';
+  const hint = document.getElementById("hint")!;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => hint });
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "prepareInput", index: 0, editable: false });
+
+  // Assert：点在中心，和真人一样点在提示词上
+  expect(res).toEqual({ ok: true, data: { x: 60, y: 25 } });
+});
+
+it("比元素大的东西盖着（cookie 横幅）照旧报错，不点下去", async () => {
+  // Arrange
+  document.body.innerHTML = '<button>搜索</button><div id="banner">我们使用 cookie</div>';
+  const banner = document.getElementById("banner")!;
+  banner.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 1000,
+    bottom: 80,
+    width: 1000,
+    height: 80,
+    toJSON: () => ({})
+  });
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => banner });
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "prepareInput", index: 0, editable: false });
+
+  // Assert
+  expect(res).toMatchObject({ ok: false, error: { code: "EXEC_FAILED" } });
 });
