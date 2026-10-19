@@ -30,3 +30,16 @@
   expect:
     visited: [item.jd.com] # 京东在新标签页里打开详情页，这个 case 专门测跟随新标签页
     min_prices: 1
+
+- name: 宜家首页搜索
+  task: 打开宜家首页，用页面上的搜索框搜 门垫，说出前两个商品的名字和价格
+  expect:
+    visited: [ikea.cn/cn/zh/search/products] # 首页的搜索框是假框，点开弹出层再输入才搜得到
+    used: [type] # 这个 case 测的就是在假框弹出的输入框里输入
+    min_prices: 2
+
+- name: 宜家详情页
+  task: 在宜家找 200x230 厘米的超暖型被子，挑两款看详情，说出各自的填充物和价格（会员价和非会员价都要）
+  expect:
+    visited: [ikea.cn/cn/zh/p/] # 详情页在新标签页里打开
+    min_prices: 3 # 两款，有会员价的一款有两个价
