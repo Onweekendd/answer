@@ -35,6 +35,7 @@ import (
 	"github.com/apache/answer/internal/service/file_record"
 
 	"github.com/apache/answer/internal/base/constant"
+	"github.com/apache/answer/internal/base/objectstore"
 	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/service/service_config"
 	"github.com/apache/answer/internal/service/siteinfo_common"
@@ -82,6 +83,8 @@ type uploaderService struct {
 	serviceConfig     *service_config.ServiceConfig
 	siteInfoService   siteinfo_common.SiteInfoCommonService
 	fileRecordService *file_record.FileRecordService
+	// objectStore keeps the agent's images when S3_ENDPOINT is set; nil means the local disk
+	objectStore *objectstore.Store
 }
 
 // NewUploaderService new upload service
@@ -89,6 +92,7 @@ func NewUploaderService(
 	serviceConfig *service_config.ServiceConfig,
 	siteInfoService siteinfo_common.SiteInfoCommonService,
 	fileRecordService *file_record.FileRecordService,
+	objectStore *objectstore.Store,
 ) UploaderService {
 	for _, subPath := range subPathList {
 		err := dir.CreateDirIfNotExist(filepath.Join(serviceConfig.UploadPath, subPath))
@@ -100,6 +104,7 @@ func NewUploaderService(
 		serviceConfig:     serviceConfig,
 		siteInfoService:   siteInfoService,
 		fileRecordService: fileRecordService,
+		objectStore:       objectStore,
 	}
 }
 

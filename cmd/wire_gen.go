@@ -11,6 +11,7 @@ import (
 	"github.com/apache/answer/internal/base/cron"
 	"github.com/apache/answer/internal/base/data"
 	"github.com/apache/answer/internal/base/middleware"
+	"github.com/apache/answer/internal/base/objectstore"
 	"github.com/apache/answer/internal/base/server"
 	"github.com/apache/answer/internal/base/translator"
 	"github.com/apache/answer/internal/controller"
@@ -113,7 +114,11 @@ import (
 
 // initApplication init application.
 func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database, cacheConf *data.CacheConf, i18nConf *translator.I18n, swaggerConf *router.SwaggerConfig, serviceConf *service_config.ServiceConfig, uiConf *server.UI, logConf log.Logger) (*pacman.Application, func(), error) {
-	staticRouter := router.NewStaticRouter(serviceConf)
+	store, err := objectstore.NewFromEnv()
+	if err != nil {
+		return nil, nil, err
+	}
+	staticRouter := router.NewStaticRouter(serviceConf, store)
 	i18nTranslator, err := translator.NewTranslator(i18nConf)
 	if err != nil {
 		return nil, nil, err
@@ -220,7 +225,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	questionController := controller.NewQuestionController(questionService, answerService, rankService, siteInfoCommonService, captchaService, rateLimitMiddleware)
 	client := llm.NewClient(siteInfoCommonService)
 	browser := purchaseai.NewBrowser()
-	uploaderService := uploader.NewUploaderService(serviceConf, siteInfoCommonService, fileRecordService)
+	uploaderService := uploader.NewUploaderService(serviceConf, siteInfoCommonService, fileRecordService, store)
 	purchaseVoteService := purchasevote.NewPurchaseVoteService(purchaseRepo, questionRepo, noticequeueService)
 	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, browser, uploaderService, purchaseVoteService)
 	purchaseAIController := controller.NewPurchaseAIController(purchaseAIService)

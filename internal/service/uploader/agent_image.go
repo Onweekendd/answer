@@ -49,11 +49,39 @@ func (us *uploaderService) SaveAgentImage(ctx context.Context, data []byte) (str
 	if err != nil {
 		return "", err
 	}
-	name, err := saveAgentImage(us.serviceConfig.UploadPath, data)
+	var name string
+	if us.objectStore != nil {
+		name, err = putAgentImage(ctx, us.objectStore, data)
+	} else {
+		name, err = saveAgentImage(us.serviceConfig.UploadPath, data)
+	}
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s/uploads/%s", siteGeneral.SiteUrl, path.Join(constant.AgentSubPath, name)), nil
+}
+
+// objectPutter is the one call SaveAgentImage makes on the object store.
+type objectPutter interface {
+	Put(ctx context.Context, key string, data []byte, contentType string) error
+}
+
+// AgentImageKey is where an agent image named name lives in the object store.
+func AgentImageKey(name string) string {
+	return path.Join(constant.AgentSubPath, name)
+}
+
+// putAgentImage checks the bytes like saveAgentImage and puts them in the
+// object store under agent/<name>, returning that name.
+func putAgentImage(ctx context.Context, store objectPutter, data []byte) (string, error) {
+	if err := checkAgentImage(data); err != nil {
+		return "", err
+	}
+	name := uid.IDStr12() + ".jpg"
+	if err := store.Put(ctx, AgentImageKey(name), data, "image/jpeg"); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 // saveAgentImage checks the bytes are a jpeg and writes them under
@@ -61,15 +89,23 @@ func (us *uploaderService) SaveAgentImage(ctx context.Context, data []byte) (str
 // a browser extension, so they are checked rather than trusted: the file is
 // served from this site, and a file of the wrong type there could be HTML.
 func saveAgentImage(uploadPath string, data []byte) (string, error) {
-	if len(data) == 0 || len(data) > agentImageMaxBytes {
-		return "", fmt.Errorf("agent image is %d bytes", len(data))
-	}
-	if _, format, err := image.DecodeConfig(bytes.NewReader(data)); err != nil || format != "jpeg" {
-		return "", ErrNotJPEG
+	if err := checkAgentImage(data); err != nil {
+		return "", err
 	}
 	name := uid.IDStr12() + ".jpg"
 	if err := os.WriteFile(filepath.Join(uploadPath, constant.AgentSubPath, name), data, 0o644); err != nil {
 		return "", err
 	}
 	return name, nil
+}
+
+// checkAgentImage accepts a jpeg of at most agentImageMaxBytes.
+func checkAgentImage(data []byte) error {
+	if len(data) == 0 || len(data) > agentImageMaxBytes {
+		return fmt.Errorf("agent image is %d bytes", len(data))
+	}
+	if _, format, err := image.DecodeConfig(bytes.NewReader(data)); err != nil || format != "jpeg" {
+		return ErrNotJPEG
+	}
+	return nil
 }

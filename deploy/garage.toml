@@ -1,0 +1,18 @@
+# Garage 对象存储的配置（单机、一份副本）。Agent 存的图放在这里，answer 用 S3 接口读写。
+# 密钥不写在这里：rpc_secret 从环境变量 GARAGE_RPC_SECRET 读（deploy.sh 第一次部署时生成到 .env）。
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+# 只有一台机器，每个对象存一份
+replication_factor = 1
+
+# 节点之间通信用的端口；只有一个节点，只在容器里用
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+# answer 用服务名 garage 访问 http://garage:3900，不对外发布端口
+api_bind_addr = "[::]:3900"
+s3_region = "garage"
+root_domain = ".s3.garage.localhost"

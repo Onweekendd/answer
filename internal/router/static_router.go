@@ -20,25 +20,32 @@
 package router
 
 import (
+	"errors"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/apache/answer/internal/base/constant"
+	"github.com/apache/answer/internal/base/objectstore"
 	"github.com/apache/answer/internal/service/service_config"
+	"github.com/apache/answer/internal/service/uploader"
 	"github.com/apache/answer/pkg/dir"
 	"github.com/gin-gonic/gin"
+	"github.com/segmentfault/pacman/log"
 )
 
 // StaticRouter static api router
 type StaticRouter struct {
 	serviceConfig *service_config.ServiceConfig
+	objectStore   *objectstore.Store
 }
 
 // NewStaticRouter new static api router
-func NewStaticRouter(serviceConfig *service_config.ServiceConfig) *StaticRouter {
+func NewStaticRouter(serviceConfig *service_config.ServiceConfig, objectStore *objectstore.Store) *StaticRouter {
 	return &StaticRouter{
 		serviceConfig: serviceConfig,
+		objectStore:   objectStore,
 	}
 }
 
@@ -48,7 +55,7 @@ func (a *StaticRouter) RegisterStaticRouter(r *gin.RouterGroup) {
 	r.Static("/uploads/"+constant.AvatarThumbSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.AvatarThumbSubPath))
 	r.Static("/uploads/"+constant.PostSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.PostSubPath))
 	r.Static("/uploads/"+constant.BrandingSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.BrandingSubPath))
-	r.Static("/uploads/"+constant.AgentSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.AgentSubPath))
+	r.GET("/uploads/"+constant.AgentSubPath+"/:name", a.agentImage)
 	r.GET("/uploads/"+constant.FilesPostSubPath+"/*filepath", func(c *gin.Context) {
 		// The filepath such as hash/123.pdf
 		filePath := c.Param("filepath")
@@ -65,4 +72,38 @@ func (a *StaticRouter) RegisterStaticRouter(r *gin.RouterGroup) {
 		}
 		c.FileAttachment(fileLocalPath, originalFilename)
 	})
+}
+
+// agentImageName is the name SaveAgentImage gives an image; anything else is not one
+var agentImageName = regexp.MustCompile(`^[0-9A-Za-z]{1,32}\.jpg$`)
+
+// agentImage serves an image the purchase agent saved. With an object store it
+// comes from there; images saved before the store existed are still on disk.
+func (a *StaticRouter) agentImage(c *gin.Context) {
+	name := c.Param("name")
+	if !agentImageName.MatchString(name) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	// the name is new for every image, so a copy never goes stale
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if a.objectStore != nil {
+		body, size, err := a.objectStore.Get(c.Request.Context(), uploader.AgentImageKey(name))
+		if err == nil {
+			defer func() { _ = body.Close() }()
+			c.DataFromReader(http.StatusOK, size, "image/jpeg", body, nil)
+			return
+		}
+		if !errors.Is(err, objectstore.ErrNotFound) {
+			log.Warnf("agent image %s from the object store: %v", name, err)
+		}
+	}
+	local := filepath.Join(a.serviceConfig.UploadPath, constant.AgentSubPath, name)
+	if !dir.CheckFileExist(local) {
+		c.Header("Cache-Control", "no-store")
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.File(local)
 }

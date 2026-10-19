@@ -21,6 +21,8 @@ package uploader
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -71,4 +73,60 @@ func Test_saveAgentImage_不是jpeg就不存(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(uploadPath)
 	assert.Empty(t, entries)
+}
+
+// fakePutter 记下放进对象存储的东西
+type fakePutter struct {
+	objects map[string][]byte
+	err     error
+}
+
+func (f *fakePutter) Put(_ context.Context, key string, data []byte, contentType string) error {
+	if f.err != nil {
+		return f.err
+	}
+	if contentType != "image/jpeg" {
+		return errors.New("wrong content type " + contentType)
+	}
+	f.objects[key] = data
+	return nil
+}
+
+func Test_putAgentImage(t *testing.T) {
+	jpegData := encoded(t, func(b *bytes.Buffer, img image.Image) error { return jpeg.Encode(b, img, nil) })
+
+	t.Run("放进对象存储的 agent/ 下面", func(t *testing.T) {
+		// Arrange
+		store := &fakePutter{objects: map[string][]byte{}}
+
+		// Act
+		name, err := putAgentImage(context.Background(), store, jpegData)
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, jpegData, store.objects["agent/"+name])
+	})
+
+	t.Run("不是 jpeg 就不放", func(t *testing.T) {
+		// Arrange
+		store := &fakePutter{objects: map[string][]byte{}}
+
+		// Act
+		_, err := putAgentImage(context.Background(), store, []byte("<script>alert(1)</script>"))
+
+		// Assert
+		assert.ErrorIs(t, err, ErrNotJPEG)
+		assert.Empty(t, store.objects)
+	})
+
+	t.Run("对象存储出错时把错误交回去", func(t *testing.T) {
+		// Arrange
+		store := &fakePutter{objects: map[string][]byte{}, err: errors.New("garage down")}
+
+		// Act
+		_, err := putAgentImage(context.Background(), store, jpegData)
+
+		// Assert
+		assert.EqualError(t, err, "garage down")
+	})
 }

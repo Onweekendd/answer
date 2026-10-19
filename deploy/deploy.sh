@@ -19,6 +19,19 @@ current_tag() { grep -E '^TAG=' .env | tail -1 | cut -d= -f2; }
 # compose 读的都是 .env，线上跑哪个版本始终以文件为准
 set_tag() { sed -i "s/^TAG=.*/TAG=$1/" .env; }
 
+# .env 里没有 $1（或者是空的）时写进 $2。生成的密钥只写文件，不打印
+ensure_env() {
+	if grep -qE "^$1=." .env; then
+		return
+	fi
+	if grep -qE "^$1=" .env; then
+		sed -i "s|^$1=.*|$1=$2|" .env
+	else
+		echo "$1=$2" >>.env
+	fi
+	echo "generated $1 in .env"
+}
+
 # 拉取并启动 .env 里 TAG 指定的版本
 start() {
 	docker compose pull answer
@@ -53,9 +66,16 @@ echo "deploying $new_tag (running $old_tag)"
 # 1. 先备份：新版本的迁移出了问题，还能把数据恢复回来
 ./backup.sh
 
+# Garage 的密钥：第一次部署时生成，以后一直用 .env 里的
+ensure_env GARAGE_RPC_SECRET "$(openssl rand -hex 32)"
+ensure_env S3_ACCESS_KEY_ID "GK$(openssl rand -hex 12)"
+ensure_env S3_SECRET_ACCESS_KEY "$(openssl rand -hex 32)"
+
 # 2. 切到新版本
 set_tag "$new_tag"
 start
+# 建桶、导入密钥，每次都跑（已经有的跳过）。失败只影响存图，网站照常，所以不让部署失败
+./garage-init.sh || echo "garage-init.sh failed: the agent cannot save pictures until it succeeds" >&2
 
 # 3. 健康检查，失败就回滚
 if wait_healthy 90; then

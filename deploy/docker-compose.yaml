@@ -29,11 +29,19 @@ services:
       # 对话页的 Agent 通过 hub 操作浏览器；用服务名 hub 访问，不出 compose 的内部网络
       BROWSER_HUB_URL: http://hub:8765
       BROWSER_HUB_TOKEN: ${BROWSER_HUB_TOKEN:?在 deploy/.env 里设置 BROWSER_HUB_TOKEN}
+      # Agent 存的图放进 Garage（S3 接口），不放 /data。密钥由 deploy.sh 第一次部署时生成到 .env
+      S3_ENDPOINT: garage:3900
+      S3_BUCKET: ${S3_BUCKET:-maibumai}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?在 deploy/.env 里设置 S3_ACCESS_KEY_ID（deploy.sh 会自动生成）}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?在 deploy/.env 里设置 S3_SECRET_ACCESS_KEY（deploy.sh 会自动生成）}
     depends_on:
       db:
         # 不只是等 db 容器启动，而是等下面的 healthcheck 通过，
         # 否则 answer 启动时 PG 可能还没准备好，连接会失败
         condition: service_healthy
+      garage:
+        # Garage 起来以后还要 garage-init.sh 建桶；没建好之前存图会失败，不影响 answer 启动
+        condition: service_started
 
   # 浏览器 Hub：插件连到这里，answer 通过它操作浏览器。和 answer 用同一个镜像，只是运行 answer browser。
   # 它能操作一个登录着淘宝、京东的浏览器，所以不对公网开放：端口只绑在服务器自己的 127.0.0.1 上，
@@ -48,6 +56,19 @@ services:
       BROWSER_HUB_TOKEN: ${BROWSER_HUB_TOKEN:?在 deploy/.env 里设置 BROWSER_HUB_TOKEN}
     ports:
       - "127.0.0.1:8765:8765"
+
+  # 对象存储：Agent 存的图。Docker Hub 上官方 dxflrs/garage 在 GHCR 的转存（理由同下面的 pgvector）。
+  # 镜像里只有 garage 一个程序，初始化（分配存储、建桶、导入密钥）由 garage-init.sh 从宿主机发命令。
+  # 没有 ports：只有 answer 在内部网络里用 http://garage:3900 访问，图片经 answer 的 /uploads/agent/ 给用户
+  garage:
+    image: ghcr.io/onweekendd/garage:v1.1.0
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?在 deploy/.env 里设置 GARAGE_RPC_SECRET（deploy.sh 会自动生成）}
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
 
   db:
     # 带 pgvector 扩展的 PostgreSQL 16，需求 5 的向量检索要用。
@@ -77,7 +98,9 @@ services:
       timeout: 3s
       retries: 10
 
-# 声明上面用到的两个命名卷，由 Docker 管理，实际存放在 /var/lib/docker/volumes/ 下
+# 声明上面用到的命名卷，由 Docker 管理，实际存放在 /var/lib/docker/volumes/ 下
 volumes:
   answer-data:
   pgdata:
+  garage-meta:
+  garage-data:

@@ -20,6 +20,7 @@
 package service
 
 import (
+	"github.com/apache/answer/internal/base/objectstore"
 	"github.com/apache/answer/internal/service/action"
 	"github.com/apache/answer/internal/service/activity"
 	"github.com/apache/answer/internal/service/activity_common"
@@ -79,6 +80,7 @@ import (
 
 // ProviderSetService is providers.
 var ProviderSetService = wire.NewSet(
+	objectstore.NewFromEnv,
 	comment.NewCommentService,
 	comment_common.NewCommentCommonService,
 	report.NewReportService,
