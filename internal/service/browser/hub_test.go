@@ -79,6 +79,11 @@ func dialFake(t *testing.T, srv *httptest.Server, origin, token string, reply fa
 	}
 	require.NoError(t, wsjson.Write(ctx, conn, hello))
 
+	// reply 为 nil：不读命令，测试自己读。两边一起读的话会抢同一条消息，
+	// 被拒绝时的关闭帧被后台这个读走，测试读到的就不是关闭（2026-10-19 CI 的 Linux 上这样失败过）
+	if reply == nil {
+		return conn, nil
+	}
 	go func() {
 		for {
 			var cmd Command
@@ -240,8 +245,8 @@ func TestHub_Connect(t *testing.T) {
 		// Arrange
 		hub, srv := newHub(t)
 
-		// Act
-		conn, err := dialFake(t, srv, "chrome-extension://test", "wrong-token", neverReply)
+		// Act：不起读命令的 goroutine，只有测试自己读
+		conn, err := dialFake(t, srv, "chrome-extension://test", "wrong-token", nil)
 		require.NoError(t, err)
 
 		// Assert：Hub 会关掉这条连接，假插件读到关闭
