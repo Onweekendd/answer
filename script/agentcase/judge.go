@@ -21,6 +21,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -69,7 +70,30 @@ func judge(c Case, res *purchaseai.TaskResult, snapshots []string) []string {
 		problems = append(problems, fmt.Sprintf("回答里只有 %d 个价格，要求至少 %d 个", got, c.Expect.MinPrices))
 	}
 
+	// ⑤ 商品卡片够数，而且每张的链接都在去过的网站上：链接是插件从页面上取的，不该指向没去过的地方
+	if got := len(res.Products); got < c.Expect.MinCards {
+		problems = append(problems, fmt.Sprintf("只做了 %d 张商品卡片，要求至少 %d 张", got, c.Expect.MinCards))
+	}
+	for _, p := range res.Products {
+		host := hostOf(p.URL)
+		visited := slices.ContainsFunc(res.Steps, func(s purchaseai.TaskStep) bool {
+			return host != "" && hostOf(s.URL) == host
+		})
+		if !visited {
+			problems = append(problems, fmt.Sprintf("卡片 %d 的链接在没去过的网站上：%s", p.ID, host))
+		}
+	}
+
 	return problems
+}
+
+// hostOf 是网址的域名，解析不了就是空的
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
 
 // price 是带单位的数字：¥ 或 ￥ 在前（后面可以有空格），或者"元"在后（前面可以有空格）。

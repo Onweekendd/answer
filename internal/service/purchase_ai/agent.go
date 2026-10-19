@@ -34,15 +34,25 @@ import (
 // browserOn 为 false 时不给任何工具，模型只能直接回答（概念 7 的降级）。
 func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
 	r := newAgentRun(pas.llmClient, pas.browser, defaultLimits)
+	r.images = pas.uploaderService
 	defer r.closeTabs()
 	return r.run(ctx, messages, browserOn)
 }
 
-// run 是 Agent 循环。一步 = 调用一次模型；每一步按 ①～⑨ 的顺序走。
+// run 跑完一次任务，结果带上做好的商品卡片。循环里有好几个出口，卡片在这里统一带上
+func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
+	res, err := r.loop(ctx, messages, browserOn)
+	if res != nil {
+		res.Products = r.products
+	}
+	return res, err
+}
+
+// loop 是 Agent 循环。一步 = 调用一次模型；每一步按 ①～⑨ 的顺序走。
 //
 // 每个工具调用都必须有一条工具消息回复，跳过的、done 也一样：
 // 否则服务商会拒绝这段对话，而对话后面还要接着发（追问、收尾）。
-func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
+func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.limits.runTimeout)
 	defer cancel()
 

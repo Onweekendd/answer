@@ -56,6 +56,9 @@ type agentRun struct {
 	steps        []stepRecord
 	labels       map[int]string // 最新快照里每个编号的名字，给用户看"点击「…」"用
 
+	images   ImageStore    // 存商品卡片的图；nil 就不存，卡片没有图
+	products []ProductCard // 做好的商品卡片
+
 	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
 	events        chan<- Event
 	showReasoning bool     // 思考也推给用户
@@ -87,6 +90,7 @@ const (
 	toolType     = "type"
 	toolPress    = "press"
 	toolScroll   = "scroll"
+	toolProduct  = "pick_product"
 	toolDone     = "done"
 )
 
@@ -173,6 +177,8 @@ func (r *agentRun) tools() (map[string]agentTool, []llm.Tool, error) {
 		{toolPress, "按键盘上的一个键。Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快，按完先 snapshot 再继续。" +
 			"ArrowRight、ArrowLeft：把轮播图翻到下一张、上一张（比如小红书笔记的图片），页面别的地方不变，编号照样能用，翻完直接截图。", pressArgs{}, r.press},
 		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
+		{toolProduct, "记下一个值得推荐给用户的商品：用户会在回答上方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
+			"在商品详情页上不填 index；在搜索结果里填那张商品卡片的编号。只记看过价格的商品，最多 6 个。", productArgs{}, r.pickProduct},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
 

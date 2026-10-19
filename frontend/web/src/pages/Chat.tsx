@@ -3,6 +3,7 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { AgentProcess, ProcessSteps, ProcessThinking } from "@/components/AgentProcess";
 import { AgentStep } from "@/components/AgentStep";
 import { Thread, type ThreadComponents } from "@/components/assistant-ui/thread.aui";
+import { ProductCardsUI } from "@/components/ProductCards";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatRuntime } from "@/hooks/useChatRuntime";
 
@@ -25,6 +26,7 @@ export default function Chat() {
     <div className="-mx-4 -mb-24 md:-mb-8 h-[calc(100dvh-3.5rem-4rem)] md:h-[calc(100dvh-3.5rem)]">
       <AssistantRuntimeProvider runtime={runtime}>
         <TooltipProvider>
+          <ProductCardsUI />
           <Thread components={components} />
         </TooltipProvider>
       </AssistantRuntimeProvider>

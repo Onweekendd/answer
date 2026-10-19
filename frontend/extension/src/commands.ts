@@ -23,6 +23,7 @@ import {
   CommandError,
   type InputAction,
   type InputTarget,
+  type ProductArea,
   type ShotArea,
   type TabRequest,
   type TabResponse
@@ -36,6 +37,8 @@ const DEFAULT_READ_CHARS = 3000;
 // 截图的默认尺寸和质量，Go 一般会自己指定
 const DEFAULT_SHOT_WIDTH = 1600;
 const DEFAULT_SHOT_QUALITY = 80;
+// 商品卡片的图只当缩略图用，不用看清小字
+const DEFAULT_PRODUCT_WIDTH = 480;
 // 按键以后等多久再读网址
 const PRESS_SETTLE_MS = 500;
 
@@ -84,6 +87,21 @@ async function executeCommand(cmd: Command): Promise<unknown> {
         );
         const tab = await chrome.tabs.get(cmd.tabId);
         return { ...shot, url: tab.url ?? "" };
+      });
+    case "product":
+      return withDebugger(cmd.tabId, async (target) => {
+        await bringToFront(cmd.tabId);
+        const found = (await sendToTab(cmd.tabId, { type: "productArea", index: cmd.args.index })) as ProductArea;
+        const image = found.image
+          ? await cdpScreenshot(
+              target,
+              found.image,
+              cmd.args.maxWidth ?? DEFAULT_PRODUCT_WIDTH,
+              cmd.args.quality ?? DEFAULT_SHOT_QUALITY
+            )
+          : null;
+        const tab = await chrome.tabs.get(cmd.tabId);
+        return { url: found.url, title: tab.title ?? "", image };
       });
     case "click":
       return actIn(cmd.tabId, { type: "click", index: cmd.args.index });

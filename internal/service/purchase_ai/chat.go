@@ -89,6 +89,7 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		r.events = out
 		r.showReasoning = pas.chatOptions.showReasoning
 		r.redact = pas.chatOptions.redact
+		r.images = pas.uploaderService
 		defer r.closeTabs()
 
 		res, err := r.run(ctx, messages, browserOn)

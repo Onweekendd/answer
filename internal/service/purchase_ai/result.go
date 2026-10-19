@@ -79,6 +79,8 @@ type agentResult struct {
 	Success bool         // done 说做成了；直接回答也算；走了收尾就是 false
 	Finish  finishReason // 为什么结束的；空表示正常结束
 	Steps   []stepRecord
+	// Products 是做好的商品卡片，不管怎么结束的都带上：收尾时卡片照样有用
+	Products []ProductCard
 	// Reasoning 是最后一次模型调用的思考过程，只用于回答为空时排查
 	Reasoning string
 }

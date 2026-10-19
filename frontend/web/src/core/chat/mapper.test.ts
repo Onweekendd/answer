@@ -115,3 +115,56 @@ describe("parseEvent", () => {
     expect(parseEvent('{"type":"text"}')).toBeNull();
   });
 });
+
+describe("product cards", () => {
+  const card = (id: number, title = `商品 ${id}`) => ({ id, title, url: `https://item.jd.com/${id}.html` });
+  const step = (id: string): ChatEvent => ({ type: "tool_start", id, name: "click", args: { summary: id } });
+
+  it("keeps every card in one products part, after the steps and before the answer", () => {
+    // Arrange
+    const events: ChatEvent[] = [
+      step("s1"),
+      { type: "product", product: card(1) },
+      step("s2"),
+      { type: "product", product: card(2) },
+      { type: "text", delta: "见卡片 1" }
+    ];
+
+    // Act
+    const parts = run(events);
+
+    // Assert: the two steps stay together, so the process box does not break in two
+    expect(parts.map((p) => (p.type === "tool-call" ? p.toolCallId : p.type))).toEqual(["s1", "s2", "data", "text"]);
+    expect(parts[2]).toEqual({ type: "data", name: "products", data: [card(1), card(2)] });
+  });
+
+  it("replaces a card sent again with the same id", () => {
+    // Act
+    const parts = run([
+      { type: "product", product: card(1, "旧") },
+      { type: "product", product: card(2) },
+      { type: "product", product: card(1, "新") }
+    ]);
+
+    // Assert
+    expect(parts).toEqual([{ type: "data", name: "products", data: [card(1, "新"), card(2)] }]);
+  });
+
+  it("parses a product event", () => {
+    expect(parseEvent(JSON.stringify({ type: "product", product: card(1) }))).toEqual({
+      type: "product",
+      product: card(1)
+    });
+  });
+
+  it("drops a card whose link or image is not http(s), since it goes into an href or src", () => {
+    // Act & Assert
+    expect(
+      parseEvent(JSON.stringify({ type: "product", product: { ...card(1), url: "javascript:alert(1)" } }))
+    ).toBeNull();
+    expect(
+      parseEvent(JSON.stringify({ type: "product", product: { ...card(1), image: "data:text/html,x" } }))
+    ).toBeNull();
+    expect(parseEvent(JSON.stringify({ type: "product", product: { id: 1, url: "https://a.com" } }))).toBeNull();
+  });
+});

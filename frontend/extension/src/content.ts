@@ -17,7 +17,14 @@
  * under the License.
  */
 
-import { CommandError, type ShotArea, type TabRequest, type TabResponse, toErrorBody } from "./protocol";
+import {
+  CommandError,
+  type ProductArea,
+  type ShotArea,
+  type TabRequest,
+  type TabResponse,
+  toErrorBody
+} from "./protocol";
 import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
@@ -71,6 +78,8 @@ async function handle(req: TabRequest): Promise<unknown> {
       return document.visibilityState;
     case "screenshotArea":
       return screenshotArea(req.index);
+    case "productArea":
+      return productArea(req.index);
     case "viewport":
       return { width: window.innerWidth, height: window.innerHeight };
     case "scrollPosition":
@@ -506,18 +515,112 @@ function screenshotArea(index?: number): ShotArea {
   if (!el.isConnected || !isVisible(el)) {
     throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
   }
+  return elementArea(el, SHOT_PADDING);
+}
+
+// elementArea 是元素在视口里的部分，四周加 padding。元素完全不在屏幕上时先滚到中间
+function elementArea(el: Element, padding: number): ShotArea {
   if (!intersectsViewport(el)) {
     el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
   }
   const rect = el.getBoundingClientRect();
-  const left = Math.max(0, rect.left - SHOT_PADDING);
-  const right = Math.min(window.innerWidth, rect.right + SHOT_PADDING);
-  const top = Math.max(0, rect.top - SHOT_PADDING);
-  const bottom = Math.min(window.innerHeight, rect.bottom + SHOT_PADDING);
+  const left = Math.max(0, rect.left - padding);
+  const right = Math.min(window.innerWidth, rect.right + padding);
+  const top = Math.max(0, rect.top - padding);
+  const bottom = Math.min(window.innerHeight, rect.bottom + padding);
   if (right <= left || bottom <= top) {
     throw new CommandError("EXEC_FAILED", "元素不在屏幕上，截不到");
   }
+  const dpr = window.devicePixelRatio || 1;
   return { x: left + window.scrollX, y: top + window.scrollY, width: right - left, height: bottom - top, dpr };
+}
+
+// 多大的图才算商品图：比它小的是图标、店铺 logo、详情页主图旁边那一列缩略图
+const PRODUCT_IMAGE_PX = 120;
+
+// productArea 找商品卡片要的链接和商品图（阶段 3 的商品卡片）。
+// 链接和图都从页面上取，不让模型写：模型写的链接常常是编的，商品 id 错一位就是别的商品。
+// 只截商品图那一块，不截整屏：整屏上有登录账号的名字，卡片是要给用户看、要存下来的
+async function productArea(index?: number): Promise<ProductArea> {
+  const el = index === undefined ? undefined : elementAt(index);
+  if (el && (!el.isConnected || !isVisible(el))) {
+    throw new CommandError("ELEMENT_NOT_FOUND", "元素已经失效，请重新 snapshot");
+  }
+  const url = el ? linkOf(el) : location.href;
+  if (!url) {
+    throw new CommandError("EXEC_FAILED", "这个元素里没有链接");
+  }
+  const image = largestImage(el ?? document.body);
+  return { url, image: image ? await wholeImageArea(image) : null };
+}
+
+// 滚动以后等多久再截：滚动是同步的，画面要等下一帧才更新
+const SCROLL_SETTLE_MS = 150;
+// 图片最多等多久加载完：懒加载的图滚到屏幕上才开始下载
+const IMAGE_LOAD_MS = 1500;
+
+// wholeImageArea 是整张商品图的区域。图只露出一部分时先滚到中间、等它加载完再截：
+// 2026-10-19 宜家搜索结果里的图只露出顶上一条，截下来是一条白边，放进正方形的卡片里一片白。
+// 滚过以后露出来的还不到一半（图比屏幕还大），就不要图了
+async function wholeImageArea(img: Element): Promise<ShotArea | null> {
+  if (!fullyInViewport(img)) {
+    img.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    await new Promise((resolve) => setTimeout(resolve, SCROLL_SETTLE_MS));
+  }
+  await imageLoaded(img);
+  const rect = img.getBoundingClientRect();
+  const area = elementArea(img, 0);
+  return area.width * area.height * 2 >= rect.width * rect.height ? area : null;
+}
+
+function fullyInViewport(el: Element): boolean {
+  const rect = el.getBoundingClientRect();
+  return rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+}
+
+// imageLoaded 等 <img> 加载完（或者失败），最多等 IMAGE_LOAD_MS。complete 了就不等：没有 src 的图也算 complete
+function imageLoaded(img: Element): Promise<void> {
+  if (!(img instanceof HTMLImageElement) || img.complete) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      img.removeEventListener("load", done);
+      img.removeEventListener("error", done);
+      resolve();
+    };
+    const timer = setTimeout(done, IMAGE_LOAD_MS);
+    img.addEventListener("load", done);
+    img.addEventListener("error", done);
+  });
+}
+
+// linkOf 是卡片的链接：卡片本身是 <a>，或者套在 <a> 里，或者里面有 <a>（取第一个，一般是标题）
+function linkOf(el: Element): string | undefined {
+  const a = el.closest("a[href]") ?? el.querySelector("a[href]");
+  return a instanceof HTMLAnchorElement && /^https?:/.test(a.href) ? a.href : undefined;
+}
+
+// largestImage 是 root 里最大的那张图。屏幕上有的就只在屏幕上的里面挑：
+// 详情页往下滚过以后，屏幕上的那张是模型正在看的
+function largestImage(root: Element): Element | undefined {
+  const images = [...(root.matches("img") ? [root] : []), ...root.querySelectorAll("img")].filter((img) => {
+    const rect = img.getBoundingClientRect();
+    return rect.width >= PRODUCT_IMAGE_PX && rect.height >= PRODUCT_IMAGE_PX && isVisible(img);
+  });
+  const onScreen = images.filter(intersectsViewport);
+  const pool = onScreen.length > 0 ? onScreen : images;
+  let best: Element | undefined;
+  let bestArea = 0;
+  for (const img of pool) {
+    const rect = img.getBoundingClientRect();
+    if (rect.width * rect.height > bestArea) {
+      best = img;
+      bestArea = rect.width * rect.height;
+    }
+  }
+  return best;
 }
 
 Object.assign(globalThis, { __pagehand: { snapshot } });

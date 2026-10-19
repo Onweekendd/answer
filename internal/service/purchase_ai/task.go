@@ -32,6 +32,8 @@ type TaskResult struct {
 	Success bool
 	Finish  string // 空表示模型自己结束的；否则是收尾的原因：steps、failures、loop、browser_gone
 	Steps   []TaskStep
+	// Products 是做好的商品卡片。case 运行器没有存图的地方，卡片都没有图
+	Products []ProductCard
 }
 
 // TaskStep 是执行过的一次工具调用
@@ -60,7 +62,7 @@ func RunTask(ctx context.Context, client llm.Client, b Browser, task string) (*T
 		return nil, err
 	}
 
-	out := &TaskResult{Text: res.Text, Success: res.Success, Finish: string(res.Finish)}
+	out := &TaskResult{Text: res.Text, Success: res.Success, Finish: string(res.Finish), Products: res.Products}
 	for _, s := range res.Steps {
 		out.Steps = append(out.Steps, TaskStep(s))
 	}

@@ -26,4 +26,7 @@ const (
 	BrandingSubPath    = "branding"
 	FilesPostSubPath   = "files/post"
 	DeletedSubPath     = "deleted"
+	// AgentSubPath holds images the purchase agent saved itself (product card thumbnails).
+	// They belong to no post, so they have no file record and the orphan cleanup leaves them alone.
+	AgentSubPath = "agent"
 )

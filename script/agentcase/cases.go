@@ -40,6 +40,7 @@ type Expect struct {
 	Used      []string `yaml:"used"`
 	Seen      []string `yaml:"seen"`
 	MinPrices int      `yaml:"min_prices"`
+	MinCards  int      `yaml:"min_cards"`
 }
 
 // loadCases 读 case 文件；only 不为空时只留名字包含它的 case

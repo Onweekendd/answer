@@ -48,6 +48,7 @@ func (a *StaticRouter) RegisterStaticRouter(r *gin.RouterGroup) {
 	r.Static("/uploads/"+constant.AvatarThumbSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.AvatarThumbSubPath))
 	r.Static("/uploads/"+constant.PostSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.PostSubPath))
 	r.Static("/uploads/"+constant.BrandingSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.BrandingSubPath))
+	r.Static("/uploads/"+constant.AgentSubPath, filepath.Join(a.serviceConfig.UploadPath, constant.AgentSubPath))
 	r.GET("/uploads/"+constant.FilesPostSubPath+"/*filepath", func(c *gin.Context) {
 		// The filepath such as hash/123.pdf
 		filePath := c.Param("filepath")

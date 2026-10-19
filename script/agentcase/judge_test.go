@@ -179,3 +179,41 @@ func Test_countPrices(t *testing.T) {
 		})
 	}
 }
+
+func Test_judge_卡片(t *testing.T) {
+	cardCase := Case{Name: "京东卡片", Expect: Expect{MinCards: 1}}
+
+	t.Run("卡片够数、链接在去过的网站上，通过", func(t *testing.T) {
+		// Arrange
+		res := detailRun("见卡片 1")
+		res.Products = []purchaseai.ProductCard{{ID: 1, URL: "https://item.jd.com/100012345.html"}}
+
+		// Act
+		problems := judge(cardCase, res, nil)
+
+		// Assert
+		require.Empty(t, problems)
+	})
+
+	t.Run("没做卡片", func(t *testing.T) {
+		// Act
+		problems := judge(cardCase, detailRun("¥5999"), nil)
+
+		// Assert
+		require.Len(t, problems, 1)
+		require.Contains(t, problems[0], "0 张")
+	})
+
+	t.Run("卡片的链接在没去过的网站上", func(t *testing.T) {
+		// Arrange
+		res := detailRun("见卡片 1")
+		res.Products = []purchaseai.ProductCard{{ID: 1, URL: "https://item.taobao.com/item.htm?id=1"}}
+
+		// Act
+		problems := judge(cardCase, res, nil)
+
+		// Assert
+		require.Len(t, problems, 1)
+		require.Contains(t, problems[0], "item.taobao.com")
+	})
+}

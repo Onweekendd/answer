@@ -38,19 +38,21 @@ const (
 	EventText      = "text"      // 回答
 	EventToolStart = "tool_start"
 	EventToolEnd   = "tool_end"
+	EventProduct   = "product" // 一张商品卡片，见 products.go
 	EventError     = "error"
 	EventDone      = "done"
 )
 
 // Event 是一条事件。没用到的字段不输出
 type Event struct {
-	Type    string    `json:"type"`
-	Delta   string    `json:"delta,omitempty"`   // reasoning、text
-	ID      string    `json:"id,omitempty"`      // tool_start、tool_end：同一个调用的两条事件 id 一样
-	Name    string    `json:"name,omitempty"`    // tool_start：工具名
-	Args    *ToolView `json:"args,omitempty"`    // tool_start：要做什么
-	Result  *ToolView `json:"result,omitempty"`  // tool_end：做得怎么样
-	Message string    `json:"message,omitempty"` // error：给用户看的一句话
+	Type    string       `json:"type"`
+	Delta   string       `json:"delta,omitempty"`   // reasoning、text
+	ID      string       `json:"id,omitempty"`      // tool_start、tool_end：同一个调用的两条事件 id 一样
+	Name    string       `json:"name,omitempty"`    // tool_start：工具名
+	Args    *ToolView    `json:"args,omitempty"`    // tool_start：要做什么
+	Result  *ToolView    `json:"result,omitempty"`  // tool_end：做得怎么样
+	Message string       `json:"message,omitempty"` // error：给用户看的一句话
+	Product *ProductCard `json:"product,omitempty"` // product
 }
 
 // ToolView 是一次工具调用给用户看的样子。只有这两个字段：给模型看的 Text 里有页面内容，
@@ -160,6 +162,12 @@ func (r *agentRun) describeCall(name, arguments string) string {
 			return say
 		}
 		return "按 " + a.Key
+	case toolProduct:
+		var p struct {
+			Title string `json:"title"`
+		}
+		_ = json.Unmarshal([]byte(arguments), &p)
+		return "把「" + clipRunes(oneLine(p.Title), labelMaxRunes) + "」记下来"
 	case toolScroll:
 		pages := max(a.Pages, 1)
 		if a.Direction == "up" {

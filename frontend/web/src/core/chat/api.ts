@@ -1,4 +1,4 @@
-import { type ChatEvent, ChatStreamError } from "./mapper";
+import { type ChatEvent, ChatStreamError, type ProductCard, PRODUCTS_PART } from "./mapper";
 import { eventsFromSSE } from "./stream";
 
 /** One message as POST /purchase/ai/chat takes it; images are urls from POST /file. */
@@ -11,7 +11,7 @@ export interface ChatMessageReq {
 /** The slice of an assistant-ui thread message we read; ThreadMessage satisfies it structurally. */
 export interface ThreadMessageLike {
   role: string;
-  content: readonly { type: string; text?: string }[];
+  content: readonly { type: string; text?: string; name?: string; data?: unknown }[];
   attachments?: readonly { content?: readonly { type: string; image?: string }[] }[];
 }
 
@@ -21,7 +21,8 @@ const MAX_MESSAGES = 40;
 /**
  * The conversation as the server wants it: user and assistant turns with their text, user turns
  * with their uploaded images. Thinking and tool calls stay behind, and an assistant turn with no
- * text (a failed one) is dropped, since it tells the model nothing.
+ * text (a failed one) is dropped, since it tells the model nothing. The cards go along as text
+ * after the answer, so a follow-up such as "第二个呢" has something to point at.
  */
 export function toChatMessages(messages: readonly ThreadMessageLike[]): ChatMessageReq[] {
   const out: ChatMessageReq[] = [];
@@ -30,7 +31,15 @@ export function toChatMessages(messages: readonly ThreadMessageLike[]): ChatMess
       continue;
     }
     const text = m.content
-      .flatMap((p) => (p.type === "text" && typeof p.text === "string" ? [p.text] : []))
+      .flatMap((p) => {
+        if (p.type === "text" && typeof p.text === "string") {
+          return [p.text];
+        }
+        if (p.type === "data" && p.name === PRODUCTS_PART && Array.isArray(p.data)) {
+          return [cardsText(p.data as ProductCard[])];
+        }
+        return [];
+      })
       .join("\n")
       .trim();
     const images = (m.attachments ?? []).flatMap((a) =>
@@ -42,6 +51,16 @@ export function toChatMessages(messages: readonly ThreadMessageLike[]): ChatMess
     out.push({ role: m.role, text, images: m.role === "user" ? images : [] });
   }
   return out.slice(-MAX_MESSAGES);
+}
+
+/** The cards as the model saw them when it made them: one line each, with the link. */
+export function cardsText(cards: readonly ProductCard[]): string {
+  const lines = cards.map((c) =>
+    [`- ${c.title}`, c.shop, c.spec, c.price && `${c.price}${c.priceNote ? `（${c.priceNote}）` : ""}`, c.url]
+      .filter(Boolean)
+      .join(" · ")
+  );
+  return lines.length > 0 ? `（回答上方给用户看的商品）\n${lines.join("\n")}` : "";
 }
 
 export interface ChatTransport {

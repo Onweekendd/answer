@@ -33,6 +33,44 @@ describe("toChatMessages", () => {
     ]);
   });
 
+  it("sends the cards after the answer, so a follow-up about the second one has something to point at", () => {
+    const got = toChatMessages([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "data",
+            name: "products",
+            data: [
+              {
+                id: 1,
+                title: "羽绒被",
+                shop: "无印良品旗舰店",
+                price: "¥588",
+                priceNote: "补贴后 ¥4??",
+                url: "https://detail.tmall.com/item.htm?id=1"
+              },
+              { id: 2, title: "宜家被子", url: "https://www.ikea.cn/cn/zh/p/x" }
+            ]
+          },
+          { type: "text", text: "**买** 选羽绒被" }
+        ]
+      }
+    ]);
+
+    expect(got).toEqual([
+      {
+        role: "assistant",
+        text:
+          "（回答上方给用户看的商品）\n" +
+          "- 羽绒被 · 无印良品旗舰店 · ¥588（补贴后 ¥4??） · https://detail.tmall.com/item.htm?id=1\n" +
+          "- 宜家被子 · https://www.ikea.cn/cn/zh/p/x\n" +
+          "**买** 选羽绒被",
+        images: []
+      }
+    ]);
+  });
+
   it("drops an assistant turn with no text, such as one that failed", () => {
     const got = toChatMessages([
       { role: "user", content: [{ type: "text", text: "a" }] },

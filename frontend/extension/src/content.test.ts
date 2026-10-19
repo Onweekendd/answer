@@ -394,3 +394,102 @@ it("比元素大的东西盖着（cookie 横幅）照旧报错，不点下去", 
   // Assert
   expect(res).toMatchObject({ ok: false, error: { code: "EXEC_FAILED" } });
 });
+
+function square(left: number, top: number, size: number) {
+  return () => ({
+    x: left,
+    y: top,
+    left,
+    top,
+    right: left + size,
+    bottom: top + size,
+    width: size,
+    height: size,
+    toJSON: () => ({})
+  });
+}
+
+it("商品卡片：填了 index 取卡片的链接和卡片里最大的图，不留边", async () => {
+  // Arrange：卡片是一个 <a>，里面有商品图和店铺 logo
+  vi.stubGlobal("scrollX", 0);
+  vi.stubGlobal("scrollY", 0);
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  vi.stubGlobal("devicePixelRatio", 1);
+  document.body.innerHTML =
+    '<a href="https://item.example.com/item.htm?id=42&spm=x"><img id="main"><img id="logo">羽绒被 ¥588</a>';
+  document.getElementById("main")!.getBoundingClientRect = square(20, 30, 240);
+  document.getElementById("logo")!.getBoundingClientRect = square(20, 280, 24);
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "productArea", index: 0 });
+
+  // Assert：链接原样带回，查询参数由 Go 去清洗
+  expect(res).toEqual({
+    ok: true,
+    data: {
+      url: "https://item.example.com/item.htm?id=42&spm=x",
+      image: { x: 20, y: 30, width: 240, height: 240, dpr: 1 }
+    }
+  });
+});
+
+it("商品卡片：不填 index 用当前网址和屏幕上最大的图", async () => {
+  // Arrange：屏幕外还有一张更大的详情图，不选它
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  document.body.innerHTML = '<img id="main"><img id="detail"><img id="thumb">';
+  document.getElementById("main")!.getBoundingClientRect = square(100, 100, 400);
+  document.getElementById("detail")!.getBoundingClientRect = square(100, 2000, 750);
+  document.getElementById("thumb")!.getBoundingClientRect = square(20, 100, 60);
+
+  // Act
+  const res = await request({ type: "productArea" });
+
+  // Assert
+  expect(res).toMatchObject({
+    ok: true,
+    data: { url: location.href, image: { x: 100, y: 100, width: 400, height: 400 } }
+  });
+});
+
+it("商品卡片：没有够大的图时 image 为 null", async () => {
+  // Arrange
+  document.body.innerHTML = '<a href="https://item.example.com/1">无图商品</a>';
+  await snapshot();
+
+  // Act：每个元素默认是 100×30，不够大
+  const res = await request({ type: "productArea", index: 0 });
+
+  // Assert
+  expect(res).toEqual({ ok: true, data: { url: "https://item.example.com/1", image: null } });
+});
+
+it("商品卡片：元素里没有链接时报错", async () => {
+  // Arrange
+  document.body.innerHTML = "<button>加入购物车</button>";
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "productArea", index: 0 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: false, error: { code: "EXEC_FAILED" } });
+});
+
+it("商品卡片：图只露出一条时先滚到中间再截，滚过以后还露不出一半就不要图", async () => {
+  // Arrange：图在视口上面，只露出底下 100 像素（jsdom 里滚动不会改变位置）
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  document.body.innerHTML = '<a href="https://www.ikea.cn/cn/zh/p/x"><img id="main">被子</a>';
+  document.getElementById("main")!.getBoundingClientRect = square(20, -300, 400);
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "productArea", index: 0 });
+
+  // Assert
+  expect(scrollIntoView).toHaveBeenCalled();
+  expect(res).toEqual({ ok: true, data: { url: "https://www.ikea.cn/cn/zh/p/x", image: null } });
+});

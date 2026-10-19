@@ -22,7 +22,21 @@ export async function* mockReply(prompt: string, opts: MockOptions = {}): AsyncG
     [700, { type: "tool_start", id: "search-1", name: "web_search", args: { query: `${subject} 价格 口碑` } }],
     [1400, { type: "tool_end", id: "search-1", result: { hits: 8 } }],
     [300, { type: "tool_start", id: "page-1", name: "fetch_page", args: { url: "https://example.com/review" } }],
-    [1000, { type: "tool_end", id: "page-1", result: { ok: true } }]
+    [1000, { type: "tool_end", id: "page-1", result: { ok: true } }],
+    [
+      200,
+      {
+        type: "product",
+        product: {
+          id: 1,
+          title: `${subject}（示例）`,
+          shop: "示例旗舰店",
+          price: "¥999",
+          priceNote: "券后",
+          url: "https://example.com/item/1"
+        }
+      }
+    ]
   ];
 
   const verdict = [

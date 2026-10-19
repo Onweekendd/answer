@@ -152,6 +152,17 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 			"url": url, "title": f.pages[url].title, "scope": scope,
 			"text": f.pages[url].text, "truncated": false, "totalChars": len([]rune(f.pages[url].text)),
 		}), nil
+	case "product":
+		// 详情页用当前网址；搜索结果里的卡片，链接按编号编一个，带着要被洗掉的追踪参数
+		url := f.tabs[tabID]
+		name := "product"
+		if strings.Contains(string(raw), `"index"`) {
+			url = fmt.Sprintf("https://item.jd.com/%d.html?spm=a.b.c", 100+a.Index)
+			name = fmt.Sprintf("product %d", a.Index)
+		}
+		f.calls = append(f.calls, name)
+		image := map[string]any{"data": base64.StdEncoding.EncodeToString([]byte("jpeg")), "mime": "image/jpeg", "width": 480, "height": 480}
+		return mustJSON(map[string]any{"url": url, "title": f.pages[f.tabs[tabID]].title, "image": image}), nil
 	case "press":
 		f.calls = append(f.calls, "press "+a.Key)
 		return f.acted(tabID, nil), nil
@@ -365,7 +376,7 @@ func Test_run(t *testing.T) {
 		for _, tool := range model.reqs[0].Tools {
 			names = append(names, tool.Name)
 		}
-		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolDone}, names)
+		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolProduct, toolDone}, names)
 	})
 
 	t.Run("截图放在这一轮全部工具回复之后的一条用户消息里，截图不改变页面，同一轮后面的调用照常执行", func(t *testing.T) {

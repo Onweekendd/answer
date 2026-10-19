@@ -300,6 +300,9 @@ func printAttempt(a attempt, redact []string) {
 	if a.res != nil {
 		fmt.Println("---- 回答 ----")
 		fmt.Println(redactText(a.res.Text, redact))
+		for _, p := range a.res.Products {
+			fmt.Println(redactText(fmt.Sprintf("卡片 %d：%s · %s · %s %s %s", p.ID, p.Title, p.Shop, p.Price, p.PriceNote, p.URL), redact))
+		}
 	}
 }
 
