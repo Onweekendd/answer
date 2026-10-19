@@ -17,12 +17,12 @@ name: deploy
 on:
   push:
     branches: [main]
-    # 只改了文档或前端工作区时不用部署：浏览器插件装在浏览器里，新的 web 前端也还没打进镜像
-    # （镜像里跑的仍是 ui/）。等 web 嵌进 Go 二进制后，要把 frontend/web 从这里拿掉。
+    # 只改了文档或浏览器插件时不用部署：插件装在用户的浏览器里，不在镜像里。
+    # 新的 web 前端（frontend/web）打进了镜像，改它要部署。
+    # reference（skills 下的 .md）是 Agent 读的，会编进二进制，所以 .md 只忽略 docs 下的
     paths-ignore:
       - "docs/**"
-      - "**.md"
-      - "frontend/**"
+      - "frontend/extension/**"
   # Actions 页面上多一个手动运行的按钮
   workflow_dispatch:
 

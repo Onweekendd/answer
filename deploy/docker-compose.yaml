@@ -25,11 +25,29 @@ services:
     volumes:
       # 命名卷挂到 /data：上传文件、config.yaml、i18n 都在这里，删容器不会丢
       - answer-data:/data
+    environment:
+      # 对话页的 Agent 通过 hub 操作浏览器；用服务名 hub 访问，不出 compose 的内部网络
+      BROWSER_HUB_URL: http://hub:8765
+      BROWSER_HUB_TOKEN: ${BROWSER_HUB_TOKEN:?在 deploy/.env 里设置 BROWSER_HUB_TOKEN}
     depends_on:
       db:
         # 不只是等 db 容器启动，而是等下面的 healthcheck 通过，
         # 否则 answer 启动时 PG 可能还没准备好，连接会失败
         condition: service_healthy
+
+  # 浏览器 Hub：插件连到这里，answer 通过它操作浏览器。和 answer 用同一个镜像，只是运行 answer browser。
+  # 它能操作一个登录着淘宝、京东的浏览器，所以不对公网开放：端口只绑在服务器自己的 127.0.0.1 上，
+  # 要用的时候在自己电脑上开 SSH 隧道（ssh -N -L 8765:127.0.0.1:8765 用户@服务器），
+  # 插件照旧连 ws://127.0.0.1:8765/agent，token 填 .env 里的 BROWSER_HUB_TOKEN
+  hub:
+    image: ghcr.io/onweekendd/answer:${TAG:-latest}
+    restart: unless-stopped
+    # 在容器里要监听 0.0.0.0，answer 才能从内部网络连过来；对外只发布到宿主机的 127.0.0.1
+    entrypoint: ["dumb-init", "--", "answer", "browser", "--addr", "0.0.0.0:8765", "--console=false"]
+    environment:
+      BROWSER_HUB_TOKEN: ${BROWSER_HUB_TOKEN:?在 deploy/.env 里设置 BROWSER_HUB_TOKEN}
+    ports:
+      - "127.0.0.1:8765:8765"
 
   db:
     # 带 pgvector 扩展的 PostgreSQL 16，需求 5 的向量检索要用。

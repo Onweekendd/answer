@@ -15,6 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# The new front end (frontend/web, the chat) is built in a stage of its own;
+# only its dist/ reaches the image, where the Go server serves it under /app.
+# pnpm comes from corepack at the version frontend/package.json pins.
+FROM node:22-alpine AS web-builder
+WORKDIR /src
+COPY frontend/ ./
+RUN corepack enable     && pnpm install --frozen-lockfile --filter web...     && pnpm --filter web build
+
 FROM golang:1.25-alpine AS golang-builder
 LABEL maintainer="linkinstar@apache.org"
 
@@ -66,6 +74,8 @@ RUN apk update \
 
 COPY --from=golang-builder /usr/bin/answer /usr/bin/answer
 COPY --from=golang-builder /data /data
+# internal/router/web.go looks for the new front end here
+COPY --from=web-builder /src/web/dist /usr/share/maibumai/web
 COPY /script/entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh
 

@@ -10,7 +10,10 @@ import { defineConfig } from "vite";
 // or the proxy unreachable.
 const backend = "http://127.0.0.1:8081";
 
-export default defineConfig({
+// 线上由 Go 在 /app/ 下提供打包好的文件（旧的 ui/ 还在 /），所以打包时 base 是 /app/；
+// 本地开发照旧在根路径
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? "/app/" : "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": path.resolve(import.meta.dirname, "src") }
@@ -22,4 +25,4 @@ export default defineConfig({
       "/uploads": backend
     }
   }
-});
+}));
