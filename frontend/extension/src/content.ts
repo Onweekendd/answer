@@ -31,6 +31,8 @@ import { collectStrategyElements } from "./strategies";
 // 上一次 snapshot 编过号的元素。click(12) 就是点 elements[12]，
 // 所以编号只在"同一个页面、同一次快照之后"有意义。
 let elements: Element[] = [];
+// 策略给元素起的名字，describe 用它代替元素的文字
+let labels = new Map<Element, string>();
 
 chrome.runtime.onMessage.addListener((req: TabRequest, _sender, sendResponse) => {
   handle(req).then(
@@ -116,6 +118,7 @@ function snapshot(maxChars = 8000): Snapshot {
   // 先过滤、再编号：编号就是 elements 的下标，click(i) 靠它找回元素
   const strategy = collectStrategyElements(new URL(location.href), document);
   const extras = new Set(strategy.elements);
+  labels = strategy.labels;
   const candidates = Array.from(new Set([...document.querySelectorAll(INTERACTIVE), ...extras]));
   candidates.sort((a, b) => {
     const position = a.compareDocumentPosition(b);
@@ -213,7 +216,7 @@ function insideNumberedParent(el: Element): boolean {
 function describe(i: number, el: Element): string {
   const tag = el.tagName.toLowerCase();
   // innerText 包含所有子孙的文字；clip 把其中的换行压成空格，卡片就拼成了一行
-  const text = clip((el as HTMLElement).innerText ?? "", MAX_TEXT) || imageAlt(el);
+  const text = clip(labels.get(el) ?? (el as HTMLElement).innerText ?? "", MAX_TEXT) || imageAlt(el);
   const attrs = attributesOf(el, text);
   // 唯一出口：整行一起打码，属性和文字都覆盖到（第 7 站坑 6）
   return maskPrivate(`[${i}]<${[tag, ...attrs].join(" ")}>${text}`);
@@ -387,7 +390,11 @@ interface ReadResult {
   text: string;
   truncated: boolean;
   totalChars: number; // 没截断时一共多少字，模型据此知道还剩多少没读
+  images: number; // 这块区域里露在屏幕上的大图有几张：图里的字 innerText 读不到，Go 据此提醒模型截图
 }
+
+// 多大算"大图"：比头像、图标、表情大得多，小红书笔记的图、商品详情的长图都远超这个
+const LARGE_IMAGE_PX = 200;
 
 // <main>/<article> 里的字少于这么多，多半只是个空壳（内容是 JS 渲染在别处的），改读整页
 const MIN_MAIN_CHARS = 200;
@@ -405,8 +412,17 @@ function readText(maxChars: number, index?: number): ReadResult {
     scope,
     text: truncated ? `${full.slice(0, maxChars)}…` : full,
     truncated,
-    totalChars: full.length
+    totalChars: full.length,
+    images: largeImages(root)
   };
+}
+
+// largeImages 数 root 里露在屏幕上的大图。只数屏幕上的：轮播图别的几张在屏幕外，翻到了再说
+function largeImages(root: Element): number {
+  return Array.from(root.querySelectorAll("img")).filter((img) => {
+    const rect = img.getBoundingClientRect();
+    return rect.width >= LARGE_IMAGE_PX && rect.height >= LARGE_IMAGE_PX && intersectsViewport(img) && isVisible(img);
+  }).length;
 }
 
 function readRoot(index?: number): { root: Element; scope: ReadScope } {

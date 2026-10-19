@@ -35,7 +35,7 @@ export interface CommandArgs {
   screenshot: { index?: number; maxWidth?: number; quality?: number };
   click: { index: number };
   hover: { index: number };
-  // 按一个键，发给页面当前有焦点的地方。现在只有 Escape：关弹窗、浮层、下拉菜单，大多数网站都认
+  // 按一个键，发给页面当前有焦点的地方。Escape 关弹窗、浮层、下拉菜单；左右方向键翻轮播图（小红书笔记的图片）
   press: { key: PressKey };
   // 在后台新开一个标签页打开 url，等它加载完，返回新标签页的 id。tabId 填 0，不会用到
   open: { url: string };
@@ -115,7 +115,11 @@ export interface ShotArea {
 }
 
 // press 能按的键。先只放用得上的，要加别的键在这里加
-export const PRESS_KEYS = { Escape: { code: "Escape", keyCode: 27 } } as const;
+export const PRESS_KEYS = {
+  Escape: { code: "Escape", keyCode: 27 },
+  ArrowLeft: { code: "ArrowLeft", keyCode: 37 },
+  ArrowRight: { code: "ArrowRight", keyCode: 39 }
+} as const;
 export type PressKey = keyof typeof PRESS_KEYS;
 
 export interface InputTarget {

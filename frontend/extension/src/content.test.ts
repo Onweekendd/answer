@@ -315,3 +315,31 @@ it("读文字：先打码再截断，超出的部分不返回", async () => {
   expect(got).toMatchObject({ text: "联系 [手机号]…", truncated: true, totalChars: 13 });
   expect(got?.text).not.toContain("138");
 });
+
+it("读文字：数出露在屏幕上的大图，头像这种小图和屏幕外的不算", async () => {
+  // Arrange：jsdom 没有排版，每个元素的位置都是假的，三张图各给一个
+  vi.stubGlobal("innerWidth", 1000);
+  vi.stubGlobal("innerHeight", 800);
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
+  document.body.innerHTML = '<p>正文</p><img id="big"><img id="avatar"><img id="offscreen">';
+  const rect = (left: number, top: number, size: number) => () => ({
+    x: left,
+    y: top,
+    left,
+    top,
+    right: left + size,
+    bottom: top + size,
+    width: size,
+    height: size,
+    toJSON: () => ({})
+  });
+  document.getElementById("big")!.getBoundingClientRect = rect(0, 0, 600);
+  document.getElementById("avatar")!.getBoundingClientRect = rect(0, 0, 40);
+  document.getElementById("offscreen")!.getBoundingClientRect = rect(1200, 0, 600);
+
+  // Act
+  const res = await request({ type: "read", maxChars: 3000 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: true, data: { images: 1 } });
+});

@@ -22,4 +22,7 @@ export interface SiteStrategy {
   name: string;
   matches(url: URL): boolean;
   interactive?(doc: Document): Element[];
+  // 给补充进来的元素起个名字，快照里代替它的文字。没有文字、或者文字说不清它是什么的元素用得上
+  // （小红书的图片区，单图笔记里一个字都没有）。返回 undefined 就照常用它的文字
+  label?(el: Element): string | undefined;
 }

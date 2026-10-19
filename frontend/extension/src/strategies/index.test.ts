@@ -37,7 +37,7 @@ it("仅淘宝搜索页补充价格菜单，不匹配其他站点或商品卡片"
     "https://s.taobao.com.evil.test/search",
     "https://s.taobao.com/other"
   ]) {
-    expect(collectStrategyElements(new URL(url), document)).toEqual({ elements: [], stats: {} });
+    expect(collectStrategyElements(new URL(url), document)).toEqual({ elements: [], labels: new Map(), stats: {} });
   }
 });
 
@@ -79,4 +79,33 @@ it("选择器零命中或策略抛异常仍允许通用快照继续", () => {
   ]);
   expect(result.elements).toEqual([]);
   expect(result.stats.strategyError).toContain("broken selector");
+});
+
+it("小红书：笔记浮层的图片区编进快照，好让截图只截图片；别处同名类不算", () => {
+  // Arrange
+  document.body.innerHTML = `<div class="media-container">首页里的</div>
+    <div id="noteContainer"><div class="media-container"><div class="fraction">2/6</div></div></div>`;
+
+  // Act
+  const result = collectStrategyElements(new URL("https://www.xiaohongshu.com/explore/abc"), document);
+
+  // Assert
+  expect(result.elements.map((el) => el.textContent)).toEqual(["2/6"]);
+  expect(result.labels.get(result.elements[0])).toBe("笔记图片 第2/6张");
+  expect(result.stats).toEqual({ strategy: "xiaohongshu-note", strategyMatched: 1 });
+});
+
+it("小红书：单图笔记没有 2/6 也认得出是图片，视频笔记说是视频", () => {
+  // Arrange
+  const url = new URL("https://www.xiaohongshu.com/explore/abc");
+  document.body.innerHTML = '<div id="noteContainer"><div class="media-container"><img src="a.jpg"></div></div>';
+
+  // Act
+  const single = collectStrategyElements(url, document);
+  document.body.innerHTML = '<div id="noteContainer"><div class="media-container"><video></video></div></div>';
+  const video = collectStrategyElements(url, document);
+
+  // Assert
+  expect(single.labels.get(single.elements[0])).toBe("笔记图片（1 张）");
+  expect(video.labels.get(video.elements[0])).toBe("笔记视频");
 });
