@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2-; }
+env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }
 garage() { docker compose exec -T -e RUST_LOG=warn garage /garage "$@"; }
 
 bucket="$(env_value S3_BUCKET)"
