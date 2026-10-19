@@ -55,7 +55,7 @@ type PurchaseChatResp struct {
 // PurchaseChatMessageItem is a saved message. Message is the page's JSON, as it was sent.
 type PurchaseChatMessageItem struct {
 	ParentID string          `json:"parent_id"`
-	Message  json.RawMessage `json:"message"`
+	Message  json.RawMessage `json:"message" swaggertype:"object"`
 }
 
 // PurchaseChatMessageReq saves one message; saving the same message_id again overwrites it.
@@ -63,6 +63,6 @@ type PurchaseChatMessageReq struct {
 	ChatID    string          `validate:"required" json:"chat_id"`
 	MessageID string          `validate:"required,max=64" json:"message_id"`
 	ParentID  string          `validate:"max=64" json:"parent_id"`
-	Message   json.RawMessage `validate:"required" json:"message"`
+	Message   json.RawMessage `validate:"required" json:"message" swaggertype:"object"`
 	UserID    string          `json:"-"`
 }

@@ -1,20 +1,3 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-
 basePath: /
 definitions:
   constant.NotificationChannelKey:
@@ -33,16 +16,6 @@ definitions:
         minimum: 1
         type: integer
     type: object
-  entity.BadgeLevel:
-    enum:
-    - 1
-    - 2
-    - 3
-    type: integer
-    x-enum-varnames:
-    - BadgeLevelBronze
-    - BadgeLevelSilver
-    - BadgeLevelGold
   handler.RespBody:
     properties:
       code:
@@ -548,36 +521,6 @@ definitions:
         maxLength: 100
         type: string
     type: object
-  schema.BadgeListInfo:
-    properties:
-      award_count:
-        description: badge award count
-        type: integer
-      earned_count:
-        description: badge earned count
-        type: integer
-      icon:
-        description: badge icon
-        type: string
-      id:
-        description: badge id
-        type: string
-      level:
-        allOf:
-        - $ref: '#/definitions/entity.BadgeLevel'
-        description: badge level
-      name:
-        description: badge name
-        type: string
-    type: object
-  schema.BadgeStatus:
-    enum:
-    - active
-    - inactive
-    type: string
-    x-enum-varnames:
-    - BadgeStatusActive
-    - BadgeStatusInactive
   schema.CloseQuestionReq:
     properties:
       close_msg:
@@ -807,77 +750,6 @@ definitions:
         $ref: '#/definitions/schema.AnswerInfo'
       question:
         $ref: '#/definitions/schema.QuestionInfoResp'
-    type: object
-  schema.GetBadgeInfoResp:
-    properties:
-      award_count:
-        description: badge award count
-        type: integer
-      description:
-        description: badge description
-        type: string
-      earned_count:
-        description: badge earned count
-        type: integer
-      icon:
-        description: badge icon
-        type: string
-      id:
-        description: badge id
-        type: string
-      is_single:
-        description: badge is single or multiple
-        type: boolean
-      level:
-        allOf:
-        - $ref: '#/definitions/entity.BadgeLevel'
-        description: badge level
-      name:
-        description: badge name
-        type: string
-    type: object
-  schema.GetBadgeListPagedResp:
-    properties:
-      award_count:
-        description: badge award count
-        type: integer
-      description:
-        description: badge description
-        type: string
-      earned:
-        description: badge earned count
-        type: boolean
-      group_name:
-        description: badge group name
-        type: string
-      icon:
-        description: badge icon
-        type: string
-      id:
-        description: badge id
-        type: string
-      level:
-        allOf:
-        - $ref: '#/definitions/entity.BadgeLevel'
-        description: badge level
-      name:
-        description: badge name
-        type: string
-      status:
-        allOf:
-        - $ref: '#/definitions/schema.BadgeStatus'
-        description: badge status
-    type: object
-  schema.GetBadgeListResp:
-    properties:
-      badges:
-        description: badge list info
-        items:
-          $ref: '#/definitions/schema.BadgeListInfo'
-        type: array
-      group_name:
-        description: badge group name
-        type: string
     type: object
   schema.GetCommentPersonalWithPageResp:
     properties:
@@ -1517,25 +1389,6 @@ definitions:
       activation_url:
         type: string
     type: object
-  schema.GetUserBadgeAwardListResp:
-    properties:
-      earned_count:
-        description: badge award count
-        type: integer
-      icon:
-        description: badge icon
-        type: string
-      id:
-        description: badge id
-        type: string
-      level:
-        allOf:
-        - $ref: '#/definitions/entity.BadgeLevel'
-        description: badge level
-      name:
-        description: badge name
-        type: string
-    type: object
   schema.GetUserNotificationConfigResp:
     properties:
       all_new_question:
@@ -1749,6 +1602,276 @@ definitions:
           $ref: '#/definitions/constant.Privilege'
         type: array
     type: object
+  schema.PurchaseAIAnalyzeReq:
+    properties:
+      question_id:
+        type: string
+    required:
+    - question_id
+    type: object
+  schema.PurchaseAIChatMessage:
+    properties:
+      images:
+        items:
+          type: string
+        maxItems: 5
+        type: array
+      role:
+        enum:
+        - user
+        - assistant
+        type: string
+      text:
+        maxLength: 8000
+        type: string
+    required:
+    - role
+    type: object
+  schema.PurchaseAIChatReq:
+    properties:
+      messages:
+        items:
+          $ref: '#/definitions/schema.PurchaseAIChatMessage'
+        maxItems: 40
+        minItems: 1
+        type: array
+    required:
+    - messages
+    type: object
+  schema.PurchaseAIIdentifyReq:
+    properties:
+      images:
+        description: 'same rule as PurchaseInfo.Images: identify must accept whatever
+          a post can hold'
+        items:
+          type: string
+        maxItems: 5
+        minItems: 1
+        type: array
+    required:
+    - images
+    type: object
+  schema.PurchaseAIIdentifyResp:
+    properties:
+      product:
+        $ref: '#/definitions/schema.PurchaseProduct'
+    type: object
+  schema.PurchaseChatCreateReq:
+    properties:
+      title:
+        type: string
+    type: object
+  schema.PurchaseChatCreateResp:
+    properties:
+      id:
+        type: string
+    type: object
+  schema.PurchaseChatItem:
+    properties:
+      id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: integer
+    type: object
+  schema.PurchaseChatMessageItem:
+    properties:
+      message:
+        type: object
+      parent_id:
+        type: string
+    type: object
+  schema.PurchaseChatMessageReq:
+    properties:
+      chat_id:
+        type: string
+      message:
+        type: object
+      message_id:
+        maxLength: 64
+        type: string
+      parent_id:
+        maxLength: 64
+        type: string
+    required:
+    - chat_id
+    - message
+    - message_id
+    type: object
+  schema.PurchaseChatResp:
+    properties:
+      id:
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/schema.PurchaseChatMessageItem'
+        type: array
+      title:
+        type: string
+    type: object
+  schema.PurchaseInfo:
+    properties:
+      ai_status:
+        description: 只出不进，前端传了也忽略
+        type: integer
+      ai_vote:
+        type: integer
+      buy_count:
+        description: |-
+          The vote tally is output only, like AIStatus: ToEntity never copies it,
+          and only PurchaseRepo.Vote changes it.
+        type: integer
+      currency:
+        type: string
+      images:
+        description: PurchaseAIIdentifyReq.Images repeats this rule; change both together
+        items:
+          type: string
+        maxItems: 5
+        minItems: 1
+        type: array
+      link:
+        maxLength: 255
+        type: string
+      my_vote:
+        description: |-
+          MyVote is the viewer's choice and AIVote the bot's, filled on the detail
+          page only (QuestionCommon.Info); 0 means no vote.
+        type: integer
+      price:
+        minimum: 0
+        type: number
+      product:
+        allOf:
+        - $ref: '#/definitions/schema.PurchaseProduct'
+        description: |-
+          Product is what the AI read off the screenshots, nil until then. The post
+          form submits the reading it got from identify, so the analysis need not
+          read the screenshots again; the fields are checked like any user input.
+          On edit the form sends it back as well, and nil clears it.
+      skip_count:
+        type: integer
+      vote_closed:
+        type: boolean
+      wait_count:
+        type: integer
+    required:
+    - images
+    type: object
+  schema.PurchaseProduct:
+    properties:
+      brand:
+        maxLength: 100
+        type: string
+      confidence:
+        description: |-
+          Confidence is the model's own 0 to 1 estimate of how right the whole
+          reading is. It is a hint for when to ask the user, not a probability.
+        maximum: 1
+        minimum: 0
+        type: number
+      list_price:
+        minimum: 0
+        type: number
+      model:
+        maxLength: 100
+        type: string
+      name:
+        description: |-
+          Name is required because a reading without one means no product, which
+          is sent as a null product rather than an empty one. notblank comes
+          first: it never fails, it only turns an all-space value into "" for
+          required to reject.
+        maxLength: 200
+        type: string
+      notes:
+        description: |-
+          Notes says what the model could not read or was unsure of, such as a
+          price hidden behind a popup.
+        maxLength: 300
+        type: string
+      official:
+        description: |-
+          Official, Price and ListPrice are pointers because their zero values
+          are real answers: nil means the screenshots did not show it, while
+          false or 0 would claim a non-official shop or a free item.
+        type: boolean
+      platform:
+        enum:
+        - 淘宝
+        - 天猫
+        - 京东
+        - 拼多多
+        - 其他
+        type: string
+      price:
+        minimum: 0
+        type: number
+      promotions:
+        description: |-
+          Promotions are the deals shown on the page, one per entry, such as
+          "满2000减100" or "国家补贴".
+        items:
+          type: string
+        maxItems: 10
+        type: array
+      shop:
+        maxLength: 100
+        type: string
+      specs:
+        items:
+          type: string
+        maxItems: 10
+        type: array
+      tags:
+        description: |-
+          Tags are 1 to 3 short categories, broad to narrow, such as 数码 and
+          游戏机. Unlike the other fields they are the model's judgement rather
+          than text read off the screenshots; the post form offers them as tags.
+          35 is TagItem.DisplayName's limit.
+        items:
+          type: string
+        maxItems: 3
+        type: array
+    required:
+    - name
+    - promotions
+    - specs
+    - tags
+    type: object
+  schema.PurchaseVoteReq:
+    properties:
+      choice:
+        description: |-
+          Choice is entity.PurchaseVoteBuy / Wait / Skip. The service checks it
+          again, because the AI bot votes without going through the controller.
+        enum:
+        - 1
+        - 2
+        - 3
+        type: integer
+      question_id:
+        type: string
+    required:
+    - choice
+    - question_id
+    type: object
+  schema.PurchaseVoteResp:
+    properties:
+      buy_count:
+        type: integer
+      closed:
+        type: boolean
+      my_choice:
+        description: MyChoice is the choice the voter now holds, so the button stays
+          lit.
+        type: integer
+      skip_count:
+        type: integer
+      wait_count:
+        type: integer
+    type: object
   schema.QuestionAdd:
     properties:
       captcha_code:
@@ -1761,6 +1884,8 @@ definitions:
         maxLength: 65535
         minLength: 0
         type: string
+      purchase:
+        $ref: '#/definitions/schema.PurchaseInfo'
       tags:
         description: tags
         items:
@@ -1772,6 +1897,7 @@ definitions:
         minLength: 6
         type: string
     required:
+    - purchase
     - title
     type: object
   schema.QuestionAddByAnswer:
@@ -1855,6 +1981,8 @@ definitions:
         $ref: '#/definitions/schema.Operation'
       pin:
         type: integer
+      purchase:
+        $ref: '#/definitions/schema.PurchaseInfo'
       show:
         type: integer
       status:
@@ -1939,6 +2067,8 @@ definitions:
       pin:
         description: '1: unpin, 2: pin'
         type: integer
+      purchase:
+        $ref: '#/definitions/schema.PurchaseInfo'
       show:
         description: '0: show, 1: hide'
         type: integer
@@ -2004,6 +2134,8 @@ definitions:
         items:
           type: string
         type: array
+      purchase:
+        $ref: '#/definitions/schema.PurchaseInfo'
       tags:
         description: tags
         items:
@@ -2016,6 +2148,7 @@ definitions:
         type: string
     required:
     - id
+    - purchase
     - title
     type: object
   schema.QuestionUpdateInviteUser:
@@ -2904,19 +3037,6 @@ definitions:
     required:
     - description
     - id
-    type: object
-  schema.UpdateBadgeStatusReq:
-    properties:
-      id:
-        description: badge id
-        type: string
-      status:
-        allOf:
-        - $ref: '#/definitions/schema.BadgeStatus'
-        description: badge status
-    required:
-    - id
-    - status
     type: object
   schema.UpdateCommentReq:
     properties:
@@ -3818,75 +3938,6 @@ paths:
       summary: get all api keys
       tags:
       - admin
-  /answer/admin/api/badge/status:
-    put:
-      consumes:
-      - application/json
-      description: update badge status
-      parameters:
-      - description: UpdateBadgeStatusReq
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/schema.UpdateBadgeStatusReq'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/handler.RespBody'
-      security:
-      - ApiKeyAuth: []
-      summary: update badge status
-      tags:
-      - AdminBadge
-  /answer/admin/api/badges:
-    get:
-      consumes:
-      - application/json
-      description: list all badges by page
-      parameters:
-      - description: page
-        in: query
-        name: page
-        type: integer
-      - description: page size
-        in: query
-        name: page_size
-        type: integer
-      - description: badge status
-        enum:
-        - ""
-        - active
-        - inactive
-        in: query
-        name: status
-        type: string
-      - description: search param
-        in: query
-        name: q
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/schema.GetBadgeListPagedResp'
-                  type: array
-              type: object
-      security:
-      - ApiKeyAuth: []
-      summary: list all badges by page
-      tags:
-      - AdminBadge
   /answer/admin/api/dashboard:
     get:
       consumes:
@@ -5455,149 +5506,6 @@ paths:
       summary: recover answer
       tags:
       - Answer
-  /answer/api/v1/badge:
-    get:
-      consumes:
-      - application/json
-      description: get badge info
-      parameters:
-      - default: string
-        description: id
-        in: query
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  $ref: '#/definitions/schema.GetBadgeInfoResp'
-              type: object
-      summary: get badge info
-      tags:
-      - api-badge
-  /answer/api/v1/badge/awards/page:
-    get:
-      consumes:
-      - application/json
-      description: get badge award list
-      parameters:
-      - description: page
-        in: query
-        name: page
-        type: integer
-      - description: page size
-        in: query
-        name: page_size
-        type: integer
-      - description: badge id
-        in: query
-        name: badge_id
-        required: true
-        type: string
-      - description: only list the award by username
-        in: query
-        name: username
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  $ref: '#/definitions/schema.GetBadgeInfoResp'
-              type: object
-      summary: get badge award list
-      tags:
-      - api-badge
-  /answer/api/v1/badge/user/awards:
-    get:
-      consumes:
-      - application/json
-      description: get user badge award list
-      parameters:
-      - description: user name
-        in: query
-        name: username
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/schema.GetUserBadgeAwardListResp'
-                  type: array
-              type: object
-      summary: get user badge award list
-      tags:
-      - api-badge
-  /answer/api/v1/badge/user/awards/recent:
-    get:
-      consumes:
-      - application/json
-      description: get user badge award list
-      parameters:
-      - description: user name
-        in: query
-        name: username
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/schema.GetUserBadgeAwardListResp'
-                  type: array
-              type: object
-      summary: get user badge award list
-      tags:
-      - api-badge
-  /answer/api/v1/badges:
-    get:
-      consumes:
-      - application/json
-      description: list all badges group by group
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/schema.GetBadgeListResp'
-                  type: array
-              type: object
-      summary: list all badges group by group
-      tags:
-      - api-badge
   /answer/api/v1/collection/switch:
     post:
       consumes:
@@ -5777,6 +5685,27 @@ paths:
       summary: get comment page
       tags:
       - Comment
+  /answer/api/v1/community/feed:
+    get:
+      description: a random batch of posts whose vote is not closed, leaving out the
+        viewer's own; call again for the next batch
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/schema.QuestionPageResp'
+                  type: array
+              type: object
+      summary: get a random batch of purchase posts to vote on
+      tags:
+      - Question
   /answer/api/v1/connector/binding/email:
     post:
       consumes:
@@ -6552,6 +6481,209 @@ paths:
       summary: render post content
       tags:
       - Upload
+  /answer/api/v1/purchase/ai/analyze:
+    post:
+      consumes:
+      - application/json
+      description: ask the model whether the item is worth buying; the advice is posted
+        as a comment
+      parameters:
+      - description: question id
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseAIAnalyzeReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.RespBody'
+      security:
+      - ApiKeyAuth: []
+      summary: analyze a purchase request
+      tags:
+      - PurchaseAI
+  /answer/api/v1/purchase/ai/chat:
+    post:
+      consumes:
+      - application/json
+      description: 'server-sent events: reasoning, tool_start, tool_end, text, then
+        done or error, then data: [DONE]'
+      parameters:
+      - description: the conversation so far
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseAIChatReq'
+      produces:
+      - text/event-stream
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: chat with the buying agent
+      tags:
+      - PurchaseAI
+  /answer/api/v1/purchase/ai/identify:
+    post:
+      consumes:
+      - application/json
+      description: ask the vision model what product the screenshots show, so the
+        post form can fill in the price and tags; product is null when they show none
+      parameters:
+      - description: uploaded screenshot urls
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseAIIdentifyReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.PurchaseAIIdentifyResp'
+              type: object
+      security:
+      - ApiKeyAuth: []
+      summary: read the product off just-uploaded screenshots
+      tags:
+      - PurchaseAI
+  /answer/api/v1/purchase/chat:
+    get:
+      parameters:
+      - description: conversation id
+        in: query
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.PurchaseChatResp'
+              type: object
+      security:
+      - ApiKeyAuth: []
+      summary: get one of my conversations with its messages
+      tags:
+      - PurchaseChat
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: title
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseChatCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.PurchaseChatCreateResp'
+              type: object
+      security:
+      - ApiKeyAuth: []
+      summary: start a conversation
+      tags:
+      - PurchaseChat
+  /answer/api/v1/purchase/chat/message:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: message
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseChatMessageReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.RespBody'
+      security:
+      - ApiKeyAuth: []
+      summary: save one message of a conversation; the same message_id again overwrites
+        it
+      tags:
+      - PurchaseChat
+  /answer/api/v1/purchase/chats:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/schema.PurchaseChatItem'
+                  type: array
+              type: object
+      security:
+      - ApiKeyAuth: []
+      summary: list my recent conversations
+      tags:
+      - PurchaseChat
+  /answer/api/v1/purchase/vote:
+    post:
+      consumes:
+      - application/json
+      description: one vote per user, changeable until the post reaches the vote limit;
+        the author cannot vote
+      parameters:
+      - description: 'question id and choice: 1 buy, 2 wait, 3 skip'
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/schema.PurchaseVoteReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.PurchaseVoteResp'
+              type: object
+      security:
+      - ApiKeyAuth: []
+      summary: vote buy / wait / skip on a purchase post
+      tags:
+      - PurchaseVote
   /answer/api/v1/question:
     delete:
       consumes:
