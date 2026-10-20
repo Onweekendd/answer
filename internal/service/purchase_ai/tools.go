@@ -69,6 +69,10 @@ type agentRun struct {
 	ws         Workspace // 第一次用沙箱时才要（懒创建）；连不上了设回 nil，下次重新要
 	wsNote     string    // 要告诉模型的一句话（原来的沙箱没了），加在下一个沙箱工具结果的最前面
 
+	// rec 把这一轮的消息记进对话日志（recorder.go）。nil 表示不记：帖子的后台分析、case 运行器
+	rec   *chatRecorder
+	shown []Event // 这一轮推给页面的事件，rec 不为 nil 时才留
+
 	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
 	events        chan<- Event
 	showReasoning bool     // 思考也推给用户

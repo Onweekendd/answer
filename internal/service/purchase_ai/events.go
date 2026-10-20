@@ -44,7 +44,10 @@ const (
 	// EventFollowups 是回答后面的几句后续建议，页面上点一下就发出去，见 followups.go
 	EventFollowups = "followups"
 	EventError       = "error"
-	EventDone        = "done"
+	// EventSaved 告诉页面这一轮记进日志的条目 id（上下文管理概念 5）：页面下一条消息的 parent_id 是 leaf，
+	// 重新生成这一轮时 parent_id 是 user。在 done 之前、回答之前发
+	EventSaved = "saved"
+	EventDone  = "done"
 )
 
 // Event 是一条事件。没用到的字段不输出
@@ -60,6 +63,13 @@ type Event struct {
 	Input   *DraftInput  `json:"input,omitempty"`   // tool_suspend：交给用户确认的内容（tool_input）
 	// followups：用户接下来可能会说的话，最多 3 句
 	Followups []string `json:"followups,omitempty"`
+	Saved     *SavedIDs `json:"saved,omitempty"` // saved
+}
+
+// SavedIDs 是一轮记进日志的条目 id
+type SavedIDs struct {
+	User string `json:"user,omitempty"` // 这一轮的用户消息；重新生成时没有新的用户消息，为空
+	Leaf string `json:"leaf"`           // 这一轮的最后一条
 }
 
 // ToolView 是一次工具调用给用户看的样子。只有这两个字段：给模型看的 Text 里有页面内容，
@@ -72,6 +82,10 @@ type ToolView struct {
 // emit 把事件交给另一头（SSE）。没人在听（帖子的后台分析、case 运行器）就什么都不做。
 // 发送一定要和 ctx.Done() 一起等：用户走了，handler 不再收，不这样写这个 goroutine 就永远卡在这里（概念 2）
 func (r *agentRun) emit(ctx context.Context, ev Event) {
+	// 记日志的一轮（对话）把推给页面的事件留一份，最后记成 view，打开历史对话时重放
+	if r.rec != nil {
+		r.shown = append(r.shown, ev)
+	}
 	if r.events == nil {
 		return
 	}

@@ -144,11 +144,11 @@ func Test_draftPost(t *testing.T) {
 
 func Test_draftCandidates(t *testing.T) {
 	// Act
-	got := draftCandidates([]schema.PurchaseAIChatMessage{
-		{Role: "user", Text: "值不值", Images: []string{upload1}},
-		{Role: "assistant", Text: "看图\n\n![图1](" + shot1 + ")\n*图1：价格*\n别的站的图 ![x](https://cdn.example.com/a.jpg)"},
-		{Role: "user", Text: "帮我发到社区", Images: []string{upload1}},
-	})
+	path := []Entry{
+		msgEntry("u1", "", userMessage(&schema.PurchaseAIChatMessage{Text: "值不值", Images: []string{upload1}}), messageMeta{}),
+		viewEntry("v1", "u1", Event{Type: EventText, Delta: "看图\n\n![图1](" + shot1 + ")\n*图1：价格*\n别的站的图 ![x](https://cdn.example.com/a.jpg)"}),
+	}
+	got := draftCandidates(path, &schema.PurchaseAIChatMessage{Text: "帮我发到社区", Images: []string{upload1}})
 
 	// Assert
 	assert.Equal(t, []string{upload1, shot1}, got)
@@ -214,7 +214,7 @@ func Test_run_draftOffline(t *testing.T) {
 func Test_draftPost_noPictures(t *testing.T) {
 	// Arrange：对话里一张图都没有
 	r, events := draftRun(&fakeDrafts{saved: map[string]*Draft{}})
-	r.draft.candidates = draftCandidates(nil)
+	r.draft.candidates = draftCandidates(nil, nil)
 
 	// Act
 	_, _ = r.draftPost(context.Background(), `{"title":"这个显示器值不值","content":"x","vote":"buy"}`)

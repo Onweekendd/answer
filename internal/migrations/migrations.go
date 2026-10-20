@@ -117,6 +117,7 @@ var migrations = []Migration{
 	NewMigration("v2.0.8", "drop badge tables and badge notifications", dropBadges, true),
 	NewMigration("v2.0.9", "add purchase chat", addPurchaseChat, false),
 	NewMigration("v2.0.10", "add purchase chat sandbox", addPurchaseChatSandbox, false),
+	NewMigration("v2.0.11", "add purchase chat entry", addPurchaseChatEntry, false),
 }
 
 func GetMigrations() []Migration {

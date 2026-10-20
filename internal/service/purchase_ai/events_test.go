@@ -27,6 +27,7 @@ import (
 
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -178,13 +179,39 @@ func Test_events(t *testing.T) {
 	})
 }
 
-// chatService 是只够 Chat 用的服务：模型和浏览器是假的，没有图片所以用不到上传
+// chatService 是只够 Chat 用的服务：模型、浏览器、对话日志是假的，没有图片所以用不到上传
 func chatService(model *fakeLLM) *PurchaseAIService {
-	return &PurchaseAIService{llmClient: model, browser: newFakeBrowser(), chatOptions: chatOptions{showReasoning: true}}
+	return chatServiceWith(model, &fakeChatLog{})
 }
 
+func chatServiceWith(model *fakeLLM, log *fakeChatLog) *PurchaseAIService {
+	return &PurchaseAIService{llmClient: model, browser: newFakeBrowser(), chatOptions: chatOptions{showReasoning: true}, chatLog: log}
+}
+
+// chatReq 是新对话的第一条消息
 func chatReq(text string) *schema.PurchaseAIChatReq {
-	return &schema.PurchaseAIChatReq{Messages: []schema.PurchaseAIChatMessage{{Role: "user", Text: text}}}
+	return &schema.PurchaseAIChatReq{ChatID: "1", UserID: fakeUserID, Message: &schema.PurchaseAIChatMessage{Text: text}}
+}
+
+// collect 把一轮的事件全部收下来
+func collect(events <-chan Event) []Event {
+	var got []Event
+	for ev := range events {
+		got = append(got, ev)
+	}
+	return got
+}
+
+// savedOf 找出 saved 事件
+func savedOf(t *testing.T, events []Event) *SavedIDs {
+	t.Helper()
+	for _, ev := range events {
+		if ev.Type == EventSaved {
+			return ev.Saved
+		}
+	}
+	t.Fatal("没有 saved 事件")
+	return nil
 }
 
 func Test_Chat(t *testing.T) {
@@ -214,8 +241,9 @@ func Test_Chat(t *testing.T) {
 			got = append(got, ev)
 		}
 
-		// Assert
-		require.Equal(t, []Event{{Type: EventError, Message: chatFailedText}}, got)
+		// Assert：最后一条是给用户看的那句话；前面那条 saved 让页面还能接着这一轮往下聊
+		require.Equal(t, Event{Type: EventError, Message: chatFailedText}, got[len(got)-1])
+		assert.Equal(t, EventSaved, got[len(got)-2].Type)
 	})
 
 	t.Run("没人收了也不会卡住：ctx 一取消，goroutine 结束、关掉 channel", func(t *testing.T) {
@@ -241,23 +269,114 @@ func Test_Chat(t *testing.T) {
 		}
 	})
 
-	t.Run("对话历史原样带上：助手的话是 assistant，最后一条是用户的", func(t *testing.T) {
-		// Arrange
+	t.Run("历史从日志里来：接着 parent_id 那条分支，最后一条是新消息", func(t *testing.T) {
+		skipProject(t)
+		// Arrange：日志里已经有一轮
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(doneCall("c1", "好"))}}
-		req := &schema.PurchaseAIChatReq{Messages: []schema.PurchaseAIChatMessage{
-			{Role: "user", Text: "iPhone 17 值得买吗"},
-			{Role: "assistant", Text: "**再等等**"},
-			{Role: "user", Text: "那 Pro 呢"},
+		log := &fakeChatLog{entries: []Entry{
+			msgEntry("u1", "", llm.Text(llm.RoleUser, "iPhone 17 值得买吗"), messageMeta{}),
+			msgEntry("a1", "u1", llm.Text(llm.RoleAssistant, "**再等等**"), messageMeta{}),
+			viewEntry("v1", "a1", Event{Type: EventText, Delta: "**再等等**"}),
 		}}
+		req := chatReq("那 Pro 呢")
+		req.ParentID = "v1"
 
 		// Act
-		for range chatService(model).Chat(context.Background(), req) {
-		}
+		collect(chatServiceWith(model, log).Chat(context.Background(), req))
 
 		// Assert
 		msgs := model.reqs[0].Messages
-		require.Equal(t, llm.RoleSystem, msgs[0].Role)
-		require.Equal(t, llm.RoleAssistant, msgs[2].Role)
-		require.Equal(t, "那 Pro 呢", msgs[3].Parts[0].Text)
+		require.Len(t, msgs, 4)
+		assert.Equal(t, llm.RoleSystem, msgs[0].Role)
+		assert.Equal(t, "iPhone 17 值得买吗", msgs[1].Parts[0].Text)
+		assert.Equal(t, llm.RoleAssistant, msgs[2].Role)
+		assert.Equal(t, "那 Pro 呢", msgs[3].Parts[0].Text)
+	})
+
+	t.Run("别人的对话不跑", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{}
+		req := chatReq("你好")
+		req.UserID = "8"
+
+		// Act
+		got := collect(chatService(model).Chat(context.Background(), req))
+
+		// Assert
+		assert.Equal(t, []Event{{Type: EventError, Message: chatNotFoundText}}, got)
+		assert.Empty(t, model.reqs)
+	})
+
+	t.Run("parent_id 不在这个对话里不跑", func(t *testing.T) {
+		// Arrange
+		req := chatReq("你好")
+		req.ParentID = "e_nope"
+
+		// Act
+		got := collect(chatService(&fakeLLM{}).Chat(context.Background(), req))
+
+		// Assert
+		assert.Equal(t, []Event{{Type: EventError, Message: chatNotFoundText}}, got)
+	})
+
+	t.Run("重新生成：parent_id 要是一条用户消息", func(t *testing.T) {
+		// Arrange：parent 是上一轮的 view，又没带新消息
+		log := &fakeChatLog{entries: []Entry{
+			msgEntry("u1", "", llm.Text(llm.RoleUser, "XM5 值不值"), messageMeta{}),
+			viewEntry("v1", "u1"),
+		}}
+		req := &schema.PurchaseAIChatReq{ChatID: "1", UserID: fakeUserID, ParentID: "v1"}
+
+		// Act
+		got := collect(chatServiceWith(&fakeLLM{}, log).Chat(context.Background(), req))
+
+		// Assert
+		assert.Equal(t, []Event{{Type: EventError, Message: chatNotFoundText}}, got)
+	})
+
+	t.Run("saved 在回答之前：页面拿到 id 才能接着聊", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{calls(doneCall("c1", "好"))}}
+
+		// Act
+		got := collect(chatService(model).Chat(context.Background(), chatReq("XM5 值不值")))
+
+		// Assert
+		n := len(got)
+		require.Equal(t, EventSaved, got[n-3].Type)
+		assert.Equal(t, EventText, got[n-2].Type)
+		assert.NotEmpty(t, got[n-3].Saved.User)
+		assert.NotEmpty(t, got[n-3].Saved.Leaf)
+	})
+
+	t.Run("这一轮记进日志：用户消息、调用和结果、最后一条 view", func(t *testing.T) {
+		skipRecorder(t)
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "**买**"))}}
+		log := &fakeChatLog{}
+
+		// Act
+		saved := savedOf(t, collect(chatServiceWith(model, log).Chat(context.Background(), chatReq("XM5 值不值"))))
+
+		// Assert
+		entries := log.entries
+		require.NotEmpty(t, entries)
+		first, last := entries[0], entries[len(entries)-1]
+		assert.Equal(t, saved.User, first.ID)
+		assert.Equal(t, "XM5 值不值", first.Message.Parts[0].Text)
+		assert.Equal(t, saved.Leaf, last.ID)
+		require.NotNil(t, last.View, "最后一条是 view")
+		assert.Contains(t, last.View.Events, Event{Type: EventText, Delta: "**买**"})
+
+		var tools []string
+		for _, e := range entries {
+			if e.Message != nil && e.Message.Role == llm.RoleTool {
+				tools = append(tools, e.Message.ToolName)
+			}
+		}
+		assert.Equal(t, []string{toolOpen, toolDone}, tools)
+		path, err := pathTo(entries, saved.Leaf)
+		require.NoError(t, err)
+		assert.Len(t, path, len(entries), "从 leaf 走得回根：链是连着的")
 	})
 }

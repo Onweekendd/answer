@@ -170,6 +170,19 @@ func looksBlank(data string) (bool, error) {
 // shotRef 是回答里的 [图N] 或 [图N：说明]：全角的括号、【】、中间有空格也算
 var shotRef = regexp.MustCompile(`[\[［【]\s*图\s*(\d+)\s*(?:[：:]\s*([^\]］】\n]*?))?\s*[\]］】]`)
 
+// plainShotRefs 把旧回答里的图引用改成纯文字：[图3：价格在这里] 变成（配图：价格在这里），没有说明的整个去掉。
+// 每一轮的图都从「图1」重新编号，旧的编号留在历史里，模型会以为还能引用它（project 用）。
+// 换上去的字没有引号和反斜杠，用在 done 的 JSON 参数里也还是合法的 JSON
+func plainShotRefs(s string) string {
+	return shotRef.ReplaceAllStringFunc(s, func(ref string) string {
+		m := shotRef.FindStringSubmatch(ref)
+		if caption := strings.TrimSpace(m[2]); caption != "" {
+			return "（配图：" + caption + "）"
+		}
+		return ""
+	})
+}
+
 var blankLines = regexp.MustCompile(`\n{3,}`)
 
 // withShots 把回答里的 [图N] 换成图片和说明，shots 是存下来的那几张（citedShots）。

@@ -57,3 +57,23 @@ type PurchaseChatMessage struct {
 func (PurchaseChatMessage) TableName() string {
 	return "purchase_chat_message"
 }
+
+// PurchaseChatEntry is one entry of a conversation's log: a model message (with
+// its tool calls and results) or what the page was shown for a turn. Entries are
+// only ever appended; ParentID chains them into a tree, so editing or retrying
+// a message grows a new branch. Body is the JSON of purchaseai.StoredMessage or
+// purchaseai.StoredView, chosen by Kind. See internal/service/purchase_ai/chatlog.go.
+type PurchaseChatEntry struct {
+	ID        int64     `xorm:"not null pk autoincr BIGINT(20) id"`
+	ChatID    int64     `xorm:"not null UNIQUE(chat_entry) BIGINT(20) chat_id"`
+	EntryID   string    `xorm:"not null UNIQUE(chat_entry) VARCHAR(32) entry_id"`
+	ParentID  string    `xorm:"not null default '' VARCHAR(32) parent_id"`
+	Kind      string    `xorm:"not null VARCHAR(16) kind"`
+	Body      string    `xorm:"not null MEDIUMTEXT body"`
+	CreatedAt time.Time `xorm:"created not null default CURRENT_TIMESTAMP TIMESTAMP created_at"`
+}
+
+// TableName purchase chat entry table name
+func (PurchaseChatEntry) TableName() string {
+	return "purchase_chat_entry"
+}

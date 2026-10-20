@@ -93,7 +93,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		if empty {
 			msg.Parts = []llm.Part{{Text: emptyReply}}
 		}
-		messages = append(messages, msg)
+		messages = r.keep(ctx, messages, msg, messageMeta{PromptTokens: resp.Usage.PromptTokens})
 
 		if len(resp.ToolCalls) == 0 {
 			// ③ 只回了文字：没给工具、已经提醒过一次，或者这是最后一步（提醒了也没有步数去调用 done），
@@ -109,7 +109,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 			if empty {
 				reminder = emptyReminder
 			}
-			messages = append(messages, llm.Text(llm.RoleUser, reminder))
+			messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, reminder), messageMeta{Synthetic: true})
 			reminded = true
 			continue
 		}
@@ -126,13 +126,13 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 			if results[i].Snapshot {
 				snapshotAt = append(snapshotAt, len(messages))
 			}
-			messages = append(messages, toolMessage(call.ID, results[i].Text))
+			messages = r.keep(ctx, messages, toolMessage(call.ID, results[i].Text), messageMeta{ToolName: call.Name})
 		}
 		// 截图放在这一轮全部工具回复的后面：assistant 调用了几个工具，紧跟着的就必须是这几条回复
 		for _, res := range results {
 			if res.Image != "" {
 				screenshotAt = append(screenshotAt, len(messages))
-				messages = append(messages, screenshotMessage(step, res.Image))
+				messages = r.keep(ctx, messages, screenshotMessage(step, res.Image), messageMeta{Synthetic: true})
 			}
 		}
 
@@ -157,7 +157,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 			}
 			switch r.loops.record(fingerprint(call, results[i].PageHash)) {
 			case loopNudge:
-				messages = append(messages, llm.Text(llm.RoleUser, loopNudgeText(call, r.limits.loopNudgeAt)))
+				messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, loopNudgeText(call, r.limits.loopNudgeAt)), messageMeta{Synthetic: true})
 			case loopStop:
 				return r.finish(ctx, messages, finishLoop)
 			}
@@ -166,7 +166,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		// ⑨ 正好剩 warnAt 步时提醒一次。追加在最后，不改系统提示词，前缀缓存才能命中
 		restSteps := r.limits.maxSteps - step - 1
 		if restSteps == r.limits.warnAt {
-			messages = append(messages, llm.Text(llm.RoleUser, stepWarningText(restSteps)))
+			messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, stepWarningText(restSteps)), messageMeta{Synthetic: true})
 		}
 	}
 
@@ -283,13 +283,15 @@ func (r *agentRun) runCalls(ctx context.Context, tools map[string]agentTool, cal
 
 // finish 是被迫停下时的最后一步（⑥）：说明原因，不给工具再问一次模型，让它把回答写出来
 func (r *agentRun) finish(ctx context.Context, messages []llm.Message, reason finishReason) (*agentResult, error) {
-	messages = append(messages, llm.Text(llm.RoleUser, finishPrompts[reason]))
+	messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, finishPrompts[reason]), messageMeta{Synthetic: true})
 
 	// 不给工具：模型只能用文字作答
 	resp, err := r.chat(ctx, &llm.ChatReq{Messages: messages})
 	if err != nil {
 		return nil, err
 	}
+	// 收尾的回答也记进日志：下一轮要知道这一轮是怎么结束的
+	r.keep(ctx, messages, assistantMessage(resp), messageMeta{PromptTokens: resp.Usage.PromptTokens})
 
 	return &agentResult{
 		Text:      answerText(resp),

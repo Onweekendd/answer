@@ -89,31 +89,37 @@ type PurchaseAIIdentifyResp struct {
 	Product *PurchaseProduct `json:"product"`
 }
 
-// PurchaseAIChatReq is one turn of the chat: the whole conversation so far,
-// oldest first, ending with the user's new message. The server keeps no
-// history yet, so the client sends it back each time.
+// PurchaseAIChatReq is one turn of the chat. The server keeps the conversation
+// (purchase_chat_entry), so the client sends only the new message and where it
+// goes: ParentID is the entry it follows, the leaf of the turn before, or empty
+// for a conversation's first message. Without a Message the turn regenerates the
+// answer to the user message ParentID names.
 type PurchaseAIChatReq struct {
-	Messages []PurchaseAIChatMessage `json:"messages" validate:"required,min=1,max=40,dive"`
-	// ChatID is the saved conversation this turn belongs to, if any. The agent keeps one
-	// sandbox per conversation; without it the sandbox lives for this turn only.
-	ChatID string `json:"chat_id" validate:"omitempty,numeric"`
+	ChatID   string                 `json:"chat_id" validate:"required,numeric"`
+	ParentID string                 `json:"parent_id" validate:"max=32"`
+	Message  *PurchaseAIChatMessage `json:"message"`
 	// UserID is filled by the controller, never by the client.
 	UserID string `json:"-"`
 }
 
-// PurchaseAIChatMessage is one message. Images are urls returned by POST /file,
-// the same rule as a post's screenshots; an assistant message has none.
+// PurchaseAIChatHistoryReq asks for a conversation as the page shows it.
+type PurchaseAIChatHistoryReq struct {
+	ChatID string `validate:"required,numeric" form:"chat_id"`
+	UserID string `json:"-"`
+}
+
+// PurchaseAIChatMessage is the user's new message. Images are urls returned by
+// POST /file, the same rule as a post's screenshots.
 type PurchaseAIChatMessage struct {
-	Role   string   `json:"role" validate:"required,oneof=user assistant"`
 	Text   string   `json:"text" validate:"max=8000"`
 	Images []string `json:"images" validate:"max=5,dive,url"`
 }
 
-// Check wants the conversation to end with something from the user to answer.
+// Check wants something to answer: a message with words or images, or a parent
+// to regenerate the answer of.
 func (req *PurchaseAIChatReq) Check() (errFields []*validator.FormErrorField, err error) {
-	n := len(req.Messages)
-	if n == 0 || req.Messages[n-1].Role != "user" ||
-		(strings.TrimSpace(req.Messages[n-1].Text) == "" && len(req.Messages[n-1].Images) == 0) {
+	if (req.Message == nil && req.ParentID == "") ||
+		(req.Message != nil && strings.TrimSpace(req.Message.Text) == "" && len(req.Message.Images) == 0) {
 		return append(errFields, &validator.FormErrorField{
 			ErrorField: "messages",
 			ErrorMsg:   reason.RequestFormatError,

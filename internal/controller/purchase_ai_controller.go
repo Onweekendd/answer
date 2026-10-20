@@ -118,6 +118,24 @@ func (pac *PurchaseAIController) Chat(ctx *gin.Context) {
 	writeSSE(ctx, events, sseHeartbeat)
 }
 
+// ChatHistory a conversation as the page shows it, rebuilt from its log
+// @Summary a conversation's messages as the page shows them, every branch included
+// @Tags PurchaseAI
+// @Produce json
+// @Security ApiKeyAuth
+// @Param chat_id query string true "conversation id"
+// @Success 200 {object} handler.RespBody{data=[]purchaseai.PageMessage}
+// @Router /answer/api/v1/purchase/ai/chat/history [get]
+func (pac *PurchaseAIController) ChatHistory(ctx *gin.Context) {
+	req := &schema.PurchaseAIChatHistoryReq{}
+	if handler.BindAndCheck(ctx, req) {
+		return
+	}
+	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
+	resp, err := pac.purchaseAIService.ChatHistory(ctx, req)
+	handler.HandleResponse(ctx, err, resp)
+}
+
 // VoteDraft the AI casts the vote it kept with a draft
 // @Summary the AI casts the vote it kept with a draft, on the post the user published from it
 // @Tags PurchaseAI

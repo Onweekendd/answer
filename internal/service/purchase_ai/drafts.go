@@ -31,6 +31,7 @@ import (
 	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/entity"
 	"github.com/apache/answer/internal/schema"
+	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/pkg/uid"
 	"github.com/segmentfault/pacman/errors"
 	"github.com/segmentfault/pacman/log"
@@ -102,21 +103,35 @@ type draftContext struct {
 var uploadedImage = regexp.MustCompile(`https?://[^\s()"'<>]+/uploads/(?:agent|post)/[0-9A-Za-z._-]+`)
 
 // draftCandidates 是对话里能当配图的图：用户上传的截图，和回答里出现过的本站的图，去重，最多 draftMaxCandidates 张
-func draftCandidates(messages []schema.PurchaseAIChatMessage) []string {
+func draftCandidates(path []Entry, latest *schema.PurchaseAIChatMessage) []string {
 	out := []string{} // 不是 nil：nil 会编成 JSON 的 null，页面会把整份草稿当成坏的
 	add := func(url string) {
 		if len(out) < draftMaxCandidates && !slices.Contains(out, url) {
 			out = append(out, url)
 		}
 	}
-	for _, m := range messages {
-		if m.Role == "assistant" {
-			for _, url := range uploadedImage.FindAllString(m.Text, -1) {
-				add(url)
+	for _, e := range path {
+		switch {
+		case e.Message != nil && e.Message.Role == llm.RoleUser && !e.Message.Synthetic:
+			// 用户上传的截图
+			for _, p := range e.Message.Parts {
+				if p.Image != "" {
+					add(p.Image)
+				}
 			}
-			continue
+		case e.View != nil:
+			// 回答里的图：页面上的回答已经把 [图N] 换成了存好的图片网址
+			for _, ev := range e.View.Events {
+				if ev.Type == EventText {
+					for _, url := range uploadedImage.FindAllString(ev.Delta, -1) {
+						add(url)
+					}
+				}
+			}
 		}
-		for _, url := range m.Images {
+	}
+	if latest != nil {
+		for _, url := range latest.Images {
 			add(url)
 		}
 	}

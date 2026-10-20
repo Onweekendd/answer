@@ -61,6 +61,7 @@ var (
 		&entity.PurchaseVote{},
 		&entity.PurchaseChat{},
 		&entity.PurchaseChatMessage{},
+		&entity.PurchaseChatEntry{},
 		&entity.Tag{},
 		&entity.TagRel{},
 		&entity.Uniqid{},
