@@ -123,6 +123,12 @@
   html {
     @apply font-sans;
   }
+  /* Tailwind v4 leaves buttons with the arrow cursor; everything clickable here shows the hand */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
 }
 
 /*
