@@ -6,6 +6,7 @@ import { AgentProcess, ProcessSteps, ProcessThinking } from "@/components/AgentP
 import { AgentStep } from "@/components/AgentStep";
 import { Thread, type ThreadComponents } from "@/components/assistant-ui/thread.aui";
 import { ChatTopBar } from "@/components/ChatHistory";
+import { FollowupsUI } from "@/components/Followups";
 import { PostDraftUI } from "@/components/PostDraftCard";
 import { ProductCardsUI } from "@/components/ProductCards";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -59,6 +60,7 @@ function ChatSession({ chatId, onCreated }: { chatId: string | null; onCreated: 
       <TooltipProvider>
         <ProductCardsUI />
         <PostDraftUI />
+        <FollowupsUI />
         <Thread components={components} />
       </TooltipProvider>
     </AssistantRuntimeProvider>

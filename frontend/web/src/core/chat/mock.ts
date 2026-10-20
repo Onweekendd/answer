@@ -68,7 +68,10 @@ export async function* mockReply(prompt: string, opts: MockOptions = {}): AsyncG
       yield { type: "text", delta };
     }
   }
-  yield { type: "followups", followups: ["帮我发到社区，让大家投票", "京东和天猫哪家更划算？", "等双 11 能便宜多少？"] };
+  yield {
+    type: "followups",
+    followups: ["帮我发到社区，让大家投票", "京东和天猫哪家更划算？", "等双 11 能便宜多少？"]
+  };
   yield { type: "done" };
 }
 

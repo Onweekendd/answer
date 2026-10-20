@@ -20,11 +20,15 @@
 package purchaseai
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/apache/answer/internal/service/llm"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_splitFollowups(t *testing.T) {
@@ -112,4 +116,30 @@ func Test_buildSystemPrompt_followups(t *testing.T) {
 	// Assert：对话里有后续建议，帖子分析（一条评论）没有
 	assert.Contains(t, chat, "<followups>")
 	assert.NotContains(t, post, "<followups>")
+}
+
+func Test_run_doneFollowups(t *testing.T) {
+	// Arrange：模型用 done 结束，后续建议放在 followups 参数里
+	args, _ := json.Marshal(map[string]any{
+		"text": "价格偏高", "success": true,
+		"followups": []string{"帮我发到社区，让大家投票", "2000 以内有什么推荐？"},
+	})
+	model := &fakeLLM{replies: []*llm.ChatResp{{ToolCalls: []llm.ToolCall{{ID: "c1", Name: toolDone, Arguments: string(args)}}}}}
+	r := newAgentRun(model, newFakeBrowser(), testLimits())
+
+	// Act
+	res, err := r.run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "值不值")}, true)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "价格偏高", res.Text)
+	assert.Equal(t, []string{"帮我发到社区，让大家投票", "2000 以内有什么推荐？"}, res.Followups)
+}
+
+func Test_cleanFollowups(t *testing.T) {
+	// Act：done 参数里的和 <followups> 块里的合在一起
+	got := cleanFollowups([]string{"a", " ", "a", "1. b", "c", "d"})
+
+	// Assert
+	assert.Equal(t, []string{"a", "b", "c"}, got)
 }

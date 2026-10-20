@@ -42,6 +42,8 @@ type toolResult struct {
 
 	Answer  string // done 的回答
 	Success bool   // done 说要求的事有没有做成
+	// Followups 是 done 给的后续建议，没清洗过
+	Followups []string
 
 	URL      string // 执行完以后所在的网址（知道的话），给每一步的记录用
 	PageHash string // 执行这个动作时的页面状态：最新快照的哈希加上滚动位置，循环检测用（概念 5）
@@ -78,7 +80,9 @@ type agentResult struct {
 	Text    string
 	Success bool         // done 说做成了；直接回答也算；走了收尾就是 false
 	Finish  finishReason // 为什么结束的；空表示正常结束
-	Steps   []stepRecord
+	// Followups 是 done 参数里的后续建议；直接回答时它们在 Text 的 <followups> 块里
+	Followups []string
+	Steps     []stepRecord
 	// Products 是做好的商品卡片，不管怎么结束的都带上：收尾时卡片照样有用
 	Products []ProductCard
 	// Shots 是存下来的截图，回答里的 [图N] 指的就是它们

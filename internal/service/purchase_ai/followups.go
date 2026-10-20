@@ -66,7 +66,12 @@ func splitFollowups(text string) (string, []string) {
 	} else {
 		lines = strings.Split(body, "\n")
 	}
+	return answer, cleanFollowups(lines)
+}
 
+// cleanFollowups 整理建议：去掉列表符号和空的、重复的，太长的截短，最多 maxFollowups 句。
+// done 参数里的和 <followups> 块里的都走这里
+func cleanFollowups(lines []string) []string {
 	var followups []string
 	for _, line := range lines {
 		// 模型偶尔还是写成列表：去掉开头的列表符号
@@ -82,7 +87,7 @@ func splitFollowups(text string) (string, []string) {
 			break
 		}
 	}
-	return answer, followups
+	return followups
 }
 
 // followupRules 只在对话里有：帖子分析是一条评论，没有人点按钮
@@ -95,5 +100,5 @@ const followupRules = `后续建议：
 - 拿不准该不该买、需要听听别人意见时，把「帮我发到社区，让大家投票」放进去。
 - 没有值得接着问的就不写；用户已经说要发帖、你已经整理了帖子草稿时也不写。`
 
-// followupsInDone 只在有浏览器工具时加上：这时回答是 done 的 text，模型常常把建议只想在思考里
-const followupsInDone = "\n- 用 done 结束时，<followups> 块写在 done 的 text 最后：只写在思考里，用户看不到。"
+// followupsInDone 只在有浏览器工具时加上：这时回答走 done，建议放在它的 followups 参数里
+const followupsInDone = "\n- 用 done 结束时，后续建议填在 done 的 followups 参数里，不用写 <followups> 块；只想在思考里，用户看不到。"

@@ -142,7 +142,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		}
 
 		if done, ok := doneResult(results); ok {
-			return &agentResult{Text: done.Answer, Success: done.Success, Steps: r.steps}, nil
+			return &agentResult{Text: done.Answer, Success: done.Success, Steps: r.steps, Followups: done.Followups}, nil
 		}
 
 		// ⑦ 连续失败

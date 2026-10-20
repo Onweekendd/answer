@@ -155,8 +155,10 @@ type scrollArgs struct {
 }
 
 type doneArgs struct {
-	Text    string `json:"text" description:"给用户的完整回答，用 Markdown；有后续建议时，<followups> 块写在 text 的最后"`
+	Text    string `json:"text" description:"给用户的完整回答，用 Markdown"`
 	Success bool   `json:"success" description:"用户要求的事有没有做成。没查到、被登录页或验证码挡住时填 false"`
+	// 后续建议放在单独的参数里：写进 text 末尾的 <followups> 块，模型常常只想在思考里（2026-10-20 实测两次）
+	Followups []string `json:"followups,omitempty" description:"用户接下来可能会对你说的话，最多 3 句，站在用户的角度写，每句不超过 20 个字，页面上显示成按钮。拿不准该不该买时放「帮我发到社区，让大家投票」；没有值得接着问的就不填"`
 }
 
 // tools 返回这次能用的工具。顺序固定：工具定义在请求的最前面，顺序一变前缀缓存就全部失效。
@@ -643,7 +645,7 @@ func (r *agentRun) done(_ context.Context, arguments string) (toolResult, error)
 	if strings.TrimSpace(args.Text) == "" {
 		return toolResult{Failed: true, Text: "参数无效：text 不能为空，要写上给用户的完整回答。"}, nil
 	}
-	return toolResult{Text: "已结束。", Done: true, Answer: args.Text, Success: args.Success}, nil
+	return toolResult{Text: "已结束。", Done: true, Answer: args.Text, Success: args.Success, Followups: args.Followups}, nil
 }
 
 // ---------- 调用插件 ----------

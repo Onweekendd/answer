@@ -6,7 +6,6 @@ import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment.aui";
 import { File, getFileHref } from "@/components/assistant-ui/file";
-import { ThreadFollowupSuggestions } from "@/components/assistant-ui/follow-up-suggestions.aui";
 import { Image } from "@/components/assistant-ui/image";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import {
@@ -236,7 +235,6 @@ const ThreadRoot: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
             className="aui-thread-viewport-footer bg-background sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] md:pb-6"
           >
             <ThreadScrollToBottom />
-            <ThreadFollowupSuggestions />
             {/* the composer stays at the bottom, empty chat or not: nothing above it moves while typing */}
             <Composer autoFocus={autoFocus} />
           </ThreadPrimitive.ViewportFooter>

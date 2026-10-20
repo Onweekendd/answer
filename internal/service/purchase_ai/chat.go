@@ -108,6 +108,9 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		// 图片在打码之后放进去：网址里的数字不能被当成手机号
 		// 后续建议先切出来单独发：页面上是按钮，不是回答的一部分
 		answer, followups := splitFollowups(res.Text)
+		if len(res.Followups) > 0 {
+			followups = cleanFollowups(append(res.Followups, followups...))
+		}
 		send(Event{Type: EventText, Delta: withShots(r.view(fixNumberRanges(answer)), res.Shots)})
 		if len(followups) > 0 {
 			for i, f := range followups {
