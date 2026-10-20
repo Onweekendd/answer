@@ -23,7 +23,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -174,32 +173,31 @@ func (s *StoredMessage) Message() llm.Message {
 var errNoSuchEntry = errors.New("purchase ai: no such entry in the chat")
 
 // pathTo 从 leafID 沿着 parent_id 走回根，按从根到叶的顺序返回这条分支上的条目。
-// leafID 为空返回空（新对话的第一条消息）。找不到、或者 parent_id 绕成了环都是错误
+//
+// 上下文：
+//   - 谁调用：每一轮对话开始时 chatPath（chat.go）：Entries 取出这个对话的全部条目 → pathTo(entries, req.ParentID)
+//     → 结果交给 project 拼成历史发给模型，最后一条就是这一轮新消息的 parent
+//   - entries：整个对话的所有条目，按写入先后，所有分支混在一起。比如问了一次、又重新生成了一次：
+//     {ID: "e1", ParentID: ""}    用户「XM5 值不值」
+//     {ID: "e2", ParentID: "e1"}  assistant 回答
+//     {ID: "e3", ParentID: "e2"}  view
+//     {ID: "e4", ParentID: "e1"}  assistant 重新生成的回答（和 e2 是兄弟）
+//     {ID: "e5", ParentID: "e4"}  view
+//   - leafID：请求里的 parent_id，前端从上一轮的 saved 事件里拿到的 leaf。
+//     pathTo(entries, "e5") 应该得到 [e1 e4 e5]，e2、e3 是另一条分支，不能混进来
+//   - leafID 为空：新对话的第一条消息，前面什么都没有，返回 nil, nil
+//   - leafID 是前端传上来的，可能是乱填的、或者别的对话里的 id：找不到就返回包着 errNoSuchEntry 的错误
+//     （用 fmt.Errorf("%w: %s", errNoSuchEntry, id)，Chat 那边靠 errors.Is 认出它，回「找不到这段对话」）
+//   - 数据库里的东西不能全信：如果 parent_id 绕成了环（a 的父是 b、b 的父是 a），也要返回错误，不能死循环
+//
+// TODO(精华，你来写)，按这个顺序：
+//  1. leafID 为空返回 nil, nil
+//  2. 建一个 map[string]Entry，按 ID 能一步找到条目（类比 TS 的 new Map(entries.map(e => [e.id, e]))）
+//  3. 从 leafID 开始循环：查 map → 找不到报错 → 走过的再走到就是环，报错 → 放进结果 → 跳到它的 ParentID，
+//     ParentID 为空就到根了
+//  4. 收集的顺序是从叶到根，最后倒过来（Go 没有 reverse 方法：slices.Reverse，或者两个下标往中间换）
+//
+// 思考题：为什么第 2 步要先建 map，而不是每走一步都在 entries 里从头找一遍？一个聊了很久的对话有几千条
 func pathTo(entries []Entry, leafID string) ([]Entry, error) {
-	if leafID == "" {
-		return nil, nil
-	}
-	byID := make(map[string]Entry, len(entries))
-	for _, e := range entries {
-		byID[e.ID] = e
-	}
-	var path []Entry
-	seen := map[string]bool{}
-	for id := leafID; id != ""; {
-		e, ok := byID[id]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", errNoSuchEntry, id)
-		}
-		if seen[id] {
-			return nil, fmt.Errorf("purchase ai: entry %s is its own ancestor", id)
-		}
-		seen[id] = true
-		path = append(path, e)
-		id = e.ParentID
-	}
-	// 收集的时候是从叶到根，倒过来
-	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-		path[i], path[j] = path[j], path[i]
-	}
-	return path, nil
+	return nil, errors.New("TODO: pathTo")
 }

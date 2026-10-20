@@ -216,6 +216,7 @@ func savedOf(t *testing.T, events []Event) *SavedIDs {
 
 func Test_Chat(t *testing.T) {
 	t.Run("最后是回答和 done，然后 channel 关闭", func(t *testing.T) {
+		skipPathTo(t)
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "**买**"))}}
 
@@ -232,6 +233,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("出错时发一句给用户看的话，不发内部错误", func(t *testing.T) {
+		skipPathTo(t)
 		// Arrange
 		model := &fakeLLM{err: context.DeadlineExceeded}
 
@@ -247,6 +249,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("没人收了也不会卡住：ctx 一取消，goroutine 结束、关掉 channel", func(t *testing.T) {
+		skipPathTo(t)
 		// Arrange：模型一直不回，用户关掉了页面
 		model := &fakeLLM{hang: 10}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -270,6 +273,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("历史从日志里来：接着 parent_id 那条分支，最后一条是新消息", func(t *testing.T) {
+		skipPathTo(t)
 		skipProject(t)
 		// Arrange：日志里已经有一轮
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(doneCall("c1", "好"))}}
@@ -308,6 +312,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("parent_id 不在这个对话里不跑", func(t *testing.T) {
+		skipPathTo(t)
 		// Arrange
 		req := chatReq("你好")
 		req.ParentID = "e_nope"
@@ -320,6 +325,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("重新生成：parent_id 要是一条用户消息", func(t *testing.T) {
+		skipPathTo(t)
 		// Arrange：parent 是上一轮的 view，又没带新消息
 		log := &fakeChatLog{entries: []Entry{
 			msgEntry("u1", "", llm.Text(llm.RoleUser, "XM5 值不值"), messageMeta{}),
@@ -335,6 +341,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("saved 在回答之前：页面拿到 id 才能接着聊", func(t *testing.T) {
+		skipPathTo(t)
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(doneCall("c1", "好"))}}
 
@@ -350,6 +357,7 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("这一轮记进日志：用户消息、调用和结果、最后一条 view", func(t *testing.T) {
+		skipPathTo(t)
 		skipRecorder(t)
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "**买**"))}}

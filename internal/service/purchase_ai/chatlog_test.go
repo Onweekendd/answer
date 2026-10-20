@@ -97,7 +97,14 @@ func TestStoredMessage_RoundTrip(t *testing.T) {
 	assert.Equal(t, result, gotResult)
 }
 
+// skipPathTo 写完 pathTo 以后删掉
+func skipPathTo(t *testing.T) {
+	t.Helper()
+	t.Skip("TODO(你来写)：pathTo，写完删掉 skipPathTo")
+}
+
 func TestPathTo(t *testing.T) {
+	skipPathTo(t)
 	// Arrange：e1 → e2 → e3，e2 下面还有一个分支 e4（重新生成的）
 	entries := []Entry{
 		{ID: "e1"}, {ID: "e2", ParentID: "e1"}, {ID: "e3", ParentID: "e2"}, {ID: "e4", ParentID: "e1"},
