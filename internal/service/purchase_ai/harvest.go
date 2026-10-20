@@ -131,12 +131,7 @@ func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) 
 
 // harvestText 是收割的摘要：收了多少、放在哪、清单里有什么
 func harvestText(entries []sandbox.Entry, data harvestData) string {
-	noThumb := 0
-	for _, e := range entries {
-		if e.File == "" {
-			noThumb++
-		}
-	}
+	noThumb := len(data.Items) - len(entries) // Number 跳过了没有缩略图的
 	var b strings.Builder
 	fmt.Fprintf(&b, "收了 %d 张（滚了 %d 屏，一共见过 %d 张，去掉广告 %d 张", len(entries), data.Stats.Scrolls, data.Stats.Seen, data.Stats.Sponsored)
 	if data.Stats.NoImage > 0 {
@@ -146,7 +141,7 @@ func harvestText(entries []sandbox.Entry, data harvestData) string {
 	fmt.Fprintf(&b, "素材放在工作台的 %s/：001.jpg 这样按编号命名的是缩略图（两三百像素宽，只够挑选和预览）；", sandbox.HarvestDir)
 	b.WriteString("items.json 是清单，每条有 n（编号）、file、title、url（出处）、original（原图地址）。编号 = 文件名 = 清单里的 n。")
 	if noThumb > 0 {
-		fmt.Fprintf(&b, "\n其中 %d 张插件没拿到缩略图，清单里它们的 file 是空的。", noThumb)
+		fmt.Fprintf(&b, "\n另有 %d 张插件没拿到缩略图，没有收。", noThumb)
 	}
 	if !data.Stats.Ended {
 		b.WriteString("\n下面还有没收到的；要更多就滚动以后再收一次，会替换掉这次收的。")

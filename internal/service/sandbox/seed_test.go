@@ -62,12 +62,6 @@ func TestTarFiles(t *testing.T) {
 	assert.Equal(t, map[string][]byte{"001.jpg": []byte("jpeg-1"), "items.json": []byte(`[]`)}, untar(t, data))
 }
 
-// skipSeed 写完 Number 和 Seed 以后删掉
-func skipSeed(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 Number 和 Seed 删掉这一行")
-}
-
 func items(n int) []Item {
 	out := make([]Item, n)
 	for i := range out {
@@ -82,7 +76,6 @@ func items(n int) []Item {
 }
 
 func TestNumber_ConsecutiveFromOneWithPaddedNames(t *testing.T) {
-	skipSeed(t)
 	// Act
 	entries := Number(items(12))
 
@@ -95,8 +88,7 @@ func TestNumber_ConsecutiveFromOneWithPaddedNames(t *testing.T) {
 	}
 }
 
-func TestNumber_CardWithoutThumbHasNoFile(t *testing.T) {
-	skipSeed(t)
+func TestNumber_CardWithoutThumbIsSkipped(t *testing.T) {
 	// Arrange：第 2 张插件没拿到缩略图
 	in := items(3)
 	in[1].Thumb = nil
@@ -104,19 +96,14 @@ func TestNumber_CardWithoutThumbHasNoFile(t *testing.T) {
 	// Act
 	entries := Number(in)
 
-	// Assert：跳过还是占号由你定，这里只管两件不管怎么选都成立的事
-	for i, e := range entries {
-		assert.Equal(t, i+1, e.N, "编号要连续")
-		if e.File == "" {
-			assert.Empty(t, e.Thumb)
-		} else {
-			assert.NotEmpty(t, e.Thumb, "%s 有文件名却没有图", e.File)
-		}
-	}
+	// Assert：没图的跳过，后面的编号接着来
+	require.Len(t, entries, 2)
+	assert.Equal(t, []int{1, 2}, []int{entries[0].N, entries[1].N}, "编号要连续")
+	assert.Equal(t, "002.jpg", entries[1].File)
+	assert.Equal(t, "卡片 3", entries[1].Title, "第 2 号是原来的第 3 张")
 }
 
 func TestSeed_UploadsOneTarAndUnpacksIt(t *testing.T) {
-	skipSeed(t)
 	// Arrange
 	box := newFakeBox("sb-1")
 	entries := Number(items(3))
@@ -147,7 +134,6 @@ func TestSeed_UploadsOneTarAndUnpacksIt(t *testing.T) {
 }
 
 func TestSeed_FailedUnpackIsAnError(t *testing.T) {
-	skipSeed(t)
 	// Arrange
 	box := newFakeBox("sb-1")
 	box.results = []RunResult{{ExitCode: 2, Stderr: "tar: Unexpected EOF in archive"}}
