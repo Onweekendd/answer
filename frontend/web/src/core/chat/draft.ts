@@ -101,6 +101,10 @@ export function checkDraftForm(f: DraftForm): string | null {
   if ([...title].length < MIN_TITLE || [...title].length > MAX_TITLE) {
     return `标题要 ${MIN_TITLE} 到 ${MAX_TITLE} 个字`;
   }
+  // the site asks every post for at least one tag, and the category is it
+  if (f.category.trim() === "") {
+    return "填一个品类，比如 数码、家居";
+  }
   if (f.images.length === 0) {
     return "至少选一张图";
   }

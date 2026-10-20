@@ -61,6 +61,7 @@ describe("toggleImage", () => {
 describe("checkDraftForm", () => {
   it.each([
     [{ title: "买吗" }, "标题要 6 到 150 个字"],
+    [{ category: " " }, "填一个品类，比如 数码、家居"],
     [{ images: [] }, "至少选一张图"],
     [{ price: "四千" }, "价格要是一个数字"],
     [{ link: "item.jd.com/1" }, "链接要以 http:// 或 https:// 开头"]

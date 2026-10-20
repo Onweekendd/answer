@@ -82,6 +82,13 @@ func Test_RegisterWeb(t *testing.T) {
 		assert.NotContains(t, w.Body.String(), "secret")
 	})
 
+	t.Run("/app?c=5 跳到 /app/?c=5：刷新还在原来那段对话", func(t *testing.T) {
+		w := get(webServer(t), "/app?c=5")
+
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/app/?c=5", w.Header().Get("Location"))
+	})
+
 	t.Run("/app 跳到 /app/", func(t *testing.T) {
 		w := get(webServer(t), "/app")
 

@@ -54,7 +54,14 @@ func RegisterWeb(r *gin.Engine) bool {
 		log.Infof("web front end not found in %s, %s is not served", dir, webBasePath)
 		return false
 	}
-	r.GET(webBasePath, func(c *gin.Context) { c.Redirect(http.StatusMovedPermanently, webBasePath+"/") })
+	// keep the query: the chat links a conversation as /app?c=<id>, and a refresh there must open it
+	r.GET(webBasePath, func(c *gin.Context) {
+		target := webBasePath + "/"
+		if q := c.Request.URL.RawQuery; q != "" {
+			target += "?" + q
+		}
+		c.Redirect(http.StatusMovedPermanently, target)
+	})
 	// / already belongs to the template router (the page rendered for search
 	// engines), and gin refuses a second handler, so a middleware answers it
 	// first. It only reaches the routes registered after it, which is why the

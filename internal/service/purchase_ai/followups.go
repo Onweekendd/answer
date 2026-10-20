@@ -39,6 +39,10 @@ const (
 // followupItem 是块里的一句 <q>…</q>
 var followupItem = regexp.MustCompile(`(?s)<q>(.*?)</q>`)
 
+// listMarker 是一行开头的列表符号：「- 」「* 」「• 」「1. 」「2、」「3) 」。
+// 只认符号本身，不能把开头的数字都去掉：「27 寸 4K 和 2K 怎么选」的 27 是内容（2026-10-20 线上实测）
+var listMarker = regexp.MustCompile(`^\s*(?:[-*•·]\s*|\d+\s*[.、)）]\s*)`)
+
 // splitFollowups 把回答里的 <followups> 块切出来，返回去掉块的回答和里面的建议（最多 maxFollowups 句）。
 // 写得不规矩也认：没有 <q> 就一行一句；结束标签丢了（回答被截断）就切到结尾
 func splitFollowups(text string) (string, []string) {
@@ -66,7 +70,7 @@ func splitFollowups(text string) (string, []string) {
 	var followups []string
 	for _, line := range lines {
 		// 模型偶尔还是写成列表：去掉开头的列表符号
-		line = oneLine(strings.TrimLeft(strings.TrimSpace(line), "-*•·0123456789.、) "))
+		line = oneLine(listMarker.ReplaceAllString(line, ""))
 		if line == "" || slices.Contains(followups, line) {
 			continue
 		}

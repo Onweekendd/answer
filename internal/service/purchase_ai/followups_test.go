@@ -52,6 +52,18 @@ func Test_splitFollowups(t *testing.T) {
 			followups: []string{"帮我发到社区", "等双 11 会便宜多少？"},
 		},
 		{
+			name:      "开头的数字是内容时不去掉，只去掉真正的列表符号",
+			in:        "x<followups><q>27 寸 4K 和 2K 高刷怎么选</q></followups>\n",
+			answer:    "x",
+			followups: []string{"27 寸 4K 和 2K 高刷怎么选"},
+		},
+		{
+			name:      "写成编号列表的：去掉编号，保留内容里的数字",
+			in:        "x<followups>\n1. 27 寸够不够大？\n2、换 32 寸呢\n</followups>",
+			answer:    "x",
+			followups: []string{"27 寸够不够大？", "换 32 寸呢"},
+		},
+		{
 			name:      "结束标签丢了：切到结尾",
 			in:        "价格偏高。\n<followups>\n<q>帮我发到社区</q>",
 			answer:    "价格偏高。",
