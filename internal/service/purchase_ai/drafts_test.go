@@ -210,3 +210,18 @@ func Test_run_draftOffline(t *testing.T) {
 		assert.Len(t, model.reqs, 1)
 	})
 }
+
+func Test_draftPost_noPictures(t *testing.T) {
+	// Arrange：对话里一张图都没有
+	r, events := draftRun(&fakeDrafts{saved: map[string]*Draft{}})
+	r.draft.candidates = draftCandidates(nil)
+
+	// Act
+	_, _ = r.draftPost(context.Background(), `{"title":"这个显示器值不值","content":"x","vote":"buy"}`)
+
+	// Assert：编成 JSON 是 []，不是 null，页面才认得这份草稿
+	raw, err := json.Marshal((<-events).Input)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"images":[]`)
+	assert.Contains(t, string(raw), `"candidates":[]`)
+}

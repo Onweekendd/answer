@@ -103,7 +103,7 @@ var uploadedImage = regexp.MustCompile(`https?://[^\s()"'<>]+/uploads/(?:agent|p
 
 // draftCandidates 是对话里能当配图的图：用户上传的截图，和回答里出现过的本站的图，去重，最多 draftMaxCandidates 张
 func draftCandidates(messages []schema.PurchaseAIChatMessage) []string {
-	var out []string
+	out := []string{} // 不是 nil：nil 会编成 JSON 的 null，页面会把整份草稿当成坏的
 	add := func(url string) {
 		if len(out) < draftMaxCandidates && !slices.Contains(out, url) {
 			out = append(out, url)
@@ -175,7 +175,7 @@ const draftAnswer = "我把这次的讨论整理成了一篇帖子草稿，就�
 
 // draftCandidates 是对话里的图加上这一次存的截图和商品图
 func (r *agentRun) draftCandidates() []string {
-	out := slices.Clone(r.draft.candidates)
+	out := append([]string{}, r.draft.candidates...)
 	add := func(url string) {
 		if url != "" && len(out) < draftMaxCandidates && !slices.Contains(out, url) {
 			out = append(out, url)
@@ -192,7 +192,7 @@ func (r *agentRun) draftCandidates() []string {
 
 // pickImages 是模型挑的配图里确实在对话中出现过的那些（模型抄网址可能抄错）；一张都不对就用前几张
 func pickImages(picked, candidates []string) []string {
-	var out []string
+	out := []string{}
 	for _, url := range picked {
 		url = strings.TrimSpace(url)
 		if slices.Contains(candidates, url) && !slices.Contains(out, url) && len(out) < draftMaxImages {
@@ -200,7 +200,7 @@ func pickImages(picked, candidates []string) []string {
 		}
 	}
 	if len(out) == 0 {
-		out = slices.Clone(candidates[:min(len(candidates), 3)])
+		out = append(out, candidates[:min(len(candidates), 3)]...)
 	}
 	return out
 }

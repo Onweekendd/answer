@@ -449,7 +449,8 @@ func (qc *QuestionController) AddQuestion(ctx *gin.Context) {
 	req.CanClose = canList[3]
 	req.CanReopen = canList[4]
 	req.CanUseReservedTag = canList[5]
-	req.CanAddTag = canList[6]
+	// 买不买的标签就是品类：发帖的人都能写一个站里还没有的品类，不看声望（帮用户发帖时 AI 也会填新品类）
+	req.CanAddTag = true
 	if !req.CanAdd {
 		handler.HandleResponse(ctx, errors.Forbidden(reason.RankFailToMeetTheCondition), nil)
 		return
@@ -675,7 +676,8 @@ func (qc *QuestionController) UpdateQuestion(ctx *gin.Context) {
 	req.CanDelete = canList[1]
 	req.NoNeedReview = canList[2] || objectOwner
 	req.CanUseReservedTag = canList[3]
-	req.CanAddTag = canList[4]
+	// 和发帖一样，改帖时也能写新品类
+	req.CanAddTag = true
 	if !req.CanEdit {
 		handler.HandleResponse(ctx, errors.Forbidden(reason.RankFailToMeetTheCondition), nil)
 		return

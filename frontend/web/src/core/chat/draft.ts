@@ -35,8 +35,15 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isHttpURL = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v);
 const isURLList = (v: unknown): v is string[] => Array.isArray(v) && v.every(isHttpURL);
 
-/** A draft from the server, checked: the urls end up in src and href attributes. */
+/**
+ * A draft from the server, checked: the urls end up in src and href attributes. Missing lists
+ * (null from an empty Go slice) count as empty: a draft without pictures is still a draft.
+ */
 export function isPostDraft(v: unknown): v is PostDraft {
+  if (isRecord(v)) {
+    v.images ??= [];
+    v.candidates ??= [];
+  }
   return (
     isRecord(v) &&
     typeof v.draftId === "string" &&

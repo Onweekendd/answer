@@ -31,6 +31,15 @@ describe("isPostDraft", () => {
     expect(isPostDraft(draft)).toBe(true);
   });
 
+  it("takes a draft without pictures, whose lists came as null", () => {
+    // Arrange：Go 的空切片编成 null
+    const raw: unknown = { ...draft, images: null, candidates: null };
+
+    // Act + Assert
+    expect(isPostDraft(raw)).toBe(true);
+    expect(raw).toMatchObject({ images: [], candidates: [] });
+  });
+
   it("refuses a draft whose pictures are not http(s): they go into src", () => {
     expect(isPostDraft({ ...draft, images: ["javascript:alert(1)"] })).toBe(false);
     expect(isPostDraft({ ...draft, vote: 4 })).toBe(false);
