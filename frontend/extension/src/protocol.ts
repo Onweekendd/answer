@@ -53,6 +53,9 @@ export interface CommandArgs {
   scroll: { direction: "up" | "down"; pages?: number };
   // 调试用：text 所在的元素往上一层层的样子，up 不为空时再展开往上 up 层那个元素的子树。Agent 不用，写站点策略时用
   inspect: { text: string; up?: number };
+  // 列表收割：在搜索页、瀑布流里边滚边收卡片（图、标题、链接），去掉广告和重复的，收够 limit 张或者滚了 maxScrolls 屏为止。
+  // thumbs 为 true 时顺便带上缩略图本身（页面已经加载好的，不重新下载），给模型拼总览图初选
+  harvest: { limit?: number; maxScrolls?: number; thumbs?: boolean };
   // 插件从磁盘重新加载自己（开发用：pnpm watch 打包完自动调用）。tabId 填 0
   reload: Record<string, never>;
 }
@@ -164,7 +167,35 @@ export type TabRequest =
   | { type: "imageSource"; index?: number }
   | { type: "inspect"; text: string; up?: number }
   | { type: "visibility" }
-  | { type: "scrollPosition" };
+  | { type: "scrollPosition" }
+  | { type: "harvestList"; limit: number; maxScrolls: number };
+
+// 列表收割收到的一张卡片
+export interface HarvestItem {
+  key: string; // 去重用：站点给的 id，没有就是链接，再没有就是缩略图地址
+  url?: string; // 卡片打开的那个页面（出处）
+  title: string;
+  thumb: string; // 现在显示的那张（缩略图）
+  original: string; // srcset 里最大的那张，没有 srcset 就和 thumb 一样
+  width?: number; // 显示的那张图本身的尺寸
+  height?: number;
+  thumbData?: string; // thumbs 为 true 时：缩略图本身，base64，拿不到就没有
+}
+
+export interface HarvestResult {
+  items: HarvestItem[];
+  stats: {
+    strategy?: string; // 用了哪类页面的增强，没有就是纯通用实现
+    strategyError?: string; // 哪一步的增强抛了错（已经退回通用实现）
+    scrolls: number; // 滚了几屏
+    seen: number; // 一共见过几张不同的卡片（含广告）
+    sponsored: number; // 其中几张是广告，没收
+    noImage: number; // 其中几张没有图（还没加载出来、或者是视频），没收
+    ended: boolean; // 滚到底了，或者连着几屏都没有新卡片
+    thumbsSkipped?: number; // thumbs 为 true 时：几张没带上缩略图（缓存里没有、解不开、或者超了总量）
+    ms: number;
+  };
+}
 
 export type TabResponse = { ok: true; data: unknown } | { ok: false; error: ErrorBody };
 

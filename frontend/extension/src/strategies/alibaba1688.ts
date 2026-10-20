@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import type { SiteStrategy } from "./types";
+import type { PageProfile } from "./profile";
 
 // 1688 搜索结果（2026-10-19 实测 s.1688.com/selloffer/offer_search.htm）：
 //   每个商品是一个 <a>，标题、价格、起批量、公司名都在文字里，通用规则就能编号。
@@ -32,25 +32,27 @@ const OFFER_ID = /detail\.1688\.com\/offer\/(\d+)\.html/;
 
 const textOf = (el: Element) => ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
 
-export const alibabaSearch: SiteStrategy = {
+export const alibabaSearch: PageProfile = {
   name: "1688-search",
   matches: (url) => url.hostname === "s.1688.com",
-  interactive: (doc) => Array.from(doc.querySelectorAll(`${AD_CARD}, ${OFFER_CARD}`)),
-  label: (el) => {
-    const id = OFFER_ID.exec(el.getAttribute("href") ?? "")?.[1];
-    return id ? `商品 ${id}：${textOf(el)}` : `（广告）${textOf(el)}`;
-  },
-  link: (el) => {
-    const id = OFFER_ID.exec(el.getAttribute("href") ?? "")?.[1];
-    return id ? `https://detail.1688.com/offer/${id}.html` : undefined;
+  snapshot: {
+    candidates: (doc) => Array.from(doc.querySelectorAll(`${AD_CARD}, ${OFFER_CARD}`)),
+    label: (el) => {
+      const id = OFFER_ID.exec(el.getAttribute("href") ?? "")?.[1];
+      return id ? `商品 ${id}：${textOf(el)}` : `（广告）${textOf(el)}`;
+    },
+    link: (el) => {
+      const id = OFFER_ID.exec(el.getAttribute("href") ?? "")?.[1];
+      return id ? `https://detail.1688.com/offer/${id}.html` : undefined;
+    }
   }
 };
 
 // 1688 商品详情（2026-10-19 实测 detail.1688.com/offer/数字.html）：
 //   read 整页时，前 3000 字是店铺、参数、评价和一大段价格说明，价格在 3000 字以后，被截掉了。
 //   标题、价格、每个尺寸的价格和库存、运费都在右边的下单栏 #cart 里，填充物这类参数在 #productAttributes 里
-export const alibabaDetail: SiteStrategy = {
+export const alibabaDetail: PageProfile = {
   name: "1688-detail",
   matches: (url) => url.hostname === "detail.1688.com",
-  main: (doc) => [doc.querySelector("#cart"), doc.querySelector("#productAttributes")]
+  read: { main: (doc) => [doc.querySelector("#cart"), doc.querySelector("#productAttributes")] }
 };

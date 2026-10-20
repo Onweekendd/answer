@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import type { SiteStrategy } from "./types";
+import type { PageProfile } from "./profile";
 
 // 闲鱼搜索结果（2026-10-19 实测 www.goofish.com/search?q=…）：
 //   每件商品是一个 a.feeds-item-wrap--…，通用规则能编号，但文字是卖家写的一大段描述，价格排在最后，
@@ -27,30 +27,34 @@ const CARD = 'a[class*="feeds-item-wrap--"]';
 
 const textOf = (el: Element | null | undefined) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 
-export const goofishSearch: SiteStrategy = {
+export const goofishSearch: PageProfile = {
   name: "goofish-search",
   matches: (url) => url.hostname === "www.goofish.com" && url.pathname === "/search",
-  interactive: (doc) => Array.from(doc.querySelectorAll(CARD)),
-  label: (el) => {
-    const part = (cls: string) => textOf(el.querySelector(`[class*="${cls}"]`));
-    const cpv = Array.from(el.querySelectorAll('[class*="cpv-wrap--"]'))
-      .map((c) => textOf(c))
-      .filter(Boolean)
-      .join(" ");
-    const parts = [part("price-wrap--"), part("price-desc--"), cpv, part("main-title--"), part("row4-wrap-seller--")];
-    const label = parts.filter(Boolean).join(" | ");
-    return label || undefined;
+  snapshot: {
+    candidates: (doc) => Array.from(doc.querySelectorAll(CARD)),
+    label: (el) => {
+      const part = (cls: string) => textOf(el.querySelector(`[class*="${cls}"]`));
+      const cpv = Array.from(el.querySelectorAll('[class*="cpv-wrap--"]'))
+        .map((c) => textOf(c))
+        .filter(Boolean)
+        .join(" ");
+      const parts = [part("price-wrap--"), part("price-desc--"), cpv, part("main-title--"), part("row4-wrap-seller--")];
+      const label = parts.filter(Boolean).join(" | ");
+      return label || undefined;
+    }
   }
 };
 
 // 闲鱼商品详情（2026-10-19 实测 www.goofish.com/item?id=…，在新标签页里打开）：
 //   read 整页时，后半段是"为你推荐"，是按这个浏览器账号的兴趣推的别的商品，和问题无关。
 //   只读卖家信息（item-user-container：地区、来闲鱼几年、卖出几件、好评率）和商品信息（item-main-container：价格、想要、描述、成色）
-export const goofishItem: SiteStrategy = {
+export const goofishItem: PageProfile = {
   name: "goofish-item",
   matches: (url) => url.hostname === "www.goofish.com" && url.pathname === "/item",
-  main: (doc) => [
-    doc.querySelector('[class*="item-user-container--"]'),
-    doc.querySelector('[class*="item-main-container--"]')
-  ]
+  read: {
+    main: (doc) => [
+      doc.querySelector('[class*="item-user-container--"]'),
+      doc.querySelector('[class*="item-main-container--"]')
+    ]
+  }
 };

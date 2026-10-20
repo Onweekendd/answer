@@ -17,9 +17,12 @@
  * under the License.
  */
 
+import { genericList, harvestList } from "./harvest/list";
+import { largestSource } from "./imagesrc";
 import { inspect } from "./inspect";
 import {
   CommandError,
+  type HarvestResult,
   type ImageSource,
   type ProductArea,
   type ShotArea,
@@ -32,7 +35,7 @@ import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
 import { clip, paragraphs } from "./snapshot/text";
-import { collectStrategyElements, strategyMain } from "./strategies";
+import { collectStrategyElements, profileFor, StepFailures, strategyMain, withFallback } from "./strategies";
 
 // content script：Go 第一次要操作某个页面时，由 background 注入进去（commands.ts 的 inject），
 // 和网页跑在同一个渲染进程，能读写 DOM，但看不到网页自己的 JS 变量（isolated world）。
@@ -93,6 +96,8 @@ async function handle(req: TabRequest): Promise<unknown> {
       return { width: window.innerWidth, height: window.innerHeight };
     case "scrollPosition":
       return scrollPages();
+    case "harvestList":
+      return harvestOnPage(req.limit, req.maxScrolls);
   }
 }
 
@@ -621,27 +626,59 @@ async function imageSource(index?: number): Promise<ImageSource> {
   return { src, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight };
 }
 
-// largestSource 是 srcset 里最大的那张，没有 srcset 就是正在显示的那张。只要 http(s) 的地址
-export function largestSource(img: HTMLImageElement): string | null {
-  let best = img.currentSrc || img.src;
-  let bestW = 0;
-  for (const candidate of (img.getAttribute("srcset") ?? "").split(",")) {
-    const [url, size] = candidate.trim().split(/\s+/);
-    const w = size?.endsWith("w") ? parseFloat(size) : size?.endsWith("x") ? parseFloat(size) * 1000 : 0;
-    if (url && w > bestW) {
-      best = new URL(url, location.href).href;
-      bestW = w;
+// 列表收割每滚一屏滚多远：留一点重叠，免得两屏交界处的卡片两边都只露一半
+const HARVEST_SCROLL_RATIO = 0.85;
+// 滚动以后等新卡片出来：瀑布流是滚动以后才请求下一批、再渲染
+const HARVEST_SCROLL_WAIT_MS = 1200;
+
+// scrollerOf 是包着 el、真的能滚的那个容器；没有就是整个页面
+function scrollerOf(el: Element | undefined): Element {
+  for (let p = el?.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight + 1) {
+      return p;
     }
   }
-  if (!best) {
-    return null; // 空地址会被解析成页面自己的网址
-  }
-  try {
-    const url = new URL(best, location.href);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
-  } catch {
-    return null;
-  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
+// harvestOnPage 是 harvest 命令在页面里的那一半：按网址找增强，合成步骤，交给骨架，滚动和等图在这里做
+async function harvestOnPage(limit: number, maxScrolls: number): Promise<HarvestResult> {
+  const started = performance.now();
+  const profile = profileFor(new URL(location.href));
+  const failures = new StepFailures();
+  const steps = withFallback("list", profile?.list, genericList, failures);
+  let lastCards: Element[] = [];
+  const { items, stats } = await harvestList(
+    document,
+    steps,
+    { limit, maxScrolls },
+    {
+      async scroll() {
+        // 滚卡片所在的那个滚动容器：有的网站滚的不是整个页面，而是里面一个 overflow 的 div
+        const scroller = scrollerOf(lastCards[0]);
+        const before = scroller.scrollTop;
+        const height = scroller.scrollHeight;
+        scroller.scrollBy(0, Math.round(scroller.clientHeight * HARVEST_SCROLL_RATIO));
+        await new Promise((resolve) => setTimeout(resolve, HARVEST_SCROLL_WAIT_MS));
+        // 到底了：位置没变，内容也没变长
+        return scroller.scrollTop > before || scroller.scrollHeight > height;
+      },
+      async settle(cards) {
+        lastCards = cards;
+        const onScreen = cards.filter(intersectsViewport);
+        await Promise.all(onScreen.flatMap((card) => Array.from(card.querySelectorAll("img"), imageLoaded)));
+      }
+    }
+  );
+  return {
+    items,
+    stats: {
+      strategy: profile?.name,
+      ...(failures.size > 0 ? { strategyError: failures.toString() } : {}),
+      ...stats,
+      ms: Math.round(performance.now() - started)
+    }
+  };
 }
 
 // 滚动以后等多久再截：滚动是同步的，画面要等下一帧才更新

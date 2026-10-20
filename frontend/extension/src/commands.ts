@@ -18,10 +18,12 @@
  */
 
 import { cdpClick, cdpHover, cdpPress, cdpResource, cdpScreenshot, cdpScroll, cdpType, withDebugger } from "./cdp";
-import { downloadImage } from "./imagefile";
+import { downloadImage, isRaster, toJpeg } from "./imagefile";
 import {
   type Command,
+  type CommandArgs,
   CommandError,
+  type HarvestResult,
   type ImageSource,
   type InputAction,
   type InputTarget,
@@ -46,6 +48,18 @@ const DEFAULT_IMAGE_WIDTH = 1600;
 const DEFAULT_IMAGE_QUALITY = 85;
 // 按键以后等多久再读网址
 const PRESS_SETTLE_MS = 500;
+// 列表收割：默认收多少张、最多滚几屏。上限防止一条命令把页面滚上几分钟
+const DEFAULT_HARVEST_LIMIT = 100;
+const MAX_HARVEST_LIMIT = 400;
+const DEFAULT_HARVEST_SCROLLS = 10;
+const MAX_HARVEST_SCROLLS = 40;
+// 取缩略图：几百张从缓存里读、缩小，每张几毫秒到十几毫秒
+const HARVEST_THUMBS_TIMEOUT_MS = 60_000;
+// 缩略图压到多宽、什么质量：2026-10-20 Pinterest 的缩略图平均 59KB，压到 200 宽以后几 KB
+const HARVEST_THUMB_WIDTH = 200;
+const HARVEST_THUMB_QUALITY = 70;
+// 一条结果里缩略图的 base64 加起来最多多少，留出余量给其余字段
+const HARVEST_THUMBS_BUDGET = 3 << 20;
 
 type ListenerOf<E> = E extends chrome.events.Event<infer F> ? F : never;
 
@@ -125,6 +139,8 @@ async function executeCommand(cmd: Command): Promise<unknown> {
       });
     case "inspect":
       return sendToTab(cmd.tabId, { type: "inspect", text: cmd.args.text, up: cmd.args.up });
+    case "harvest":
+      return harvest(cmd.tabId, cmd.args);
     case "click":
       return actIn(cmd.tabId, { type: "click", index: cmd.args.index });
     case "hover":
@@ -379,6 +395,45 @@ async function waitLoaded(tabId: number): Promise<PageInfo> {
   }
   const tab = await chrome.tabs.get(tabId);
   return { url: tab.url ?? tab.pendingUrl ?? "", title: tab.title ?? "", loaded: isLoaded };
+}
+
+// harvest 列表收割：先切到前台（后台标签页不渲染，滚动以后不出新卡片），滚动和收集在页面里做；
+// 要缩略图的话，再从页面已经加载好的资源里取，不重新下载
+async function harvest(tabId: number, args: CommandArgs["harvest"]): Promise<HarvestResult> {
+  await bringToFront(tabId);
+  const result = (await sendToTab(tabId, {
+    type: "harvestList",
+    limit: Math.min(args.limit ?? DEFAULT_HARVEST_LIMIT, MAX_HARVEST_LIMIT),
+    maxScrolls: Math.min(args.maxScrolls ?? DEFAULT_HARVEST_SCROLLS, MAX_HARVEST_SCROLLS)
+  })) as HarvestResult;
+  if (args.thumbs) {
+    // 缩略图压到 HARVEST_THUMB_WIDTH 宽：只用来拼总览图初选，拼进去也就这么大。
+    // 一条结果总共不超过 HARVEST_THUMBS_BUDGET：Hub 一条消息最多收 4MB，超了它会断开连接
+    let budget = HARVEST_THUMBS_BUDGET;
+    let skipped = 0;
+    await withDebugger(
+      tabId,
+      async (target) => {
+        for (const item of result.items) {
+          const bytes = await cdpResource(target, item.thumb);
+          if (!bytes || !isRaster(bytes) || budget <= 0) {
+            skipped++;
+            continue;
+          }
+          try {
+            const small = await toJpeg(new Blob([new Uint8Array(bytes)]), HARVEST_THUMB_WIDTH, HARVEST_THUMB_QUALITY);
+            item.thumbData = small.data;
+            budget -= small.data.length;
+          } catch {
+            skipped++;
+          }
+        }
+      },
+      HARVEST_THUMBS_TIMEOUT_MS
+    );
+    result.stats.thumbsSkipped = skipped;
+  }
+  return result;
 }
 
 // 把请求转发给标签页里的 content script，等它回复。

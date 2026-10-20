@@ -87,7 +87,7 @@ export function isRaster(b: Uint8Array): boolean {
   );
 }
 
-async function toJpeg(blob: Blob, maxWidth: number, quality: number): Promise<Shot> {
+export async function toJpeg(blob: Blob, maxWidth: number, quality: number): Promise<Shot> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(blob);
@@ -117,7 +117,7 @@ async function toJpeg(blob: Blob, maxWidth: number, quality: number): Promise<Sh
   return { data: toBase64(new Uint8Array(await jpeg.arrayBuffer())), mime: "image/jpeg", width, height };
 }
 
-function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000; // 一次转太多，String.fromCharCode 的参数会超过上限
   for (let i = 0; i < bytes.length; i += chunk) {

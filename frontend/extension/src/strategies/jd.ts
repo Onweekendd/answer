@@ -17,27 +17,29 @@
  * under the License.
  */
 
-import type { SiteStrategy } from "./types";
+import type { PageProfile } from "./profile";
 
 // 京东搜索结果（2026-10-19 在 DevTools 里看的）：
 //   - 一张商品卡片是外层带 data-sku="100378972868" 的 div，标题、价格、店铺全是 div 和 span，
 //     没有一个指向商品页的 <a>：点进详情页靠京东自己的 JS
 //   - 卡片里唯一的 <a> 是店铺名后面的笑脸图标，href 是 //chat.jd.com/…，打开的是和店家的聊天
 // 不加策略的话，快照里每张卡片只剩那个没有文字的 <a>：模型想进商品就点了客服，或者干脆不进详情页
-export const jd: SiteStrategy = {
+export const jd: PageProfile = {
   name: "jd-search",
   matches: (url) => url.hostname === "search.jd.com",
-  interactive: (doc) => [
-    // 只要最外层的 data-sku：卡片里面的元素也可能带着它
-    ...Array.from(doc.querySelectorAll("[data-sku]")).filter((el) => !el.parentElement?.closest("[data-sku]")),
-    ...Array.from(doc.querySelectorAll('a[href*="chat.jd.com"]'))
-  ],
-  // 卡片照常用它的文字（标题、价格、店铺）；客服图标没有文字，起个名字让模型知道别点
-  label: (el) => (el.matches('a[href*="chat.jd.com"]') ? "客服（打开的是和店家的聊天，不要点）" : undefined),
-  // 卡片的商品页由 data-sku 拼出来，和点进去打开的是同一个页面
-  link: (el) => {
-    const sku = el.getAttribute("data-sku") ?? "";
-    return /^\d+$/.test(sku) ? `https://item.jd.com/${sku}.html` : undefined;
+  snapshot: {
+    candidates: (doc) => [
+      // 只要最外层的 data-sku：卡片里面的元素也可能带着它
+      ...Array.from(doc.querySelectorAll("[data-sku]")).filter((el) => !el.parentElement?.closest("[data-sku]")),
+      ...Array.from(doc.querySelectorAll('a[href*="chat.jd.com"]'))
+    ],
+    // 卡片照常用它的文字（标题、价格、店铺）；客服图标没有文字，起个名字让模型知道别点
+    label: (el) => (el.matches('a[href*="chat.jd.com"]') ? "客服（打开的是和店家的聊天，不要点）" : undefined),
+    // 卡片的商品页由 data-sku 拼出来，和点进去打开的是同一个页面
+    link: (el) => {
+      const sku = el.getAttribute("data-sku") ?? "";
+      return /^\d+$/.test(sku) ? `https://item.jd.com/${sku}.html` : undefined;
+    }
   }
 };
 
@@ -52,19 +54,25 @@ export const jd: SiteStrategy = {
 const SPEC_OPTIONS = ".page-right-spec .specification-series-item, .page-right-spec .specification-item-sku";
 const SPEC_GROUP_LABEL = ":scope > .layout-label, :scope > .specification-group-label";
 
-export const jdItem: SiteStrategy = {
+export const jdItem: PageProfile = {
   name: "jd-item",
   matches: (url) => url.hostname === "item.jd.com" || url.hostname === "npcitem.jd.hk",
-  interactive: (doc) => Array.from(doc.querySelectorAll(SPEC_OPTIONS)),
-  // "内存频率：[D5 6000]银爵国产颗粒 C36（已选）"：组名从同一组的标签来，选中、没有这个组合从类名来
-  label: (el) => {
-    const text = (el.querySelector('[class$="-text"]')?.textContent ?? el.textContent ?? "").trim();
-    const name = groupLabel(el);
-    const classes = el.className.toString();
-    const state = classes.includes("--selected") ? "（已选）" : classes.includes("--unavailable") ? "（无此商品）" : "";
-    return `${name ? `${name}：` : "规格："}${text}${state}`;
+  snapshot: {
+    candidates: (doc) => Array.from(doc.querySelectorAll(SPEC_OPTIONS)),
+    // "内存频率：[D5 6000]银爵国产颗粒 C36（已选）"：组名从同一组的标签来，选中、没有这个组合从类名来
+    label: (el) => {
+      const text = (el.querySelector('[class$="-text"]')?.textContent ?? el.textContent ?? "").trim();
+      const name = groupLabel(el);
+      const classes = el.className.toString();
+      const state = classes.includes("--selected")
+        ? "（已选）"
+        : classes.includes("--unavailable")
+          ? "（无此商品）"
+          : "";
+      return `${name ? `${name}：` : "规格："}${text}${state}`;
+    }
   },
-  main: (doc) => [doc.querySelector(".page-right-content")]
+  read: { main: (doc) => [doc.querySelector(".page-right-content")] }
 };
 
 // groupLabel 往上找到同一组的组名（"系列品""内存频率"）。不用 :has()，测试用的 jsdom 不认

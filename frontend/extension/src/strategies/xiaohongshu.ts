@@ -17,22 +17,24 @@
  * under the License.
  */
 
-import type { SiteStrategy } from "./types";
+import type { PageProfile } from "./profile";
 
-export const xiaohongshu: SiteStrategy = {
+export const xiaohongshu: PageProfile = {
   name: "xiaohongshu-note",
   matches: (url) => url.hostname === "www.xiaohongshu.com",
-  interactive: (doc) =>
-    // 笔记浮层左边的图片区（2026-10-19 实测）。它不能点，编进快照是为了让 screenshot 填它的编号、只截图片：
-    // 很多笔记的正文写在图里，整屏截图里图片只占一半宽，字密的图看不清。
-    // 翻页用 press ArrowRight / ArrowLeft
-    Array.from(doc.querySelectorAll("#noteContainer .media-container")),
-  // 它自己的文字只有右下角的"2/6"，单图笔记连这个都没有，快照里就是一行空的 <div>，模型认不出来（2026-10-19 实测漏看）
-  label: (el) => {
-    if (el.querySelector("video")) {
-      return "笔记视频";
+  snapshot: {
+    candidates: (doc) =>
+      // 笔记浮层左边的图片区（2026-10-19 实测）。它不能点，编进快照是为了让 screenshot 填它的编号、只截图片：
+      // 很多笔记的正文写在图里，整屏截图里图片只占一半宽，字密的图看不清。
+      // 翻页用 press ArrowRight / ArrowLeft
+      Array.from(doc.querySelectorAll("#noteContainer .media-container")),
+    // 它自己的文字只有右下角的"2/6"，单图笔记连这个都没有，快照里就是一行空的 <div>，模型认不出来（2026-10-19 实测漏看）
+    label: (el) => {
+      if (el.querySelector("video")) {
+        return "笔记视频";
+      }
+      const fraction = el.querySelector(".fraction")?.textContent?.trim();
+      return fraction ? `笔记图片 第${fraction}张` : "笔记图片（1 张）";
     }
-    const fraction = el.querySelector(".fraction")?.textContent?.trim();
-    return fraction ? `笔记图片 第${fraction}张` : "笔记图片（1 张）";
   }
 };

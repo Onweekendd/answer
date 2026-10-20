@@ -77,8 +77,10 @@ it("选择器零命中或策略抛异常仍允许通用快照继续", () => {
     {
       name: "broken",
       matches: () => true,
-      interactive: () => {
-        throw new Error("broken selector");
+      snapshot: {
+        candidates: () => {
+          throw new Error("broken selector");
+        }
       }
     }
   ]);
