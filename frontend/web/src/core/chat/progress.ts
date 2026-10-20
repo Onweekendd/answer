@@ -31,5 +31,5 @@ export function processHeadline(parts: readonly PartLike[], indices: readonly nu
     return "思考过程";
   }
   const failed = steps.filter((p) => (p.result as { ok?: unknown } | undefined)?.ok === false).length;
-  return failed > 0 ? `查了 ${steps.length} 步（${failed} 步没做成）` : `查了 ${steps.length} 步`;
+  return failed > 0 ? `执行了 ${steps.length} 步（${failed} 步没做成）` : `执行了 ${steps.length} 步`;
 }

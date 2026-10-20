@@ -23,14 +23,14 @@ describe("processHeadline", () => {
   it("counts the steps once done, and the ones that failed", () => {
     const parts = [thinking, step("a", true), step("b", false), thinking, step("c", true), { type: "text" }];
 
-    expect(processHeadline(parts, [0, 1, 2, 3, 4], false)).toBe("查了 3 步（1 步没做成）");
-    expect(processHeadline([step("a", true)], [0], false)).toBe("查了 1 步");
+    expect(processHeadline(parts, [0, 1, 2, 3, 4], false)).toBe("执行了 3 步（1 步没做成）");
+    expect(processHeadline([step("a", true)], [0], false)).toBe("执行了 1 步");
   });
 
   it("only reads the parts in the group", () => {
     const parts = [step("outside", true), thinking, step("inside", true)];
 
-    expect(processHeadline(parts, [1, 2], false)).toBe("查了 1 步");
+    expect(processHeadline(parts, [1, 2], false)).toBe("执行了 1 步");
   });
 
   it("names a box with thinking only, as when there is no browser", () => {

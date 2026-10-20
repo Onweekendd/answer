@@ -36,7 +36,6 @@ import {
   ErrorPrimitive,
   groupPartByType,
   MessagePrimitive,
-  SuggestionPrimitive,
   ThreadPrimitive,
   type FileMessagePartComponent,
   type ImageMessagePartComponent,
@@ -61,6 +60,7 @@ import {
   SquareIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
+  ShoppingBagIcon,
 } from "lucide-react";
 import {
   createContext,
@@ -183,19 +183,14 @@ export const Thread: FC<ThreadProps> = ({
   components = EMPTY_COMPONENTS,
   autoFocus = true,
 }) => {
-  const isEmpty = useAuiState(isNewChatView);
-
   return (
     <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot isEmpty={isEmpty} autoFocus={autoFocus} />
+      <ThreadRoot autoFocus={autoFocus} />
     </ThreadComponentsContext.Provider>
   );
 };
 
-const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
-  isEmpty,
-  autoFocus,
-}) => {
+const ThreadRoot: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
 
   return (
@@ -205,8 +200,8 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
         ["--thread-max-width" as string]: "44rem",
         ["--composer-bg" as string]:
           "color-mix(in oklab, var(--color-muted) 30%, transparent)",
-        ["--composer-radius" as string]: "1rem",
-        ["--composer-padding" as string]: "8px",
+        ["--composer-radius" as string]: "1.5rem",
+        ["--composer-padding" as string]: "10px",
       }}
     >
       <ThreadPrimitive.Viewport
@@ -217,7 +212,6 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
         <div
           className={cn(
             "mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
-            isEmpty && "justify-center",
           )}
         >
           <AuiIf condition={isNewChatView}>
@@ -239,18 +233,12 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
           </div>
 
           <ThreadPrimitive.ViewportFooter
-            className={cn(
-              "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
-              !isEmpty &&
-                "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
-            )}
+            className="aui-thread-viewport-footer bg-background sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] md:pb-6"
           >
             <ThreadScrollToBottom />
             <ThreadFollowupSuggestions />
+            {/* the composer stays at the bottom, empty chat or not: nothing above it moves while typing */}
             <Composer autoFocus={autoFocus} />
-            <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
-              <ThreadSuggestions />
-            </AuiIf>
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
@@ -434,36 +422,14 @@ const ThreadScrollToBottom: FC = () => {
 
 const ThreadWelcome: FC = () => {
   return (
-    <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
-      <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-medium tracking-tight duration-200">
-        拿不准的东西，发给我看看
+    <div className="aui-thread-welcome-root fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex flex-1 flex-col items-center justify-center gap-3 px-2 pb-8 text-center duration-200">
+      <span className="bg-primary text-primary-foreground flex size-12 items-center justify-center rounded-2xl shadow-sm">
+        <ShoppingBagIcon className="size-6" />
+      </span>
+      <p className="text-2xl font-semibold tracking-tight">嗨！想买点什么？</p>
+      <p className="text-muted-foreground text-sm">
+        发张截图，或者说说你在纠结什么
       </p>
-    </div>
-  );
-};
-
-const ThreadSuggestions: FC = () => {
-  return (
-    <div className="aui-thread-welcome-suggestions flex w-full flex-col">
-      <ThreadPrimitive.Suggestions>
-        {() => <ThreadSuggestionItem />}
-      </ThreadPrimitive.Suggestions>
-    </div>
-  );
-};
-
-const ThreadSuggestionItem: FC = () => {
-  return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200">
-      <SuggestionPrimitive.Trigger send render={<button type="button" className="aui-thread-welcome-suggestion group hover:bg-foreground/[0.03] focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-md px-2 py-2 text-start text-sm transition-colors outline-none focus-visible:ring-1 motion-reduce:transition-none" />}><span
-                      aria-hidden
-                      className="text-muted-foreground/60 group-hover:text-foreground font-mono text-xs transition-colors motion-reduce:transition-none"
-                    >
-                      {">"}
-                    </span><span className="min-w-0 flex-1 truncate">
-                      <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-foreground" />{" "}
-                      <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
-                    </span></SuggestionPrimitive.Trigger>
     </div>
   );
 };

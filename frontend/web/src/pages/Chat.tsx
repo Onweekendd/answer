@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { AgentProcess, ProcessSteps, ProcessThinking } from "@/components/AgentProcess";
 import { AgentStep } from "@/components/AgentStep";
 import { Thread, type ThreadComponents } from "@/components/assistant-ui/thread.aui";
-import { ChatHistory } from "@/components/ChatHistory";
+import { ChatTopBar } from "@/components/ChatHistory";
 import { PostDraftUI } from "@/components/PostDraftCard";
 import { ProductCardsUI } from "@/components/ProductCards";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,8 +22,8 @@ const components: ThreadComponents = {
 let newChats = 0;
 
 /**
- * The chat fills the space between the top bar (3.5rem) and, on phones, the bottom tab bar
- * (about 4rem); the negative margin lets the thread use the full width of the screen.
+ * The chat fills the screen: its own top bar, then the thread (AppShell leaves the chat route
+ * without the site header and tab bar).
  *
  * ?c=<id> names the saved conversation. A new conversation gets its id on its first message;
  * the address then changes but the session keeps its key, so the answer being written goes on.
@@ -42,8 +42,8 @@ export default function Chat() {
   const onCreated = useCallback((id: string) => setParams({ c: id }, { replace: true }), [setParams]);
 
   return (
-    <div className="-mx-4 -mb-24 md:-mb-8 flex h-[calc(100dvh-3.5rem-4rem)] flex-col md:h-[calc(100dvh-3.5rem)]">
-      <ChatHistory current={params.get("c")} onOpen={open} />
+    <div className="flex h-full flex-col">
+      <ChatTopBar current={params.get("c")} onOpen={open} />
       <div className="min-h-0 flex-1">
         <ChatSession key={session.key} chatId={session.id} onCreated={onCreated} />
       </div>
