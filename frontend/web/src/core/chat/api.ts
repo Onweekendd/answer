@@ -76,7 +76,7 @@ export function cardsText(cards: readonly ProductCard[]): string {
       .filter(Boolean)
       .join(" · ")
   );
-  return lines.length > 0 ? `（回答上方给用户看的商品）\n${lines.join("\n")}` : "";
+  return lines.length > 0 ? `（回答下方给用户看的商品）\n${lines.join("\n")}` : "";
 }
 
 export interface ChatTransport {

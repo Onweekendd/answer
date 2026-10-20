@@ -120,22 +120,29 @@ describe("product cards", () => {
   const card = (id: number, title = `商品 ${id}`) => ({ id, title, url: `https://item.jd.com/${id}.html` });
   const step = (id: string): ChatEvent => ({ type: "tool_start", id, name: "click", args: { summary: id } });
 
-  it("keeps every card in one products part, after the steps and before the answer", () => {
-    // Arrange
+  it("keeps every card in one products part, below the answer and above the follow-ups", () => {
+    // Arrange: the cards come mid-run, the answer and the follow-ups after them
     const events: ChatEvent[] = [
       step("s1"),
       { type: "product", product: card(1) },
       step("s2"),
       { type: "product", product: card(2) },
-      { type: "text", delta: "见卡片 1" }
+      { type: "text", delta: "见下面的商品" },
+      { type: "followups", followups: ["还有别的吗"] }
     ];
 
     // Act
     const parts = run(events);
 
     // Assert: the two steps stay together, so the process box does not break in two
-    expect(parts.map((p) => (p.type === "tool-call" ? p.toolCallId : p.type))).toEqual(["s1", "s2", "data", "text"]);
-    expect(parts[2]).toEqual({ type: "data", name: "products", data: [card(1), card(2)] });
+    expect(parts.map((p) => (p.type === "tool-call" ? p.toolCallId : p.type === "data" ? p.name : p.type))).toEqual([
+      "s1",
+      "s2",
+      "text",
+      "products",
+      "followups"
+    ]);
+    expect(parts[3]).toEqual({ type: "data", name: "products", data: [card(1), card(2)] });
   });
 
   it("replaces a card sent again with the same id", () => {

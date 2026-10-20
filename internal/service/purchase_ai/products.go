@@ -136,7 +136,7 @@ func (r *agentRun) pickProduct(ctx context.Context, arguments string) (toolResul
 	}
 	r.emit(ctx, Event{Type: EventProduct, Product: &card})
 
-	text := fmt.Sprintf("已记下「%s」（%s）。用户会在回答上方看到它的商品图和价格，点一下就打开商品页。回答里提到它直接写商品名，不要自己写链接。",
+	text := fmt.Sprintf("已记下「%s」（%s）。用户会在回答下方看到它的商品图和价格，点一下就打开商品页。回答里提到它直接写商品名，不要自己写链接。",
 		card.Title, link)
 	if card.Image == "" {
 		text += "没有截到商品图。"

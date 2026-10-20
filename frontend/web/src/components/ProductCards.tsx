@@ -4,55 +4,61 @@ import { ExternalLinkIcon, ImageOffIcon } from "lucide-react";
 import { type ProductCard, PRODUCTS_PART } from "@/core/chat/mapper";
 
 /**
- * The products the agent picked, one card each. The whole card opens the product page in a new
- * tab, so the user can check the price there themselves; the agent cannot always see it (Taobao
- * hides subsidised prices from the web page).
+ * The products the answer talked about, below it, one row each: a small picture, the title, the
+ * price and the agent's note. A row opens the product page in a new tab, so the user can check
+ * the price there themselves; the agent cannot always see it (Taobao hides subsidised prices from
+ * the web page).
  */
 export function ProductCards({ cards }: { cards: readonly ProductCard[] }) {
+  if (cards.length === 0) {
+    return null;
+  }
   return (
-    <div className="my-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {cards.map((card) => (
-        <ProductCardView key={card.id} card={card} />
-      ))}
-    </div>
+    <section aria-label="提到的商品" className="mt-4 flex flex-col gap-1.5">
+      <h3 className="text-xs text-muted-foreground">提到的商品</h3>
+      <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card text-card-foreground">
+        {cards.map((card) => (
+          <li key={card.id}>
+            <ProductRow card={card} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function ProductCardView({ card }: { card: ProductCard }) {
-  const host = hostOf(card.url);
+function ProductRow({ card }: { card: ProductCard }) {
+  const where = [card.shop || hostOf(card.url), card.spec].filter(Boolean).join(" · ");
   return (
     <a
       href={card.url}
       target="_blank"
       // noreferrer: the shop need not know which chat sent the user; nofollow: the link is the agent's pick, not ours
       rel="noopener noreferrer nofollow"
-      className="group flex flex-col overflow-hidden rounded-xl border bg-card text-card-foreground transition-colors hover:border-foreground/25"
+      className="group flex items-center gap-3 p-2.5 transition-colors hover:bg-muted/60"
     >
-      <div className="relative aspect-square w-full bg-muted">
+      <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted">
         {card.image ? (
           <img src={card.image} alt="" loading="lazy" className="size-full object-cover" />
         ) : (
-          <ImageOffIcon className="absolute inset-0 m-auto size-6 text-muted-foreground" aria-hidden />
+          <ImageOffIcon className="absolute inset-0 m-auto size-5 text-muted-foreground" aria-hidden />
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-1 p-2.5">
-        <p className="line-clamp-2 text-sm leading-snug font-medium">{card.title}</p>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-xs leading-snug">
+        <p className="truncate text-sm font-medium">{card.title}</p>
         {card.price && (
-          <p className="text-sm">
-            <span className="font-semibold text-primary tabular-nums">{card.price}</span>
-            {card.priceNote && <span className="text-xs text-muted-foreground"> {card.priceNote}</span>}
+          <p className="truncate">
+            <span className="text-sm font-semibold text-primary tabular-nums">{card.price}</span>
+            {card.priceNote && <span className="text-muted-foreground"> {card.priceNote}</span>}
           </p>
         )}
-        {card.spec && <p className="text-xs text-muted-foreground">{card.spec}</p>}
-        {card.note && <p className="line-clamp-2 text-xs text-muted-foreground">{card.note}</p>}
-        <p className="mt-auto flex items-center gap-1 pt-1 text-xs text-muted-foreground">
-          <span className="truncate">{card.shop || host}</span>
-          <ExternalLinkIcon
-            className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-            aria-hidden
-          />
-        </p>
+        {card.note && <p className="truncate text-muted-foreground">{card.note}</p>}
+        {where && <p className="truncate text-muted-foreground">{where}</p>}
       </div>
+      <ExternalLinkIcon
+        className="size-3.5 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100"
+        aria-hidden
+      />
     </a>
   );
 }

@@ -58,7 +58,7 @@ type agentRun struct {
 
 	images   ImageStore    // 存商品卡片的图；nil 就不存，卡片没有图
 	products []ProductCard // 做好的商品卡片
-	shots    []Shot        // 存下来、回答里要引用的截图
+	pictures []picture     // 看过的图，编号是下标加 1；回答引用了才存（shots.go）
 	draft    *draftContext // 对话页才有：可以把对话整理成帖子草稿；nil 就没有 draft_post
 	callID   string        // 正在执行的调用的 id（tool_start 里那个），挂起的事件要带上它
 
@@ -94,8 +94,7 @@ const (
 	toolPress    = "press"
 	toolScroll   = "scroll"
 	toolProduct  = "pick_product"
-	toolCite     = "cite_screenshot"
-	toolCiteImg  = "cite_image"
+	toolImage    = "view_image"
 	toolDraft    = "draft_post"
 	toolDone     = "done"
 )
@@ -179,21 +178,19 @@ func (r *agentRun) tools(browserOn bool) (map[string]agentTool, []llm.Tool, erro
 			"页面上开着浮层（比如小红书的笔记）时只读浮层里的；填 index 读那个元素的全部文字（快照里每个元素最多显示 120 个字）。一次最多读 3000 字。", readArgs{}, r.read},
 		// 什么时候该截图（阶段 2 概念 1）；整屏和只截元素各适合看什么，见 screenshotMaxWidth 上面的实测
 		{toolShot, "截图，看页面实际长什么样，用来确认快照里看不到的东西：哪个选项被选中了、有没有弹窗挡住、页面是不是白屏或者还在加载、动作做完有没有生效。" +
-			"不填 index 截当前这一屏，适合看布局和状态，小字看不清；要读价格、优惠券、月销这类小字，填 index 只截那张商品卡片。先用快照，快照说不清楚再截图。", screenshotArgs{}, r.screenshot},
+			"不填 index 截当前这一屏，适合看布局和状态，小字看不清；要读价格、优惠券、月销这类小字，填 index 只截那张商品卡片。先用快照，快照说不清楚再截图。" +
+			"每张图都编成「图N」，能给结论作证的（价格和优惠的条件、参数表、差评）可以在回答里引用给用户看，不用再截一次。", screenshotArgs{}, r.screenshot},
 		{toolClick, "点击最新一份快照里编号为 index 的元素。", indexArgs{}, r.click},
 		{toolHover, "将鼠标悬停在最新快照里编号为 index 的元素上，不点击。用于展开下拉菜单；悬停后先 snapshot 查看新出现的选项，再 click 选项。", indexArgs{}, r.hover},
 		{toolType, "往编号为 index 的输入框里填文字。submit 为 true 时填完按回车，比如在搜索框里搜索。", typeArgs{}, r.typeText},
 		{toolPress, "按键盘上的一个键。Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快，按完先 snapshot 再继续。" +
 			"ArrowRight、ArrowLeft：把轮播图翻到下一张、上一张（比如小红书笔记的图片），页面别的地方不变，编号照样能用，翻完直接截图。", pressArgs{}, r.press},
 		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
-		{toolProduct, "记下一个值得推荐给用户的商品：用户会在回答上方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
+		{toolProduct, "记下一个值得推荐给用户的商品：用户会在回答下方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
 			"在商品详情页上不填 index；在搜索结果里填那张商品卡片的编号。只记看过价格的商品，最多 6 个。", productArgs{}, r.pickProduct},
-		{toolCite, "把对用户有用、能给你的结论作证的画面截下来，放进回答里给用户看：价格和优惠的条件、参数表、差评、价格走势、官方说明。" +
-			"填 index 只截那个元素（推荐），不填截当前这一屏。返回「图几」，回答里在用到的地方单独写一行 [图几]。最多 4 张。" +
-			"不要截登录、账号、订单、聊天这类有个人信息的地方。页面上本来就是图片的，用 cite_image 下载原图，比截图清楚。", citeArgs{}, r.citeShot},
-		{toolCiteImg, "把页面上的一张图片下载原图放进回答里给用户看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
-			"填 index 取那个元素里最大的图，不填取屏幕上最大的图。和 cite_screenshot 共用编号，返回「图几」，回答里单独写一行 [图几]。" +
-			"价格区、表格这类不是图片的，或者下载失败了，用 cite_screenshot。", citeImageArgs{}, r.citeImage},
+		{toolImage, "下载页面上一张图片的原图来看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
+			"填 index 取那个元素里最大的图，不填取屏幕上最大的图。和 screenshot 共用编号「图N」，也能在回答里引用给用户看。" +
+			"价格区、表格这类不是图片的，或者下载失败了，用 screenshot。", viewImageArgs{}, r.viewImage},
 		{toolDraft, "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
 			"调用以后这次回答就结束了：用户会在页面上修改、发布或者放弃，不用你再说什么。", draftArgs{}, r.draftPost},
 		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
@@ -446,7 +443,7 @@ func (r *agentRun) screenshot(ctx context.Context, arguments string) (toolResult
 		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
 	return toolResult{
-		Text:    fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, shot.Width, shot.Height),
+		Text:    fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, shot.Width, shot.Height) + r.numberPicture(shot),
 		Display: fmt.Sprintf("截了一张图（%d×%d）", shot.Width, shot.Height),
 		Image:   "data:" + shot.Mime + ";base64," + shot.Data,
 		URL:     shot.URL,

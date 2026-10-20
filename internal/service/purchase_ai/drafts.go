@@ -173,16 +173,13 @@ func (r *agentRun) draftPost(ctx context.Context, arguments string) (toolResult,
 // draftAnswer 是挂起以后这次的回答：草稿就在它下面
 const draftAnswer = "我把这次的讨论整理成了一篇帖子草稿，就在下面。改好以后点「发布」，帖子会发到社区请大家投票，我会先投一票。"
 
-// draftCandidates 是对话里的图加上这一次存的截图和商品图
+// draftCandidates 是对话里的图加上这一次的商品图。这一次截的图还没存（回答引用了才存），不算
 func (r *agentRun) draftCandidates() []string {
 	out := append([]string{}, r.draft.candidates...)
 	add := func(url string) {
 		if url != "" && len(out) < draftMaxCandidates && !slices.Contains(out, url) {
 			out = append(out, url)
 		}
-	}
-	for _, s := range r.shots {
-		add(s.Image)
 	}
 	for _, p := range r.products {
 		add(p.Image)

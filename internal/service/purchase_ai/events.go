@@ -169,20 +169,10 @@ func (r *agentRun) describeCall(name, arguments string) string {
 			return say
 		}
 		return "按 " + a.Key
-	case toolCite:
-		var c struct {
-			Caption string `json:"caption"`
-		}
-		_ = json.Unmarshal([]byte(arguments), &c)
-		return "截图存证：" + clipRunes(oneLine(c.Caption), labelMaxRunes)
 	case toolDraft:
 		return "整理帖子草稿"
-	case toolCiteImg:
-		var c struct {
-			Caption string `json:"caption"`
-		}
-		_ = json.Unmarshal([]byte(arguments), &c)
-		return "保存原图：" + clipRunes(oneLine(c.Caption), labelMaxRunes)
+	case toolImage:
+		return "查看原图"
 	case toolProduct:
 		var p struct {
 			Title string `json:"title"`

@@ -30,28 +30,28 @@ import (
 	"strings"
 )
 
-// 引用截图：Agent 觉得对用户有用、能给结论作证的画面（价格和优惠的条件、参数表、差评、价格走势、官方说明），
-// 存到我们的服务器，回答里写 [图N]，服务端把它换成图片。图有两种来法：
-//   - cite_screenshot：截屏，什么都能截（价格区、表格），但受屏幕缩放限制，小字会糊
-//   - cite_image：页面上本来就是图片的（商品图、详情长图、买家秀），插件下载原图，清楚得多
+// 图：Agent 截的图（screenshot）和下载的原图（view_image）都编成「图N」，模型自己看；
+// 回答里写 [图N：说明] 引用了，才存到我们的服务器给用户看。看和存证是同一张图，不用为了存证再截一次。
+// 没引用的只是 Agent 探路时看过，不存：里面可能有登录页、个人信息，也不占存储。
+//   - screenshot：截屏，什么都能截（价格区、表格），但受屏幕缩放限制，小字会糊
+//   - view_image：页面上本来就是图片的（商品图、详情长图、买家秀），插件下载原图，清楚得多
 // 和商品卡片一样，图片网址由系统给，模型只写占位：让模型抄网址，抄错一个字就是一张裂图
 
-// Shot 是存下来的一张截图
+// Shot 是回答引用了、存下来给用户看的一张图
 type Shot struct {
-	ID      int    `json:"id"`      // 图几，从 1 开始
-	Caption string `json:"caption"` // 模型写的说明，过过打码
-	Image   string `json:"image"`   // 存下来的图片网址
-	Source  string `json:"source"`  // 截图所在页面的网址，清洗过；广告跳转之类的没有
+	ID     int    `json:"id"`     // 图几，从 1 开始，就是 Agent 看到的编号
+	Image  string `json:"image"`  // 存下来的图片网址
+	Source string `json:"source"` // 图所在页面的网址，清洗过；广告跳转之类的没有
 }
 
-type citeArgs struct {
-	Index   *int   `json:"index,omitempty" description:"只截这个编号的元素（推荐）：价格区、参数表、一条评价、价格走势图；不填就截当前这一屏"`
-	Caption string `json:"caption" description:"一句话说明这张图证明了什么，比如「京东自营 1849 元，含 200 元券后价」"`
+// picture 是这次任务里看过的一张图，还没存
+type picture struct {
+	shot   screenshotData
+	source string
 }
 
-type citeImageArgs struct {
-	Index   *int   `json:"index,omitempty" description:"图片所在元素的编号，取这个元素里最大的那张图；不填取屏幕上最大的图"`
-	Caption string `json:"caption" description:"一句话说明这张图证明了什么，比如「详情页的参数图：屏幕 11 英寸，重 460 克」"`
+type viewImageArgs struct {
+	Index *int `json:"index,omitempty" description:"图片所在元素的编号，取这个元素里最大的那张图；不填取屏幕上最大的图"`
 }
 
 // imageData 是插件 image 命令的结果：下载下来、转成 jpeg 的原图
@@ -61,80 +61,77 @@ type imageData struct {
 }
 
 const (
-	maxShots        = 4    // 一次回答最多几张图：再多就喧宾夺主了
-	shotMaxWidth    = 1200 // 给用户看的图，比给模型看的窄一点，手机上也够清楚
-	shotQuality     = 80
+	maxShots        = 4    // 一次回答最多给用户看几张图：再多就喧宾夺主了
+	maxPictures     = 40   // 一次任务最多编几张图的号；图在内存里，等回答引用
 	imageMaxWidth   = 1600 // 下载的原图：详情长图里的字要看清，宽一点
 	imageQuality    = 85
 	shotCaptionRune = 60
 )
 
-// citeShot 截一张图存下来，告诉模型它是「图几」
-func (r *agentRun) citeShot(ctx context.Context, arguments string) (toolResult, error) {
-	var args citeArgs
-	if res := decodeArgs(arguments, &args, `{"caption": "..."} 或 {"index": 3, "caption": "..."}`); res != nil {
-		return *res, nil
-	}
-	return r.keepPicture(ctx, "screenshot", args.Index, args.Caption, shotMaxWidth, shotQuality, "截图存证：")
+// citeHint 告诉模型这张图的编号和怎么引用
+func citeHint(id int) string {
+	return fmt.Sprintf("这是「图%d」：能给结论作证、要给用户看的话，在回答里用到它的地方单独写一行 [图%d：一句话说明它证明了什么]；"+
+		"没用的、截错了的不要引用。", id, id)
 }
 
-// citeImage 下载页面上的原图存下来，告诉模型它是「图几」
-func (r *agentRun) citeImage(ctx context.Context, arguments string) (toolResult, error) {
-	var args citeImageArgs
-	if res := decodeArgs(arguments, &args, `{"caption": "..."} 或 {"index": 3, "caption": "..."}`); res != nil {
-		return *res, nil
+// numberPicture 给看过的图编号，返回告诉模型的那句话。空白的图和编满了的不编号
+func (r *agentRun) numberPicture(shot screenshotData) string {
+	if blank, err := looksBlank(shot.Data); err == nil && blank {
+		return "这张几乎是一片空白：图可能还没加载出来，或者轮播已经切走了，没有编号。"
 	}
-	return r.keepPicture(ctx, "image", args.Index, args.Caption, imageMaxWidth, imageQuality, "保存原图：")
+	if len(r.pictures) >= maxPictures {
+		return fmt.Sprintf("这次已经看了 %d 张图，这张不编号了。", maxPictures)
+	}
+	source, _ := cleanProductURL(shot.URL)
+	r.pictures = append(r.pictures, picture{shot: shot, source: source})
+	return citeHint(len(r.pictures))
 }
 
-// keepPicture 让插件截图（cmd 是 screenshot）或者下载原图（image），存到服务器，记成下一张图。
-// 图片也给模型看一眼，确认是对的
-func (r *agentRun) keepPicture(ctx context.Context, cmd string, index *int, caption string,
-	maxWidth, quality int, display string) (toolResult, error) {
-	if oneLine(caption) == "" {
-		return toolResult{Failed: true, Text: "参数无效：caption 不能为空，写一句这张图证明了什么。"}, nil
-	}
-	if len(r.shots) >= maxShots {
-		return toolResult{Failed: true, Text: fmt.Sprintf("已经存了 %d 张图，不能再加。回答里用已有的就行。", maxShots)}, nil
+// viewImage 下载页面上的原图给模型看，和截图一起编号
+func (r *agentRun) viewImage(ctx context.Context, arguments string) (toolResult, error) {
+	var args viewImageArgs
+	if res := decodeArgs(arguments, &args, `{} 或 {"index": 3}`); res != nil {
+		return *res, nil
 	}
 	if res := r.requireTab(); res != nil {
 		return *res, nil
 	}
-	req := map[string]any{"maxWidth": maxWidth, "quality": quality}
-	if index != nil {
-		req["index"] = *index
+	req := map[string]any{"maxWidth": imageMaxWidth, "quality": imageQuality}
+	if args.Index != nil {
+		req["index"] = *args.Index
 	}
-	var shot imageData
-	if res, err := r.call(ctx, r.tabID, cmd, req, &shot); res != nil {
+	var img imageData
+	if res, err := r.call(ctx, r.tabID, "image", req, &img); res != nil {
 		return *res, err
 	}
-	if shot.Data == "" || shot.Mime == "" {
+	if img.Data == "" || img.Mime == "" {
 		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
-	if blank, err := looksBlank(shot.Data); err == nil && blank {
-		return toolResult{Failed: true, Text: "截出来几乎是一片空白：图可能还没加载出来，或者轮播已经切走了。" +
-			"页面上本来是图片的（轮播图、商品图）用 cite_image 取原图；不是图片的，先 screenshot 看一眼再截。"}, nil
-	}
-	image := r.saveImage(ctx, &shot.screenshotData)
-	if image == "" {
-		return toolResult{Failed: true, Text: "图片没存成，这张图用不了。回答里照常用文字说明。"}, nil
-	}
-
-	caption = oneLine(caption)
-	if clipped := clipRunes(caption, shotCaptionRune); clipped != caption {
-		caption = clipped + "…"
-	}
-	source, _ := cleanProductURL(shot.URL)
-	s := Shot{ID: len(r.shots) + 1, Caption: r.view(caption), Image: image, Source: source}
-	r.shots = append(r.shots, s)
-
 	return toolResult{
-		Text: fmt.Sprintf("已存为「图%d」（%d×%d），图片在下一条消息里，确认截对了。"+
-			"回答里在用到它的地方单独写一行 [图%d]，用户会在那里看到这张图；截错了就不要引用。", s.ID, shot.Width, shot.Height, s.ID),
-		Display: display + s.Caption,
-		Image:   "data:" + shot.Mime + ";base64," + shot.Data,
-		URL:     shot.URL,
+		Text:    fmt.Sprintf("已下载原图（%d×%d），图片在下一条消息里。", img.Width, img.Height) + r.numberPicture(img.screenshotData),
+		Display: fmt.Sprintf("查看原图（%d×%d）", img.Width, img.Height),
+		Image:   "data:" + img.Mime + ";base64," + img.Data,
+		URL:     img.URL,
 	}, nil
+}
+
+// citedShots 把回答引用了的图存到服务器，按引用的顺序，最多 maxShots 张。
+// 存不成的就没有：withShots 会把它的引用去掉，回答照常是文字
+func (r *agentRun) citedShots(ctx context.Context, text string) []Shot {
+	var shots []Shot
+	seen := map[int]bool{}
+	for _, m := range shotRef.FindAllStringSubmatch(text, -1) {
+		id, _ := strconv.Atoi(m[1])
+		if id < 1 || id > len(r.pictures) || seen[id] || len(shots) == maxShots {
+			continue
+		}
+		seen[id] = true
+		pic := r.pictures[id-1]
+		if image := r.saveImage(ctx, &pic.shot); image != "" {
+			shots = append(shots, Shot{ID: id, Image: image, Source: pic.source})
+		}
+	}
+	return shots
 }
 
 // blankShare 是一张图里同一种颜色占多少才算空白。真的截图里，大片留白的价格区也就七八成
@@ -170,49 +167,53 @@ func looksBlank(data string) (bool, error) {
 	return float64(most) >= blankShare*grid*grid, nil
 }
 
-// shotRef 是回答里的 [图N]，全角的括号、【】、中间有空格也算
-var shotRef = regexp.MustCompile(`[\[［【]\s*图\s*(\d+)\s*[\]］】]`)
+// shotRef 是回答里的 [图N] 或 [图N：说明]：全角的括号、【】、中间有空格也算
+var shotRef = regexp.MustCompile(`[\[［【]\s*图\s*(\d+)\s*(?:[：:]\s*([^\]］】\n]*?))?\s*[\]］】]`)
 
 var blankLines = regexp.MustCompile(`\n{3,}`)
 
-// withShots 把回答里的 [图N] 换成图片和说明。没引用的图放在最后，存了就给用户看；
-// 不存在的编号去掉。text 要先过打码再传进来：图片网址里的数字不能被当成手机号
+// withShots 把回答里的 [图N] 换成图片和说明，shots 是存下来的那几张（citedShots）。
+// 没存下来的编号去掉：没引用的图本来就不给用户看。text 要先过打码再传进来：说明在 text 里，
+// 图片网址里的数字也不能被当成手机号
 func withShots(text string, shots []Shot) string {
-	if len(shots) == 0 && !shotRef.MatchString(text) {
+	if !shotRef.MatchString(text) {
 		return text
+	}
+	byID := make(map[int]Shot, len(shots))
+	for _, s := range shots {
+		byID[s.ID] = s
 	}
 	used := make(map[int]bool, len(shots))
 	text = shotRef.ReplaceAllStringFunc(text, func(ref string) string {
-		n, _ := strconv.Atoi(shotRef.FindStringSubmatch(ref)[1])
-		if n < 1 || n > len(shots) {
+		m := shotRef.FindStringSubmatch(ref)
+		n, _ := strconv.Atoi(m[1])
+		s, ok := byID[n]
+		if !ok {
 			return ""
 		}
 		if used[n] {
 			return "图" + strconv.Itoa(n) // 第二次提到同一张图就只写文字
 		}
 		used[n] = true
-		return "\n\n" + shotMarkdown(shots[n-1]) + "\n\n"
+		return "\n\n" + shotMarkdown(s, m[2]) + "\n\n"
 	})
-	var rest []string
-	for _, s := range shots {
-		if !used[s.ID] {
-			rest = append(rest, shotMarkdown(s))
-		}
-	}
-	if len(rest) > 0 {
-		text = strings.TrimRight(text, "\n") + "\n\n**截图**\n\n" + strings.Join(rest, "\n\n")
-	}
 	return strings.TrimSpace(blankLines.ReplaceAllString(text, "\n\n"))
 }
 
 // shotMarkdown 是一张图：图片，下面一行说明和来源
-func shotMarkdown(s Shot) string {
-	caption := markdownText(s.Caption)
-	line := fmt.Sprintf("*图%d：%s*", s.ID, caption)
-	if s.Source != "" {
-		line = fmt.Sprintf("*图%d：%s（[来源](%s)）*", s.ID, caption, markdownURL(s.Source))
+func shotMarkdown(s Shot, caption string) string {
+	caption = oneLine(caption)
+	if clipped := clipRunes(caption, shotCaptionRune); clipped != caption {
+		caption = clipped + "…"
 	}
-	return fmt.Sprintf("![图%d](%s)\n%s", s.ID, markdownURL(s.Image), line)
+	label := fmt.Sprintf("图%d", s.ID)
+	if caption != "" {
+		label += "：" + markdownText(caption)
+	}
+	if s.Source != "" {
+		label += fmt.Sprintf("（[来源](%s)）", markdownURL(s.Source))
+	}
+	return fmt.Sprintf("![图%d](%s)\n*%s*", s.ID, markdownURL(s.Image), label)
 }
 
 // markdownText 去掉会改变 Markdown 结构的字符：说明是模型写的

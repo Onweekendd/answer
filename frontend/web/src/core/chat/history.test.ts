@@ -121,4 +121,21 @@ describe("toStored / fromStored", () => {
     expect(attachment).not.toHaveProperty("file");
     expect(attachment?.content).toEqual([{ type: "image", image: "http://site/uploads/post/a.jpg" }]);
   });
+
+  it("moves the products of a message saved in the old order below its answer", () => {
+    // Arrange: before 2026-10-20 the cards sat between the steps and the answer
+    const products = { type: "data", name: "products", data: [] };
+    const stored = {
+      id: "a1",
+      role: "assistant",
+      createdAt: "2026-10-19T00:00:00Z",
+      content: [products, { type: "text", text: "答" }]
+    };
+
+    // Act
+    const back = fromStored(stored);
+
+    // Assert
+    expect(back.content).toEqual([{ type: "text", text: "答" }, products]);
+  });
 });

@@ -39,12 +39,12 @@ func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Messa
 	return r.run(ctx, messages, browserOn)
 }
 
-// run 跑完一次任务，结果带上做好的商品卡片。循环里有好几个出口，卡片在这里统一带上
+// run 跑完一次任务，结果带上做好的商品卡片和回答引用的图。循环里有好几个出口，在这里统一带上
 func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
 	res, err := r.loop(ctx, messages, browserOn)
 	if res != nil {
 		res.Products = r.products
-		res.Shots = r.shots
+		res.Shots = r.citedShots(ctx, res.Text)
 	}
 	return res, err
 }

@@ -385,7 +385,7 @@ func Test_run(t *testing.T) {
 		for _, tool := range model.reqs[0].Tools {
 			names = append(names, tool.Name)
 		}
-		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolProduct, toolCite, toolCiteImg, toolDone}, names)
+		require.Equal(t, []string{toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll, toolProduct, toolImage, toolDone}, names)
 	})
 
 	t.Run("截图放在这一轮全部工具回复之后的一条用户消息里，截图不改变页面，同一轮后面的调用照常执行", func(t *testing.T) {

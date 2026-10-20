@@ -1,6 +1,7 @@
 import type { ExportedMessageRepositoryItem, ThreadHistoryAdapter, ThreadMessage } from "@assistant-ui/react";
 
 import type { Endpoints } from "../api/endpoints";
+import { orderParts } from "./mapper";
 
 /** The endpoints the history needs; the tests pass a fake. */
 export type ChatHistoryApi = Pick<Endpoints, "chatGet" | "chatCreate" | "chatSaveMessage">;
@@ -85,5 +86,7 @@ export function toStored(message: ThreadMessage): unknown {
 /** Back from JSON: createdAt was a Date and comes back as a string. */
 export function fromStored(stored: unknown): ThreadMessage {
   const m = stored as ThreadMessage & { createdAt: string | Date };
-  return { ...m, createdAt: new Date(m.createdAt) } as ThreadMessage;
+  // messages saved before the products moved below the answer still have them above it
+  const content = Array.isArray(m.content) ? orderParts(m.content) : m.content;
+  return { ...m, content, createdAt: new Date(m.createdAt) } as ThreadMessage;
 }

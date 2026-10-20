@@ -67,7 +67,7 @@ export class ChatStreamError extends Error {
 
 /** Folds one event into the message so far; never mutates `parts`. */
 export function applyEvent(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
-  return placeDrafts(placeProducts(fold(parts, event)));
+  return orderParts(fold(parts, event));
 }
 
 function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
@@ -129,31 +129,30 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
 }
 
 /**
- * Keeps the products part right after the last thinking or step, so it sits between the process
- * box and the answer. Steps that come after a card must stay next to the steps before it, or the
- * folded process box would break in two around the cards.
+ * A message reads top to bottom: the process box and the answer, then the products the answer
+ * talked about, then a draft waiting for the user, then what to ask next. Cards arrive mid-run,
+ * before the answer, so every fold puts the parts back in this order; the sort is stable, so the
+ * steps and the answer keep theirs. Stored messages from before this order get it on load.
  */
-function placeProducts(parts: ContentPart[]): ContentPart[] {
-  const products = parts.find(isProducts);
-  if (!products) {
-    return parts;
-  }
-  const rest = parts.filter((p) => p !== products);
-  const at = rest.findLastIndex((p) => p.type === "reasoning" || p.type === "tool-call") + 1;
-  return [...rest.slice(0, at), products, ...rest.slice(at)];
+export function orderParts<P extends { type: string }>(parts: readonly P[]): P[] {
+  const rank = (p: P) => {
+    const part = p as unknown as ContentPart;
+    if (isProducts(part)) {
+      return 1;
+    }
+    if (part.type === "tool-call" && part.toolName === PUBLISH_TOOL) {
+      return 2;
+    }
+    if (part.type === "data" && part.name === FOLLOWUPS_PART) {
+      return 3;
+    }
+    return 0;
+  };
+  return [...parts].sort((a, b) => rank(a) - rank(b));
 }
 
 function isProducts(p: ContentPart): p is Extract<ContentPart, { name: typeof PRODUCTS_PART }> {
   return p.type === "data" && p.name === PRODUCTS_PART;
-}
-
-/** A draft waits below the answer, the last thing in the message. */
-function placeDrafts(parts: ContentPart[]): ContentPart[] {
-  const isDraft = (p: ContentPart) => p.type === "tool-call" && p.toolName === PUBLISH_TOOL;
-  if (!parts.some(isDraft)) {
-    return parts;
-  }
-  return [...parts.filter((p) => !isDraft(p)), ...parts.filter(isDraft)];
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

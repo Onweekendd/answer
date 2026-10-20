@@ -62,7 +62,7 @@ describe("toChatMessages", () => {
       {
         role: "assistant",
         text:
-          "（回答上方给用户看的商品）\n" +
+          "（回答下方给用户看的商品）\n" +
           "- 羽绒被 · 无印良品旗舰店 · ¥588（补贴后 ¥4??） · https://detail.tmall.com/item.htm?id=1\n" +
           "- 宜家被子 · https://www.ikea.cn/cn/zh/p/x\n" +
           "**买** 选羽绒被",
