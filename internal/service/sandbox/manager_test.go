@@ -30,14 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// skipAcquire 写完 Acquire 以后删掉
-func skipAcquire(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 Manager.Acquire 删掉这一行")
-}
-
 func TestAcquire_TemporaryChat(t *testing.T) {
-	skipAcquire(t)
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
 	m := NewManager(cube, store)
@@ -54,7 +47,6 @@ func TestAcquire_TemporaryChat(t *testing.T) {
 }
 
 func TestAcquire_FirstUseCreatesAndRecords(t *testing.T) {
-	skipAcquire(t)
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
 	store.addChat(7, "u1", "")
@@ -71,7 +63,6 @@ func TestAcquire_FirstUseCreatesAndRecords(t *testing.T) {
 }
 
 func TestAcquire_ReusesRecordedSandbox(t *testing.T) {
-	skipAcquire(t)
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
 	store.addChat(7, "u1", "")
@@ -90,7 +81,6 @@ func TestAcquire_ReusesRecordedSandbox(t *testing.T) {
 }
 
 func TestAcquire_GoneSandboxIsRecreatedWithReset(t *testing.T) {
-	skipAcquire(t)
 	// Arrange：记着 sb-1，但它已经没了
 	cube, store := newFakeCube(), newFakeStore()
 	store.addChat(7, "u1", "")
@@ -110,7 +100,6 @@ func TestAcquire_GoneSandboxIsRecreatedWithReset(t *testing.T) {
 }
 
 func TestAcquire_OtherConnectErrorIsReturned(t *testing.T) {
-	skipAcquire(t)
 	// Arrange：Cube 本身出了问题（不是沙箱没了），不能当成"没了"去重建一个
 	cube, store := newFakeCube(), newFakeStore()
 	store.addChat(7, "u1", "sb-x")
@@ -127,7 +116,6 @@ func TestAcquire_OtherConnectErrorIsReturned(t *testing.T) {
 }
 
 func TestAcquire_SomeoneElsesChat(t *testing.T) {
-	skipAcquire(t)
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
 	store.addChat(7, "u1", "")
@@ -142,7 +130,6 @@ func TestAcquire_SomeoneElsesChat(t *testing.T) {
 }
 
 func TestAcquire_ConcurrentCallsCreateOneSandbox(t *testing.T) {
-	skipAcquire(t)
 	// Arrange：建一个要 50ms，足够让 10 个请求都挤进"查表"和"记下来"之间
 	cube, store := newFakeCube(), newFakeStore()
 	cube.createDelay = 50 * time.Millisecond
@@ -174,7 +161,6 @@ func TestAcquire_ConcurrentCallsCreateOneSandbox(t *testing.T) {
 }
 
 func TestAcquire_DifferentChatsDoNotWaitForEachOther(t *testing.T) {
-	skipAcquire(t)
 	// Arrange：锁要按对话分开，一把全局锁会让 10 个对话排着队建
 	cube, store := newFakeCube(), newFakeStore()
 	cube.createDelay = 50 * time.Millisecond
@@ -199,7 +185,6 @@ func TestAcquire_DifferentChatsDoNotWaitForEachOther(t *testing.T) {
 }
 
 func TestAcquire_LosingTheSwapUsesTheWinnersSandbox(t *testing.T) {
-	skipAcquire(t)
 	// Arrange：另一个后端实例在我们记下之前，抢先建好并记下了 sb-other
 	cube, store := newFakeCube(), newFakeStore()
 	store.addChat(7, "u1", "")
@@ -216,4 +201,19 @@ func TestAcquire_LosingTheSwapUsesTheWinnersSandbox(t *testing.T) {
 	assert.Equal(t, "sb-other", box.ID())
 	assert.True(t, cube.boxes["sb-1"].killed, "自己建的那个不销毁就成了孤儿")
 	assert.Equal(t, "sb-other", store.sandboxOf(7))
+}
+
+func TestAcquire_UnrecordedSandboxIsKilled(t *testing.T) {
+	// Arrange：建好了，记的时候数据库出错
+	cube, store := newFakeCube(), newFakeStore()
+	store.addChat(7, "u1", "")
+	store.swapErr = errors.New("database is down")
+	m := NewManager(cube, store)
+
+	// Act
+	_, _, err := m.Acquire(context.Background(), 7, "u1")
+
+	// Assert：没人记得它属于谁，不销毁就成了孤儿
+	require.Error(t, err)
+	assert.True(t, cube.boxes["sb-1"].killed)
 }

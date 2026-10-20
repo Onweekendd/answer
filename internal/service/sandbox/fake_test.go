@@ -127,6 +127,7 @@ type fakeStore struct {
 	box   map[int64]string
 	// beforeSwap 在比较之前调用一次：模拟另一个后端实例在这时抢先记了一个
 	beforeSwap func(chatID int64)
+	swapErr    error // 不为 nil 时 SwapSandbox 回它：数据库出错
 }
 
 func newFakeStore() *fakeStore {
@@ -148,6 +149,9 @@ func (s *fakeStore) SandboxOf(_ context.Context, chatID int64, userID string) (s
 }
 
 func (s *fakeStore) SwapSandbox(_ context.Context, chatID int64, old, newID string) (bool, error) {
+	if s.swapErr != nil {
+		return false, s.swapErr
+	}
 	if hook := s.beforeSwap; hook != nil {
 		s.beforeSwap = nil
 		hook(chatID)
