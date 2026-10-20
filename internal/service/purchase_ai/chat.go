@@ -106,7 +106,15 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		}
 		// 回答是模型写的，也可能复述页面内容，和思考一样过一遍打码和屏蔽词
 		// 图片在打码之后放进去：网址里的数字不能被当成手机号
-		send(Event{Type: EventText, Delta: withShots(r.view(fixNumberRanges(res.Text)), res.Shots)})
+		// 后续建议先切出来单独发：页面上是按钮，不是回答的一部分
+		answer, followups := splitFollowups(res.Text)
+		send(Event{Type: EventText, Delta: withShots(r.view(fixNumberRanges(answer)), res.Shots)})
+		if len(followups) > 0 {
+			for i, f := range followups {
+				followups[i] = r.view(f)
+			}
+			send(Event{Type: EventFollowups, Followups: followups})
+		}
 		send(Event{Type: EventDone})
 	}()
 	return out

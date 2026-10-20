@@ -2,6 +2,7 @@ import { type ChatModelAdapter, type ChatModelRunResult, useLocalRuntime } from 
 import { useEffect, useRef, useState } from "react";
 
 import { chatEvents, toChatMessages } from "@/core/chat/api";
+import { followupSuggestions } from "@/core/chat/followups";
 import { createChatHistory } from "@/core/chat/history";
 import { mockReply } from "@/core/chat/mock";
 import { lastUserText } from "@/core/chat/prompt";
@@ -50,5 +51,5 @@ export function useChatRuntime(chatId: string | null, onCreated: (id: string) =>
   const [history] = useState(() =>
     useMock ? undefined : createChatHistory({ chatId, api, onCreated: (id) => onCreatedRef.current(id) })
   );
-  return useLocalRuntime(adapter, { adapters: { attachments, history } });
+  return useLocalRuntime(adapter, { adapters: { attachments, history, suggestion: followupSuggestions } });
 }

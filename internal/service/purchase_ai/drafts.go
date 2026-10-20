@@ -72,7 +72,7 @@ type DraftInput struct {
 
 type draftArgs struct {
 	Title    string   `json:"title" description:"帖子标题，6 到 60 个字：要买什么、在纠结什么，比如「iPad Air M3 现在入手还是等双 11？」"`
-	Content  string   `json:"content" description:"帖子正文，Markdown，写给社区里帮忙投票的人看：用户的需求和纠结点、查到的价格和出处、几个选择各自的好坏。不要写买不买的结论，留给大家投"`
+	Content  string   `json:"content" description:"帖子正文，Markdown，写给社区里帮忙投票的人看：用户的需求和纠结点、查到的价格和出处、几个选择各自的好坏。不要写买不买的结论，留给大家投。用户的用途、预算这些只写对话里用户说过的，没说的不要编"`
 	Images   []string `json:"images" description:"配图的网址，1 到 5 张，第一张是封面。只能用这段对话里出现过的图：用户上传的截图、回答里的图（[图N] 换成的那些）、商品卡片的图"`
 	Price    float64  `json:"price,omitempty" description:"商品价格（元），用查到的到手价；不知道就填 0"`
 	Link     string   `json:"link,omitempty" description:"商品链接，只用商品卡片里的链接；没有就不填"`

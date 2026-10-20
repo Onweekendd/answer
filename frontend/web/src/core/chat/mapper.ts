@@ -15,6 +15,8 @@ export type ChatEvent =
   | { type: "product"; product: ProductCard }
   /** A call the agent stopped at for the user to decide: the post draft, in `input`. */
   | { type: "tool_suspend"; id: string; name: string; input: PostDraft }
+  /** What the user may want to say next, at most three; shown as buttons that send it. */
+  | { type: "followups"; followups: string[] }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -37,6 +39,9 @@ export interface ProductCard {
 /** The name of the one data part that holds all the cards of a message. */
 export const PRODUCTS_PART = "products";
 
+/** The name of the data part that holds the answer's follow-up suggestions; nothing renders it in the message. */
+export const FOLLOWUPS_PART = "followups";
+
 /** The shapes of assistant-ui's message content parts that we produce. */
 export type ContentPart =
   | { type: "text"; text: string }
@@ -49,7 +54,8 @@ export type ContentPart =
       argsText: string;
       result?: unknown;
     }
-  | { type: "data"; name: typeof PRODUCTS_PART; data: ProductCard[] };
+  | { type: "data"; name: typeof PRODUCTS_PART; data: ProductCard[] }
+  | { type: "data"; name: typeof FOLLOWUPS_PART; data: string[] };
 
 /** The server reported a failure mid-stream. */
 export class ChatStreamError extends Error {
@@ -93,7 +99,7 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
       );
     case "product": {
       // all the cards live in one part; a card sent again with the same id replaces the old one
-      const old = parts.find((p) => p.type === "data");
+      const old = parts.find(isProducts);
       const cards = [...(old?.data ?? []).filter((c) => c.id !== event.product.id), event.product];
       cards.sort((a, b) => a.id - b.id);
       return [...parts.filter((p) => p !== old), { type: "data", name: PRODUCTS_PART, data: cards }];
@@ -110,6 +116,11 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
           argsText: JSON.stringify(event.input)
         }
       ];
+    case "followups":
+      return [
+        ...parts.filter((p) => !(p.type === "data" && p.name === FOLLOWUPS_PART)),
+        { type: "data", name: FOLLOWUPS_PART, data: event.followups }
+      ];
     case "error":
       throw new ChatStreamError(event.message);
     case "done":
@@ -123,13 +134,17 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
  * folded process box would break in two around the cards.
  */
 function placeProducts(parts: ContentPart[]): ContentPart[] {
-  const products = parts.find((p) => p.type === "data");
+  const products = parts.find(isProducts);
   if (!products) {
     return parts;
   }
   const rest = parts.filter((p) => p !== products);
   const at = rest.findLastIndex((p) => p.type === "reasoning" || p.type === "tool-call") + 1;
   return [...rest.slice(0, at), products, ...rest.slice(at)];
+}
+
+function isProducts(p: ContentPart): p is Extract<ContentPart, { name: typeof PRODUCTS_PART }> {
+  return p.type === "data" && p.name === PRODUCTS_PART;
 }
 
 /** A draft waits below the answer, the last thing in the message. */
@@ -186,6 +201,12 @@ export function parseEvent(data: string): ChatEvent | null {
       return typeof raw.id === "string" && typeof raw.name === "string" && isPostDraft(raw.input)
         ? { type: "tool_suspend", id: raw.id, name: raw.name, input: raw.input }
         : null;
+    case "followups": {
+      const followups = Array.isArray(raw.followups)
+        ? raw.followups.filter((f): f is string => typeof f === "string" && f.trim() !== "").slice(0, 3)
+        : [];
+      return followups.length > 0 ? { type: "followups", followups } : null;
+    }
     case "error":
       return { type: "error", message: typeof raw.message === "string" ? raw.message : "出错了" };
     case "done":

@@ -148,7 +148,9 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 		log.Infof("purchase ai: finished early (%s) after %d tool calls, questionID: %s", result.Finish, len(result.Steps), questionID)
 	}
 
-	originalText := fixNumberRanges(result.Text)
+	// 帖子分析不要后续建议（它是一条评论，没人点按钮），模型万一写了也切掉
+	answer, _ := splitFollowups(result.Text)
+	originalText := fixNumberRanges(answer)
 
 	if strings.TrimSpace(originalText) == "" {
 		return errors.InternalServer(reason.AIRequestFailed).

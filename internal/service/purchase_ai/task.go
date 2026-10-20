@@ -62,7 +62,9 @@ func RunTask(ctx context.Context, client llm.Client, b Browser, task string) (*T
 		return nil, err
 	}
 
-	out := &TaskResult{Text: res.Text, Success: res.Success, Finish: string(res.Finish), Products: res.Products}
+	// 判卷看的是回答本身，后续建议是给页面的按钮
+	answer, _ := splitFollowups(res.Text)
+	out := &TaskResult{Text: answer, Success: res.Success, Finish: string(res.Finish), Products: res.Products}
 	for _, s := range res.Steps {
 		out.Steps = append(out.Steps, TaskStep(s))
 	}

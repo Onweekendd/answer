@@ -41,6 +41,8 @@ const (
 	EventProduct   = "product" // 一张商品卡片，见 products.go
 	// EventToolSuspend 是一个要用户拍板的调用：Agent 停在这里，把 input 交给页面，见 drafts.go
 	EventToolSuspend = "tool_suspend"
+	// EventFollowups 是回答后面的几句后续建议，页面上点一下就发出去，见 followups.go
+	EventFollowups = "followups"
 	EventError       = "error"
 	EventDone        = "done"
 )
@@ -56,6 +58,8 @@ type Event struct {
 	Message string       `json:"message,omitempty"` // error：给用户看的一句话
 	Product *ProductCard `json:"product,omitempty"` // product
 	Input   *DraftInput  `json:"input,omitempty"`   // tool_suspend：交给用户确认的内容（tool_input）
+	// followups：用户接下来可能会说的话，最多 3 句
+	Followups []string `json:"followups,omitempty"`
 }
 
 // ToolView 是一次工具调用给用户看的样子。只有这两个字段：给模型看的 Text 里有页面内容，

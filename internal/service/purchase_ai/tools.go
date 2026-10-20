@@ -155,7 +155,7 @@ type scrollArgs struct {
 }
 
 type doneArgs struct {
-	Text    string `json:"text" description:"给用户的完整回答，用 Markdown"`
+	Text    string `json:"text" description:"给用户的完整回答，用 Markdown；有后续建议时，<followups> 块写在 text 的最后"`
 	Success bool   `json:"success" description:"用户要求的事有没有做成。没查到、被登录页或验证码挡住时填 false"`
 }
 
