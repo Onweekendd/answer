@@ -454,6 +454,24 @@ it("商品卡片：不填 index 用当前网址和屏幕上最大的图", async 
   });
 });
 
+it("商品卡片：图有地址时一起带回，插件先下载原图", async () => {
+  // Arrange
+  vi.stubGlobal("innerWidth", 1280);
+  vi.stubGlobal("innerHeight", 720);
+  document.body.innerHTML = '<a href="https://item.example.com/1"><img id="main" src="/img/beef_800.jpg">牛排</a>';
+  document.getElementById("main")!.getBoundingClientRect = square(20, 30, 240);
+  await snapshot();
+
+  // Act
+  const res = await request({ type: "productArea", index: 0 });
+
+  // Assert
+  expect(res).toMatchObject({
+    ok: true,
+    data: { url: "https://item.example.com/1", src: new URL("/img/beef_800.jpg", location.href).href }
+  });
+});
+
 it("商品卡片：没有够大的图时 image 为 null", async () => {
   // Arrange
   document.body.innerHTML = '<a href="https://item.example.com/1">无图商品</a>';

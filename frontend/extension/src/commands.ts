@@ -97,14 +97,17 @@ async function executeCommand(cmd: Command): Promise<unknown> {
       return withDebugger(cmd.tabId, async (target) => {
         await bringToFront(cmd.tabId);
         const found = (await sendToTab(cmd.tabId, { type: "productArea", index: cmd.args.index })) as ProductArea;
-        const image = found.image
-          ? await cdpScreenshot(
-              target,
-              found.image,
-              cmd.args.maxWidth ?? DEFAULT_PRODUCT_WIDTH,
-              cmd.args.quality ?? DEFAULT_SHOT_QUALITY
+        const maxWidth = cmd.args.maxWidth ?? DEFAULT_PRODUCT_WIDTH;
+        const quality = cmd.args.quality ?? DEFAULT_SHOT_QUALITY;
+        // 先用原图：截图受屏幕缩放限制，小图放进卡片是糊的；原图拿不到（防盗链、格式不对）再截
+        let image = found.src
+          ? await downloadImage(found.src, maxWidth, quality, { fromPage: (src) => cdpResource(target, src) }).catch(
+              () => null
             )
           : null;
+        if (!image && found.image) {
+          image = await cdpScreenshot(target, found.image, maxWidth, quality);
+        }
         const tab = await chrome.tabs.get(cmd.tabId);
         return { url: found.url, title: tab.title ?? "", image };
       });

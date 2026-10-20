@@ -594,7 +594,12 @@ async function productArea(index?: number): Promise<ProductArea> {
     throw new CommandError("EXEC_FAILED", "这个元素里没有链接");
   }
   const image = largestImage(el ?? document.body);
-  return { url, image: image ? await wholeImageArea(image) : null };
+  if (!image) {
+    return { url, image: null };
+  }
+  const area = await wholeImageArea(image);
+  const src = image instanceof HTMLImageElement ? largestSource(image) : null;
+  return src ? { url, image: area, src } : { url, image: area };
 }
 
 // imageSource 找一张图的原始地址，插件拿去下载原图。不填 index 是屏幕上最大的图。
@@ -627,6 +632,9 @@ export function largestSource(img: HTMLImageElement): string | null {
       best = new URL(url, location.href).href;
       bestW = w;
     }
+  }
+  if (!best) {
+    return null; // 空地址会被解析成页面自己的网址
   }
   try {
     const url = new URL(best, location.href);

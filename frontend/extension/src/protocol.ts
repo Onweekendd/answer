@@ -126,6 +126,8 @@ export interface ShotArea {
 export interface ProductArea {
   url: string;
   image: ShotArea | null;
+  // 商品图的原始地址：有就先用原图，截图只是退路。图是画出来的、内嵌的就没有
+  src?: string;
 }
 
 // 页面上一张图的原始地址和它本身的尺寸（不是显示出来的尺寸）
