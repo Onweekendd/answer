@@ -23,6 +23,8 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -199,5 +201,29 @@ var errNoSuchEntry = errors.New("purchase ai: no such entry in the chat")
 //
 // 思考题：为什么第 2 步要先建 map，而不是每走一步都在 entries 里从头找一遍？一个聊了很久的对话有几千条
 func pathTo(entries []Entry, leafID string) ([]Entry, error) {
-	return nil, errors.New("TODO: pathTo")
+	entryMap := make(map[string]Entry, len(entries))
+	for _, e := range entries {
+		entryMap[e.ID] = e
+	}
+
+	res := make([]Entry, 0)
+	seen := map[string]bool{}
+
+	// 空 id 是走到了根；不为空却查不到、或者又走回走过的条目，都是日志有问题
+	for id := leafID; id != ""; {
+		e, ok := entryMap[id]
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", errNoSuchEntry, id)
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("purchase ai: entry %s is its own ancestor", id)
+		}
+		seen[id] = true
+
+		res = append(res, e)
+		id = e.ParentID
+	}
+
+	slices.Reverse(res)
+	return res, nil
 }
