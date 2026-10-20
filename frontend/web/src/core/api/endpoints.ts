@@ -51,16 +51,20 @@ export interface ChatItem {
   updated_at: number;
 }
 
-/** A saved message: the thread message's own JSON, and the id of the one it follows ("" for the first). */
-export interface SavedChatMessage {
-  parent_id: string;
-  message: unknown;
-}
-
-export interface SavedChat {
+/**
+ * One message of a conversation as the server rebuilds it from its log: the user's words and
+ * images, or a turn's answer as the events it streamed, to replay. `id` is the logged entry, so
+ * a loaded message is already known to the server; `parent_id` is the page message it follows.
+ */
+export interface PageMessage {
   id: string;
-  title: string;
-  messages: SavedChatMessage[];
+  parent_id: string;
+  role: "user" | "assistant";
+  text?: string;
+  images?: string[];
+  events?: unknown[];
+  /** unix seconds */
+  created_at: number;
 }
 
 /** Registering may leave the account waiting for its verification mail. */
@@ -87,18 +91,11 @@ export function createEndpoints(client: ApiClient) {
       return list ?? [];
     },
 
-    chatGet: (id: string) => client.get<SavedChat>("/purchase/chat", { id }),
+    /** Every message of the conversation, every branch; the server logs them as the turns run. */
+    chatHistory: async (chatId: string) =>
+      (await client.get<PageMessage[] | null>("/purchase/ai/chat/history", { chat_id: chatId })) ?? [],
 
     chatCreate: (title: string) => client.post<{ id: string }>("/purchase/chat", { title }),
-
-    /** Saving the same message id again overwrites it. */
-    chatSaveMessage: (chatId: string, messageId: string, parentId: string | null, message: unknown) =>
-      client.post<null>("/purchase/chat/message", {
-        chat_id: chatId,
-        message_id: messageId,
-        parent_id: parentId ?? "",
-        message
-      }),
 
     /** Publishes a post; the usual post rules apply (tags, rank, captcha after many posts). */
     publishPost: (body: ReturnType<typeof toQuestionAdd>) => client.post<{ id: string }>("/question", body),

@@ -49,8 +49,8 @@ func TestPageMessages(t *testing.T) {
 
 	// Assert：截图那条提醒、工具调用都不是页面上的消息
 	require.Len(t, got, 5)
-	assert.Equal(t, PageMessage{ID: "u1", Role: "user", Text: "XM5 值不值", Images: []string{"https://x/uploads/post/a.jpg"}}, got[0])
-	assert.Equal(t, PageMessage{ID: "v1", ParentID: "u1", Role: "assistant", Events: []Event{{Type: EventText, Delta: "值"}}}, got[1])
+	assert.Equal(t, PageMessage{ID: "u1", Role: "user", CreatedAt: got[0].CreatedAt, Text: "XM5 值不值", Images: []string{"https://x/uploads/post/a.jpg"}}, got[0])
+	assert.Equal(t, PageMessage{ID: "v1", ParentID: "u1", Role: "assistant", CreatedAt: got[1].CreatedAt, Events: []Event{{Type: EventText, Delta: "值"}}}, got[1])
 	assert.Equal(t, "v1", got[2].ParentID, "第二个问题接在第一个回答后面")
 	assert.Equal(t, "u2", got[3].ParentID)
 	assert.Equal(t, "u2", got[4].ParentID, "重新生成的回答和原来那个是兄弟")

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { toChatMessages } from "./api";
 import {
   checkDraftForm,
   type DraftForm,
@@ -120,27 +119,5 @@ describe("the tool_suspend event", () => {
     ]);
     const last = parts.at(-1);
     expect(last?.type === "tool-call" && last.toolCallId).toBe("3-0:review");
-  });
-});
-
-describe("toChatMessages with a draft", () => {
-  it("tells the model what became of the draft", () => {
-    // Act
-    const got = toChatMessages([
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "草稿在下面" },
-          {
-            type: "tool-call",
-            toolName: "publish_post",
-            result: { status: "published", questionId: "9", title: "iPad 等不等" }
-          }
-        ]
-      }
-    ]);
-
-    // Assert
-    expect(got[0].text).toBe("草稿在下面\n（用户已经把帖子「iPad 等不等」发到了社区）");
   });
 });

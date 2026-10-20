@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { chatEvents, type ChatTransport, toChatMessages } from "./api";
+import { chatEvents, type ChatTransport, type EntryOf, type ThreadMessageLike, toChatTurn } from "./api";
 import { ChatStreamError } from "./mapper";
 
 async function collect<T>(it: AsyncIterable<T>) {
@@ -11,83 +11,62 @@ async function collect<T>(it: AsyncIterable<T>) {
   return out;
 }
 
-describe("toChatMessages", () => {
-  it("keeps the text of each turn and the uploaded images of user turns", () => {
-    const got = toChatMessages([
-      {
-        role: "user",
-        content: [{ type: "text", text: " 值得买吗 " }],
-        attachments: [{ content: [{ type: "image", image: "http://site/uploads/a.jpg" }] }]
-      },
-      {
-        role: "assistant",
-        content: [{ type: "reasoning", text: "想一想" }, { type: "tool-call" }, { type: "text", text: "**再等等**" }]
-      },
-      { role: "user", content: [{ type: "text", text: "那 Pro 呢" }] }
-    ]);
+// entries: the logged ids the page knows, by message id
+function entryOf(entries: Record<string, { user?: string; leaf?: string }>): EntryOf {
+  return { user: (m) => entries[m.id]?.user, leaf: (m) => entries[m.id]?.leaf };
+}
 
-    expect(got).toEqual([
-      { role: "user", text: "值得买吗", images: ["http://site/uploads/a.jpg"] },
-      { role: "assistant", text: "**再等等**", images: [] },
-      { role: "user", text: "那 Pro 呢", images: [] }
-    ]);
+const user = (id: string, text: string, images: string[] = []): ThreadMessageLike => ({
+  id,
+  role: "user",
+  content: [{ type: "text", text }],
+  attachments: images.map((image) => ({ content: [{ type: "image", image }] }))
+});
+const answer = (id: string): ThreadMessageLike => ({ id, role: "assistant", content: [{ type: "text", text: "…" }] });
+
+describe("toChatTurn", () => {
+  it("sends only the new message, after the answer before it", () => {
+    // Arrange: one turn done, logged with leaf e_v1
+    const thread = [user("m1", "值得买吗"), answer("m2"), user("m3", " 那 Pro 呢 ", ["http://site/uploads/a.jpg"])];
+
+    // Act
+    const got = toChatTurn("7", thread, entryOf({ m1: { user: "e_u1" }, m2: { leaf: "e_v1" } }));
+
+    // Assert
+    expect(got).toEqual({
+      chat_id: "7",
+      parent_id: "e_v1",
+      message: { text: "那 Pro 呢", images: ["http://site/uploads/a.jpg"] }
+    });
   });
 
-  it("sends the cards after the answer, so a follow-up about the second one has something to point at", () => {
-    const got = toChatMessages([
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "data",
-            name: "products",
-            data: [
-              {
-                id: 1,
-                title: "羽绒被",
-                shop: "无印良品旗舰店",
-                price: "¥588",
-                priceNote: "补贴后 ¥4??",
-                url: "https://detail.tmall.com/item.htm?id=1"
-              },
-              { id: 2, title: "宜家被子", url: "https://www.ikea.cn/cn/zh/p/x" }
-            ]
-          },
-          { type: "text", text: "**买** 选羽绒被" }
-        ]
-      }
-    ]);
+  it("starts a new conversation with no parent", () => {
+    const got = toChatTurn("7", [user("m1", "XM5 值不值")], entryOf({}));
 
-    expect(got).toEqual([
-      {
-        role: "assistant",
-        text:
-          "（回答下方给用户看的商品）\n" +
-          "- 羽绒被 · 无印良品旗舰店 · ¥588（补贴后 ¥4??） · https://detail.tmall.com/item.htm?id=1\n" +
-          "- 宜家被子 · https://www.ikea.cn/cn/zh/p/x\n" +
-          "**买** 选羽绒被",
-        images: []
-      }
-    ]);
+    expect(got).toEqual({ chat_id: "7", parent_id: "", message: { text: "XM5 值不值", images: [] } });
   });
 
-  it("drops an assistant turn with no text, such as one that failed", () => {
-    const got = toChatMessages([
-      { role: "user", content: [{ type: "text", text: "a" }] },
-      { role: "assistant", content: [{ type: "tool-call" }] },
-      { role: "user", content: [{ type: "text", text: "b" }] }
-    ]);
+  it("regenerates a user message the server has logged: reruns it, sends nothing new", () => {
+    // Arrange: assistant-ui drops the old answer and runs the same user message again
+    const thread = [user("m1", "值得买吗")];
 
-    expect(got.map((m) => m.text)).toEqual(["a", "b"]);
+    // Act
+    const got = toChatTurn("7", thread, entryOf({ m1: { user: "e_u1" } }));
+
+    // Assert
+    expect(got).toEqual({ chat_id: "7", parent_id: "e_u1" });
   });
 
-  it("sends at most the last 40 turns", () => {
-    const many = Array.from({ length: 45 }, (_, i) => ({ role: "user", content: [{ type: "text", text: `${i}` }] }));
+  it("sends an edited message as new, after the answer the original followed", () => {
+    // Arrange: m3 was edited into m4, a new message the server has not seen
+    const thread = [user("m1", "a"), answer("m2"), user("m4", "改过的问题")];
 
-    const got = toChatMessages(many);
+    // Act
+    const got = toChatTurn("7", thread, entryOf({ m1: { user: "e_u1" }, m2: { leaf: "e_v1" }, m3: { user: "e_u2" } }));
 
-    expect(got).toHaveLength(40);
-    expect(got.at(-1)?.text).toBe("44");
+    // Assert
+    expect(got.parent_id).toBe("e_v1");
+    expect(got.message?.text).toBe("改过的问题");
   });
 });
 
@@ -100,8 +79,10 @@ function transportWith(res: Response) {
   return { transport, onUnauthorized, fetch };
 }
 
+const noTurn = { chat_id: "7", parent_id: "" };
+
 describe("chatEvents", () => {
-  it("posts the conversation with the token and yields the streamed events", async () => {
+  it("posts the turn with the token and yields the streamed events", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(c) {
         c.enqueue(
@@ -114,13 +95,14 @@ describe("chatEvents", () => {
       new Response(body, { headers: { "Content-Type": "text/event-stream" } })
     );
 
-    const got = await collect(chatEvents(transport, [{ role: "user", text: "hi", images: [] }]));
+    const turn = { chat_id: "7", parent_id: "", message: { text: "hi", images: [] } };
+    const got = await collect(chatEvents(transport, turn));
 
     expect(got).toEqual([{ type: "reasoning", delta: "想" }, { type: "done" }]);
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("/answer/api/v1/purchase/ai/chat");
     expect(new Headers(init?.headers).get("Authorization")).toBe("token-1");
-    expect(JSON.parse(String(init?.body))).toEqual({ messages: [{ role: "user", text: "hi", images: [] }] });
+    expect(JSON.parse(String(init?.body))).toEqual(turn);
   });
 
   it("turns a JSON error the server sent before streaming into ChatStreamError with its message", async () => {
@@ -128,14 +110,14 @@ describe("chatEvents", () => {
       Response.json({ code: 400, reason: "base.request_format_error", msg: "请求格式错误" }, { status: 400 })
     );
 
-    await expect(collect(chatEvents(transport, []))).rejects.toEqual(new ChatStreamError("请求格式错误"));
+    await expect(collect(chatEvents(transport, noTurn))).rejects.toEqual(new ChatStreamError("请求格式错误"));
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   it("reports a 401 so the app can drop the stale token", async () => {
     const { transport, onUnauthorized } = transportWith(Response.json({ code: 401, msg: "未登录" }, { status: 401 }));
 
-    await expect(collect(chatEvents(transport, []))).rejects.toBeInstanceOf(ChatStreamError);
+    await expect(collect(chatEvents(transport, noTurn))).rejects.toBeInstanceOf(ChatStreamError);
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 });

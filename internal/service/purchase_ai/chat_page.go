@@ -41,6 +41,8 @@ type PageMessage struct {
 	Text     string   `json:"text,omitempty"`
 	Images   []string `json:"images,omitempty"`
 	Events   []Event  `json:"events,omitempty"` // 回答：按顺序重放这些事件得到那条回答
+	// CreatedAt 是 unix 秒
+	CreatedAt int64 `json:"created_at"`
 }
 
 // ChatHistory 返回一段对话在页面上的全部消息，所有分支都在里面
@@ -87,7 +89,7 @@ func pageMessages(entries []Entry) []PageMessage {
 		if !onPage(e) {
 			continue
 		}
-		pm := PageMessage{ID: e.ID, ParentID: pageParent(e)}
+		pm := PageMessage{ID: e.ID, ParentID: pageParent(e), CreatedAt: e.CreatedAt.Unix()}
 		if e.View != nil {
 			pm.Role = "assistant"
 			pm.Events = e.View.Events

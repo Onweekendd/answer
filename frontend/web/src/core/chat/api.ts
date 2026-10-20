@@ -1,82 +1,70 @@
-import { isDraftResult, PUBLISH_TOOL } from "./draft";
-import { type ChatEvent, ChatStreamError, type ProductCard, PRODUCTS_PART } from "./mapper";
+import { type ChatEvent, ChatStreamError } from "./mapper";
 import { eventsFromSSE } from "./stream";
 
-/** One message as POST /purchase/ai/chat takes it; images are urls from POST /file. */
-export interface ChatMessageReq {
-  role: "user" | "assistant";
-  text: string;
-  images: string[];
+/**
+ * One turn as POST /purchase/ai/chat takes it. The server keeps the conversation, so the page
+ * sends only the new message and the logged entry it follows; without a message the turn
+ * regenerates the answer to the user message `parent_id` names. Images are urls from POST /file.
+ */
+export interface ChatTurnReq {
+  chat_id: string;
+  parent_id: string;
+  message?: { text: string; images: string[] };
 }
 
 /** The slice of an assistant-ui thread message we read; ThreadMessage satisfies it structurally. */
 export interface ThreadMessageLike {
+  id: string;
   role: string;
-  content: readonly {
-    type: string;
-    text?: string;
-    name?: string;
-    data?: unknown;
-    toolName?: string;
-    result?: unknown;
-  }[];
+  content: readonly { type: string; text?: string }[];
   attachments?: readonly { content?: readonly { type: string; image?: string }[] }[];
+  /** `custom.entry` / `custom.leaf` hold the logged ids, see EntryOf. */
+  metadata?: unknown;
 }
-
-/** The server takes at most 40; older turns matter least, so they go first. */
-const MAX_MESSAGES = 40;
 
 /**
- * The conversation as the server wants it: user and assistant turns with their text, user turns
- * with their uploaded images. Thinking and tool calls stay behind, and an assistant turn with no
- * text (a failed one) is dropped, since it tells the model nothing. The cards go along as text
- * after the answer, so a follow-up such as "第二个呢" has something to point at.
+ * The logged ids the page knows for a message: a user message's own entry once the server has
+ * logged it, an answer's leaf (what the next message follows). Unknown ones are undefined.
  */
-export function toChatMessages(messages: readonly ThreadMessageLike[]): ChatMessageReq[] {
-  const out: ChatMessageReq[] = [];
-  for (const m of messages) {
-    if (m.role !== "user" && m.role !== "assistant") {
-      continue;
-    }
-    const text = m.content
-      .flatMap((p) => {
-        if (p.type === "text" && typeof p.text === "string") {
-          return [p.text];
-        }
-        if (p.type === "data" && p.name === PRODUCTS_PART && Array.isArray(p.data)) {
-          return [cardsText(p.data as ProductCard[])];
-        }
-        // what became of a draft, so "改一下标题" after it has something to go on
-        if (p.type === "tool-call" && p.toolName === PUBLISH_TOOL && isDraftResult(p.result)) {
-          return [
-            p.result.status === "published"
-              ? `（用户已经把帖子「${p.result.title}」发到了社区）`
-              : "（用户放弃了这份帖子草稿）"
-          ];
-        }
-        return [];
-      })
-      .join("\n")
-      .trim();
-    const images = (m.attachments ?? []).flatMap((a) =>
-      (a.content ?? []).flatMap((p) => (p.type === "image" && typeof p.image === "string" ? [p.image] : []))
-    );
-    if (m.role === "assistant" && !text) {
-      continue;
-    }
-    out.push({ role: m.role, text, images: m.role === "user" ? images : [] });
-  }
-  return out.slice(-MAX_MESSAGES);
+export interface EntryOf {
+  user(message: ThreadMessageLike): string | undefined;
+  leaf(message: ThreadMessageLike): string | undefined;
 }
 
-/** The cards as the model saw them when it made them: one line each, with the link. */
-export function cardsText(cards: readonly ProductCard[]): string {
-  const lines = cards.map((c) =>
-    [`- ${c.title}`, c.shop, c.spec, c.price && `${c.price}${c.priceNote ? `（${c.priceNote}）` : ""}`, c.url]
-      .filter(Boolean)
-      .join(" · ")
+/**
+ * The turn to send for the thread assistant-ui hands the adapter, which always ends with a user
+ * message. One the server has logged already is being regenerated: rerun it, send nothing new.
+ * Otherwise it is new (sent, or edited into a new branch): it follows the answer before it, or
+ * starts the conversation.
+ */
+export function toChatTurn(chatId: string, messages: readonly ThreadMessageLike[], entryOf: EntryOf): ChatTurnReq {
+  const last = messages.at(-1);
+  if (!last) {
+    throw new Error("toChatTurn: no message to send");
+  }
+  const logged = entryOf.user(last);
+  if (logged) {
+    return { chat_id: chatId, parent_id: logged };
+  }
+  const before = messages.at(-2);
+  return {
+    chat_id: chatId,
+    parent_id: (before && entryOf.leaf(before)) ?? "",
+    message: { text: textOf(last), images: imagesOf(last) }
+  };
+}
+
+function textOf(m: ThreadMessageLike): string {
+  return m.content
+    .flatMap((p) => (p.type === "text" && typeof p.text === "string" ? [p.text] : []))
+    .join("\n")
+    .trim();
+}
+
+function imagesOf(m: ThreadMessageLike): string[] {
+  return (m.attachments ?? []).flatMap((a) =>
+    (a.content ?? []).flatMap((p) => (p.type === "image" && typeof p.image === "string" ? [p.image] : []))
   );
-  return lines.length > 0 ? `（回答下方给用户看的商品）\n${lines.join("\n")}` : "";
 }
 
 export interface ChatTransport {
@@ -87,13 +75,13 @@ export interface ChatTransport {
 }
 
 /**
- * Posts the conversation and yields the events the server streams back. A request the server
+ * Posts one turn and yields the events the server streams back. A request the server
  * turns down before streaming (bad input, not logged in) answers with the usual JSON envelope
  * instead, which becomes a ChatStreamError carrying the server's message.
  */
 export async function* chatEvents(
   transport: ChatTransport,
-  messages: ChatMessageReq[],
+  turn: ChatTurnReq,
   signal?: AbortSignal
 ): AsyncGenerator<ChatEvent> {
   const headers = new Headers({ "Content-Type": "application/json" });
@@ -108,7 +96,7 @@ export async function* chatEvents(
     res = await doFetch(`${transport.baseUrl}/purchase/ai/chat`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify(turn),
       signal
     });
   } catch (e) {

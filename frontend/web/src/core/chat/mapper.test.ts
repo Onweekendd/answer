@@ -175,3 +175,21 @@ describe("product cards", () => {
     expect(parseEvent(JSON.stringify({ type: "product", product: { id: 1, url: "https://a.com" } }))).toBeNull();
   });
 });
+
+describe("parseEvent saved", () => {
+  it("reads the logged ids; a regenerated turn has no user id", () => {
+    expect(parseEvent('{"type":"saved","saved":{"user":"e_u1","leaf":"e_v1"}}')).toEqual({
+      type: "saved",
+      saved: { user: "e_u1", leaf: "e_v1" }
+    });
+    expect(parseEvent('{"type":"saved","saved":{"leaf":"e_v2"}}')).toEqual({
+      type: "saved",
+      saved: { user: "", leaf: "e_v2" }
+    });
+  });
+
+  it("drops one without a leaf: there would be nothing to continue from", () => {
+    expect(parseEvent('{"type":"saved","saved":{"user":"e_u1"}}')).toBeNull();
+    expect(parseEvent('{"type":"saved"}')).toBeNull();
+  });
+});

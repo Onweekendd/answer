@@ -1,36 +1,43 @@
-import type { ExportedMessageRepositoryItem, ThreadHistoryAdapter, ThreadMessage } from "@assistant-ui/react";
+import type { ThreadHistoryAdapter, ThreadMessage } from "@assistant-ui/react";
 
-import type { Endpoints } from "../api/endpoints";
-import { orderParts } from "./mapper";
+import type { Endpoints, PageMessage } from "../api/endpoints";
+import { type ChatEvent, toEvent } from "./mapper";
+import { replayEvents } from "./stream";
 
 /** The endpoints the history needs; the tests pass a fake. */
-export type ChatHistoryApi = Pick<Endpoints, "chatGet" | "chatCreate" | "chatSaveMessage">;
+export type ChatHistoryApi = Pick<Endpoints, "chatHistory" | "chatCreate">;
 
-export interface ChatHistoryOptions {
+export interface ChatSessionOptions {
   /** The saved conversation to load, or null for a new one. */
   chatId: string | null;
   api: ChatHistoryApi;
-  /** Called once when a new conversation gets its id, on its first saved message. */
+  /** Called once when a new conversation gets its id, before its first message is sent. */
   onCreated?: (id: string) => void;
 }
 
+/** One conversation: its id once it has one, and the history adapter that loads it. */
+export interface ChatSession {
+  /** The conversation's id, creating it (titled `title`) the first time a new one needs it. */
+  chatId(title: string): Promise<string>;
+  history: ThreadHistoryAdapter;
+}
+
 /**
- * Keeps one conversation on the server. The runtime calls append when a message settles (the
- * user's on send, the answer once it stops running) and update when one changes later; both
- * save the whole message under its id. A new conversation is created on the first save, titled
- * with what the user asked.
+ * One conversation on the server. The server logs every turn itself, so the page saves nothing:
+ * loading rebuilds the messages from the log, and a new conversation only needs creating before
+ * its first message goes out. The runtime's append (the user's message) and the chat adapter both
+ * ask for the id; they share one create instead of making two conversations.
  */
-export function createChatHistory({ chatId, api, onCreated }: ChatHistoryOptions): ThreadHistoryAdapter {
-  // Two saves can be in flight at once; they share one create instead of making two conversations.
+export function createChatSession({ chatId, api, onCreated }: ChatSessionOptions): ChatSession {
   let id: Promise<string> | null = chatId ? Promise.resolve(chatId) : null;
 
-  const ensureId = (first: ThreadMessage) => {
+  const ensureId = (title: string) => {
     if (!id) {
-      id = api.chatCreate(messageText(first)).then((r) => {
+      id = api.chatCreate(title).then((r) => {
         onCreated?.(r.id);
         return r.id;
       });
-      // A failed create must not stick: the next save tries again.
+      // A failed create must not stick: the next message tries again.
       id.catch(() => {
         id = null;
       });
@@ -38,29 +45,28 @@ export function createChatHistory({ chatId, api, onCreated }: ChatHistoryOptions
     return id;
   };
 
-  const save = async ({ message, parentId }: ExportedMessageRepositoryItem) => {
-    const chat = await ensureId(message);
-    await api.chatSaveMessage(chat, message.id, parentId, toStored(message));
-  };
-
   return {
-    // The runtime reloads when this changes; it stays the same for the life of the adapter, even
-    // after a new conversation gets its id, so the thread on screen is not thrown away.
-    scopeId: chatId ?? "new",
-    async load() {
-      if (!chatId) {
-        return { messages: [] };
-      }
-      const chat = await api.chatGet(chatId);
-      return {
-        messages: chat.messages.map((m) => ({
-          parentId: m.parent_id || null,
-          message: fromStored(m.message)
-        }))
-      };
-    },
-    append: save,
-    update: save
+    chatId: ensureId,
+    history: {
+      // The runtime reloads when this changes; it stays the same for the life of the adapter, even
+      // after a new conversation gets its id, so the thread on screen is not thrown away.
+      scopeId: chatId ?? "new",
+      async load() {
+        if (!chatId) {
+          return { messages: [] };
+        }
+        const page = await api.chatHistory(chatId);
+        return {
+          messages: page.map((m) => ({ parentId: m.parent_id || null, message: toThreadMessage(m) }))
+        };
+      },
+      async append({ message }) {
+        if (message.role === "user") {
+          await ensureId(messageText(message));
+        }
+      },
+      async update() {}
+    }
   };
 }
 
@@ -73,20 +79,37 @@ export function messageText(message: ThreadMessage): string {
 }
 
 /**
- * The message as JSON can carry it. An attachment's File is a browser object that does not
- * survive JSON (it becomes {}), and its uploaded url is already in the attachment's content.
+ * A logged message as the thread shows it. Its id is the logged entry and its metadata says so
+ * (`entry` for the user's, `leaf` for an answer), the same as a live turn after its saved event,
+ * so continuing or regenerating a loaded conversation sends the right ids.
  */
-export function toStored(message: ThreadMessage): unknown {
+export function toThreadMessage(m: PageMessage): ThreadMessage {
+  const createdAt = new Date(m.created_at * 1000);
+  if (m.role === "user") {
+    return {
+      id: m.id,
+      role: "user",
+      createdAt,
+      content: [{ type: "text", text: m.text ?? "" }],
+      attachments: (m.images ?? []).map((url, i) => ({
+        id: `${m.id}-${i}`,
+        type: "image",
+        name: url.split("/").at(-1) ?? "image",
+        contentType: "image/jpeg",
+        status: { type: "complete" },
+        content: [{ type: "image", image: url }]
+      })),
+      metadata: { custom: { entry: m.id } }
+    } as ThreadMessage;
+  }
+  const events = (m.events ?? []).map(toEvent).filter((e): e is ChatEvent => e !== null);
+  const { content, error } = replayEvents(events);
   return {
-    ...message,
-    attachments: message.attachments?.map(({ file: _file, ...rest }) => rest)
-  };
-}
-
-/** Back from JSON: createdAt was a Date and comes back as a string. */
-export function fromStored(stored: unknown): ThreadMessage {
-  const m = stored as ThreadMessage & { createdAt: string | Date };
-  // messages saved before the products moved below the answer still have them above it
-  const content = Array.isArray(m.content) ? orderParts(m.content) : m.content;
-  return { ...m, content, createdAt: new Date(m.createdAt) } as ThreadMessage;
+    id: m.id,
+    role: "assistant",
+    createdAt,
+    content,
+    status: error ? { type: "incomplete", reason: "error", error } : { type: "complete", reason: "stop" },
+    metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { leaf: m.id } }
+  } as ThreadMessage;
 }

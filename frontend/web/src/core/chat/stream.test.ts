@@ -117,3 +117,27 @@ describe("eventsFromSSE", () => {
     expect(got).toEqual([{ type: "text", delta: "ok" }]);
   });
 });
+
+describe("foldEvents with a saved event", () => {
+  it("carries the logged ids on every snapshot from the saved event on, and adds no part", async () => {
+    // Arrange
+    const events: ChatEvent[] = [
+      { type: "reasoning", delta: "想" },
+      { type: "saved", saved: { user: "e_u1", leaf: "e_v1" } },
+      { type: "text", delta: "答" },
+      { type: "done" }
+    ];
+
+    // Act
+    const snapshots = [];
+    for await (const s of foldEvents(of(events))) {
+      snapshots.push(s);
+    }
+
+    // Assert
+    expect(snapshots[0].metadata).toBeUndefined();
+    expect(snapshots[1].metadata).toEqual({ custom: { user: "e_u1", leaf: "e_v1" } });
+    expect(snapshots[2].metadata).toEqual({ custom: { user: "e_u1", leaf: "e_v1" } });
+    expect(snapshots[2].content.map((p) => p.type)).toEqual(["reasoning", "text"]);
+  });
+});

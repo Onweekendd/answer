@@ -18,7 +18,17 @@ export type ChatEvent =
   /** What the user may want to say next, at most three; shown as buttons that send it. */
   | { type: "followups"; followups: string[] }
   | { type: "error"; message: string }
+  /**
+   * The ids the server logged this turn under: the next message follows `leaf`; regenerating this
+   * turn's answer reruns `user`, which is empty when the turn was itself a regeneration.
+   */
+  | { type: "saved"; saved: SavedIds }
   | { type: "done" };
+
+export interface SavedIds {
+  user: string;
+  leaf: string;
+}
 
 /**
  * A product card, as internal/service/purchase_ai/products.go sends it. The link and the image
@@ -123,6 +133,7 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
       ];
     case "error":
       throw new ChatStreamError(event.message);
+    case "saved":
     case "done":
       return [...parts];
   }
@@ -180,6 +191,11 @@ export function parseEvent(data: string): ChatEvent | null {
   } catch {
     return null;
   }
+  return toEvent(raw);
+}
+
+/** Checks one decoded event (from the stream, or from a logged turn being replayed); null if malformed. */
+export function toEvent(raw: unknown): ChatEvent | null {
   if (!isRecord(raw)) {
     return null;
   }
@@ -208,6 +224,13 @@ export function parseEvent(data: string): ChatEvent | null {
     }
     case "error":
       return { type: "error", message: typeof raw.message === "string" ? raw.message : "出错了" };
+    case "saved":
+      return isRecord(raw.saved) && typeof raw.saved.leaf === "string" && raw.saved.leaf !== ""
+        ? {
+            type: "saved",
+            saved: { user: typeof raw.saved.user === "string" ? raw.saved.user : "", leaf: raw.saved.leaf }
+          }
+        : null;
     case "done":
       return { type: "done" };
     default:
