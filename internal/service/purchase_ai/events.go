@@ -179,6 +179,20 @@ func (r *agentRun) describeCall(name, arguments string) string {
 		}
 		_ = json.Unmarshal([]byte(arguments), &p)
 		return "把「" + clipRunes(oneLine(p.Title), labelMaxRunes) + "」记下来"
+	case toolHarvest:
+		return "把这一页的图收进工作台"
+	case toolBash:
+		var b struct {
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal([]byte(arguments), &b)
+		return "运行 " + clipRunes(oneLine(b.Command), labelMaxRunes)
+	case toolReadFile:
+		return "打开 " + path.Base(a.Path)
+	case toolWriteFile:
+		return "写入 " + path.Base(a.Path)
+	case toolEditFile:
+		return "修改 " + path.Base(a.Path)
 	case toolScroll:
 		pages := max(a.Pages, 1)
 		if a.Direction == "up" {

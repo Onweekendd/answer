@@ -96,6 +96,7 @@ var ProviderSetService = wire.NewSet(
 	purchase.NewPurchaseService,
 	purchaseai.NewPurchaseAIService,
 	purchaseai.NewBrowser,
+	purchaseai.NewWorkspaces,
 	purchasevote.NewPurchaseVoteService,
 	purchasechat.NewPurchaseChatService,
 	purchaseaiqueue.NewService,

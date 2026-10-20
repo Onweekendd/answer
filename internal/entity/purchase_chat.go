@@ -24,9 +24,12 @@ import "time"
 // PurchaseChat is one conversation on the chat page. Its messages live in
 // purchase_chat_message.
 type PurchaseChat struct {
-	ID        int64     `xorm:"not null pk autoincr BIGINT(20) id"`
-	UserID    string    `xorm:"not null default 0 BIGINT(20) INDEX user_id"`
-	Title     string    `xorm:"not null default '' VARCHAR(100) title"`
+	ID     int64  `xorm:"not null pk autoincr BIGINT(20) id"`
+	UserID string `xorm:"not null default 0 BIGINT(20) INDEX user_id"`
+	Title  string `xorm:"not null default '' VARCHAR(100) title"`
+	// SandboxID is the CubeSandbox sandbox the agent works in for this conversation;
+	// empty until the agent first needs one. See internal/service/sandbox.
+	SandboxID string    `xorm:"not null default '' VARCHAR(64) sandbox_id"`
 	CreatedAt time.Time `xorm:"created not null default CURRENT_TIMESTAMP TIMESTAMP created_at"`
 	UpdatedAt time.Time `xorm:"updated not null default CURRENT_TIMESTAMP TIMESTAMP updated_at"`
 }

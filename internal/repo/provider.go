@@ -76,6 +76,7 @@ var ProviderSetRepo = wire.NewSet(
 	purchase.NewPurchaseRepo,
 	purchasechat.NewPurchaseChatRepo,
 	purchasechat.NewDraftRepo,
+	purchasechat.NewSandboxStore,
 	question.NewQuestionRepo,
 	answer.NewAnswerRepo,
 	activity_common.NewActivityRepo,

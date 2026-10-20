@@ -57,10 +57,11 @@ require (
 	github.com/segmentfault/pacman/contrib/log/zap v0.0.0-20230822083413-c0075a2d401f
 	github.com/segmentfault/pacman/contrib/server/http v0.0.0-20230822083413-c0075a2d401f
 	github.com/spf13/cobra v1.8.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.3
+	github.com/tencentcloud/CubeSandbox/sdk/go v0.7.3
 	github.com/tidwall/gjson v1.17.3
 	github.com/yuin/goldmark v1.7.4
 	go.uber.org/mock v0.6.0

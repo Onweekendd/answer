@@ -94,6 +94,9 @@ type PurchaseAIIdentifyResp struct {
 // history yet, so the client sends it back each time.
 type PurchaseAIChatReq struct {
 	Messages []PurchaseAIChatMessage `json:"messages" validate:"required,min=1,max=40,dive"`
+	// ChatID is the saved conversation this turn belongs to, if any. The agent keeps one
+	// sandbox per conversation; without it the sandbox lives for this turn only.
+	ChatID string `json:"chat_id" validate:"omitempty,numeric"`
 	// UserID is filled by the controller, never by the client.
 	UserID string `json:"-"`
 }

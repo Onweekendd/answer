@@ -64,7 +64,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 
 	var tools map[string]agentTool
 	var defs []llm.Tool
-	if browserOn || r.draft != nil {
+	if browserOn || r.draft != nil || r.workspaces != nil {
 		var err error
 		tools, defs, err = r.tools(browserOn)
 		if err != nil {

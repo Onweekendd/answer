@@ -22,6 +22,7 @@ package purchaseai
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,6 +92,9 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		r.redact = pas.chatOptions.redact
 		r.images = pas.uploaderService
 		r.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(req.Messages), store: pas.drafts}
+		r.workspaces = pas.workspaces
+		r.chatID, _ = strconv.ParseInt(req.ChatID, 10, 64) // 校验过是数字；空的就是 0，用临时沙箱
+		r.userID = req.UserID
 		defer r.closeTabs()
 
 		res, err := r.run(ctx, messages, browserOn)
@@ -125,7 +129,11 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 
 // chatMessages 把前端发来的对话变成模型的消息：系统提示词在最前面，用户消息带上截图
 func (pas *PurchaseAIService) chatMessages(ctx context.Context, req *schema.PurchaseAIChatReq, browserOn bool) []llm.Message {
-	messages := []llm.Message{llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn))}
+	prompt := buildSystemPrompt(time.Now(), browserOn)
+	if pas.workspaces != nil {
+		prompt += "\n\n" + workspaceRules
+	}
+	messages := []llm.Message{llm.Text(llm.RoleSystem, prompt)}
 	for _, m := range req.Messages {
 		if m.Role == "assistant" {
 			messages = append(messages, llm.Text(llm.RoleAssistant, m.Text))

@@ -59,6 +59,7 @@ type PurchaseAIService struct {
 	voteService     *purchasevote.PurchaseVoteService
 	chatOptions     chatOptions
 	drafts          DraftStore
+	workspaces      Workspaces // nil 表示没有沙箱
 }
 
 // NewPurchaseAIService new purchase ai service
@@ -73,6 +74,7 @@ func NewPurchaseAIService(
 	uploaderService uploader.UploaderService,
 	voteService *purchasevote.PurchaseVoteService,
 	drafts DraftStore,
+	workspaces Workspaces,
 ) *PurchaseAIService {
 	service := &PurchaseAIService{
 		questionCommon:  questionCommon,
@@ -86,6 +88,7 @@ func NewPurchaseAIService(
 		voteService:     voteService,
 		chatOptions:     chatOptionsFromEnv(),
 		drafts:          drafts,
+		workspaces:      workspaces,
 	}
 	// the queue calls handlers with a fresh context, so an analysis outlives the
 	// request that asked for it instead of dying when that request returns

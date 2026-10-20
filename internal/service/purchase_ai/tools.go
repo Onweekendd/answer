@@ -62,6 +62,13 @@ type agentRun struct {
 	draft    *draftContext // 对话页才有：可以把对话整理成帖子草稿；nil 就没有 draft_post
 	callID   string        // 正在执行的调用的 id（tool_start 里那个），挂起的事件要带上它
 
+	// 工作台（tools_sandbox.go）。workspaces 为 nil 表示没有沙箱，不给沙箱工具
+	workspaces Workspaces
+	chatID     int64     // 这次任务属于哪个对话，一个对话一个沙箱；0 表示没有对话 id，用临时沙箱
+	userID     string    // 对话是谁的：Acquire 要核对，不能拿别人的对话 id 用别人的沙箱
+	ws         Workspace // 第一次用沙箱时才要（懒创建）；连不上了设回 nil，下次重新要
+	wsNote     string    // 要告诉模型的一句话（原来的沙箱没了），加在下一个沙箱工具结果的最前面
+
 	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
 	events        chan<- Event
 	showReasoning bool     // 思考也推给用户
@@ -97,6 +104,22 @@ const (
 	toolImage    = "view_image"
 	toolDraft    = "draft_post"
 	toolDone     = "done"
+
+	toolHarvest   = "harvest"
+	toolBash      = "bash"
+	toolReadFile  = "read_file"
+	toolWriteFile = "write_file"
+	toolEditFile  = "edit_file"
+)
+
+// toolNeed 是一个工具要什么才能用
+type toolNeed int
+
+const (
+	needBrowser           toolNeed = iota // 插件连着
+	needDraft                             // 对话页（r.draft 不为 nil）
+	needSandbox                           // 有沙箱（r.workspaces 不为 nil）
+	needBrowserAndSandbox                 // 收割：从页面上收，放进沙箱
 )
 
 // snapshotMaxChars 是一份快照最多多少个字符，和插件的默认值一样
@@ -161,45 +184,57 @@ type doneArgs struct {
 }
 
 // tools 返回这次能用的工具。顺序固定：工具定义在请求的最前面，顺序一变前缀缓存就全部失效。
-// browserOn 为 false 时只剩 draft_post（对话页上插件没连着，也能整理草稿）；没有 r.draft 就没有 draft_post
+// 每个工具要什么才能用写在 need 里：插件没连着时只剩 draft_post 和沙箱工具（对话页上也能整理草稿、加工文件）；
+// 没有 r.draft 就没有 draft_post，没有沙箱就没有沙箱工具，收割两样都要
 func (r *agentRun) tools(browserOn bool) (map[string]agentTool, []llm.Tool, error) {
 	list := []struct {
-		name, description string
-		args              any
-		run               func(context.Context, string) (toolResult, error)
+		name        string
+		need        toolNeed
+		description string
+		args        any
+		run         func(context.Context, string) (toolResult, error)
 	}{
-		{toolSkill, "读取 skill 里的文件。系统提示词里列出了可用的 skill：先读它的 SKILL.md，再按里面说的读需要的 reference。" +
+		{toolSkill, needBrowser, "读取 skill 里的文件。系统提示词里列出了可用的 skill：先读它的 SKILL.md，再按里面说的读需要的 reference。" +
 			"去一个网站操作之前，先读这个网站的 reference。", skillArgs{}, r.skillRead},
-		{toolOpen, "在后台新开一个标签页打开网址，之后的操作都在这个标签页里进行。任务开始时用它打开第一个网页。", urlArgs{}, r.open},
-		{toolNavigate, "在当前标签页里打开网址。想回到之前看过的页面时，navigate 到之前记下的网址。", urlArgs{}, r.navigate},
-		{toolSnapshot, "查看当前页面上可以操作的元素（链接、按钮、输入框、选项卡、菜单项），每行一个，开头的 [数字] 是编号，商品卡片的标题和价格也在里面。" +
+		{toolOpen, needBrowser, "在后台新开一个标签页打开网址，之后的操作都在这个标签页里进行。任务开始时用它打开第一个网页。", urlArgs{}, r.open},
+		{toolNavigate, needBrowser, "在当前标签页里打开网址。想回到之前看过的页面时，navigate 到之前记下的网址。", urlArgs{}, r.navigate},
+		{toolSnapshot, needBrowser, "查看当前页面上可以操作的元素（链接、按钮、输入框、选项卡、菜单项），每行一个，开头的 [数字] 是编号，商品卡片的标题和价格也在里面。" +
 			"打开网页、悬停、点击、输入并回车、滚动以后页面都会变，要先 snapshot 再决定下一步：编号只在最新一份快照里有效。", struct{}{}, r.snapshot},
-		{toolRead, "读页面上的文字：文章和笔记的正文、评论、商品详情里的说明。快照只列能操作的元素，这些段落文字不在快照里，要用 read 读。" +
+		{toolRead, needBrowser, "读页面上的文字：文章和笔记的正文、评论、商品详情里的说明。快照只列能操作的元素，这些段落文字不在快照里，要用 read 读。" +
 			"页面上开着浮层（比如小红书的笔记）时只读浮层里的；填 index 读那个元素的全部文字（快照里每个元素最多显示 120 个字）。一次最多读 3000 字。", readArgs{}, r.read},
 		// 什么时候该截图（阶段 2 概念 1）；整屏和只截元素各适合看什么，见 screenshotMaxWidth 上面的实测
-		{toolShot, "截图，看页面实际长什么样，用来确认快照里看不到的东西：哪个选项被选中了、有没有弹窗挡住、页面是不是白屏或者还在加载、动作做完有没有生效。" +
+		{toolShot, needBrowser, "截图，看页面实际长什么样，用来确认快照里看不到的东西：哪个选项被选中了、有没有弹窗挡住、页面是不是白屏或者还在加载、动作做完有没有生效。" +
 			"不填 index 截当前这一屏，适合看布局和状态，小字看不清；要读价格、优惠券、月销这类小字，填 index 只截那张商品卡片。先用快照，快照说不清楚再截图。" +
 			"每张图都编成「图N」，能给结论作证的（价格和优惠的条件、参数表、差评）可以在回答里引用给用户看，不用再截一次。", screenshotArgs{}, r.screenshot},
-		{toolClick, "点击最新一份快照里编号为 index 的元素。", indexArgs{}, r.click},
-		{toolHover, "将鼠标悬停在最新快照里编号为 index 的元素上，不点击。用于展开下拉菜单；悬停后先 snapshot 查看新出现的选项，再 click 选项。", indexArgs{}, r.hover},
-		{toolType, "往编号为 index 的输入框里填文字。submit 为 true 时填完按回车，比如在搜索框里搜索。", typeArgs{}, r.typeText},
-		{toolPress, "按键盘上的一个键。Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快，按完先 snapshot 再继续。" +
+		{toolClick, needBrowser, "点击最新一份快照里编号为 index 的元素。", indexArgs{}, r.click},
+		{toolHover, needBrowser, "将鼠标悬停在最新快照里编号为 index 的元素上，不点击。用于展开下拉菜单；悬停后先 snapshot 查看新出现的选项，再 click 选项。", indexArgs{}, r.hover},
+		{toolType, needBrowser, "往编号为 index 的输入框里填文字。submit 为 true 时填完按回车，比如在搜索框里搜索。", typeArgs{}, r.typeText},
+		{toolPress, needBrowser, "按键盘上的一个键。Escape：关闭弹窗、浮层、下拉菜单（比如小红书的笔记浮层），比重新打开网页快，按完先 snapshot 再继续。" +
 			"ArrowRight、ArrowLeft：把轮播图翻到下一张、上一张（比如小红书笔记的图片），页面别的地方不变，编号照样能用，翻完直接截图。", pressArgs{}, r.press},
-		{toolScroll, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
-		{toolProduct, "记下一个值得推荐给用户的商品：用户会在回答下方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
+		{toolScroll, needBrowser, "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。", scrollArgs{}, r.scroll},
+		{toolProduct, needBrowser, "记下一个值得推荐给用户的商品：用户会在回答下方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
 			"在商品详情页上不填 index；在搜索结果里填那张商品卡片的编号。只记看过价格的商品，最多 6 个。", productArgs{}, r.pickProduct},
-		{toolImage, "下载页面上一张图片的原图来看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
+		{toolImage, needBrowser, "下载页面上一张图片的原图来看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
 			"填 index 取那个元素里最大的图，不填取屏幕上最大的图。和 screenshot 共用编号「图N」，也能在回答里引用给用户看。" +
 			"价格区、表格这类不是图片的，或者下载失败了，用 screenshot。", viewImageArgs{}, r.viewImage},
-		{toolDraft, "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
+		// 工作台（概念 4）。harvest 从页面上收卡片放进沙箱；下面四个只碰沙箱
+		{toolHarvest, needBrowserAndSandbox, "把当前页面（搜索结果、瀑布流）上的卡片一次收下来：边滚动边收，去掉广告和重复的，缩略图放进工作台的 /home/user/harvest/，" +
+			"返回一张编了号的总览图。要从很多图里挑参考、做拼图、做图墙时用它，不要一张张截图。收完看总览图挑，编号 = 文件名 = items.json 里的 n。", harvestArgs{}, r.withWorkspace(r.harvest)},
+		{toolBash, needSandbox, "在工作台（一台独立的 Linux 电脑，装了 python3）里执行一条 bash 命令，在 /home/user 下执行，返回退出码和输出。" +
+			"处理图片、跑脚本、装包（pip install）都用它；脚本先用 write_file 写进文件再执行，不要把长代码塞进一条命令。", bashArgs{}, r.withWorkspace(r.bash)},
+		{toolReadFile, needSandbox, "读工作台里的一个文件：文本文件带行号返回，可以用 offset、limit 翻页；图片会让你看到，并编成「图N」，能在回答里引用给用户看。" +
+			"生成了图片（拼图、配色卡）就用它打开看一眼，满意了再给用户。", readFileArgs{}, r.withWorkspace(r.readFile)},
+		{toolWriteFile, needSandbox, "在工作台里新建或整个重写一个文件，比如写一个 Python 脚本。只改几行用 edit_file。", writeFileArgs{}, r.withWorkspace(r.writeFile)},
+		{toolEditFile, needSandbox, "修改工作台里的一个文件：把一段原文换成新文字。原文要和文件里一字不差、只出现一次，拿不准就先 read_file。", editFileArgs{}, r.withWorkspace(r.editFile)},
+		{toolDraft, needDraft, "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
 			"调用以后这次回答就结束了：用户会在页面上修改、发布或者放弃，不用你再说什么。", draftArgs{}, r.draftPost},
-		{toolDone, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
+		{toolDone, needBrowser, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},
 	}
 
 	tools := make(map[string]agentTool, len(list))
 	defs := make([]llm.Tool, 0, len(list))
 	for _, t := range list {
-		if (t.name == toolDraft && r.draft == nil) || (t.name != toolDraft && !browserOn) {
+		if !r.has(t.need, browserOn) {
 			continue
 		}
 		schema, err := llm.SchemaFor(t.args)
@@ -211,6 +246,21 @@ func (r *agentRun) tools(browserOn bool) (map[string]agentTool, []llm.Tool, erro
 		defs = append(defs, def)
 	}
 	return tools, defs, nil
+}
+
+// has 说这次任务有没有 need 要的东西
+func (r *agentRun) has(need toolNeed, browserOn bool) bool {
+	sandboxOn := r.workspaces != nil
+	switch need {
+	case needDraft:
+		return r.draft != nil
+	case needSandbox:
+		return sandboxOn
+	case needBrowserAndSandbox:
+		return browserOn && sandboxOn
+	default:
+		return browserOn
+	}
 }
 
 // runTool 执行一次调用。模型编出来的工具名告诉它，不算出错，它可以自己改正。
@@ -650,7 +700,12 @@ func (r *agentRun) done(_ context.Context, arguments string) (toolResult, error)
 // call 调用插件，期限是 toolTimeout，成功时把结果解析到 out（out 为 nil 就不解析）。
 // 成功返回 (nil, nil)；失败时返回给模型看的结果，或者 err 不为 nil（这时结果的内容不重要）。
 func (r *agentRun) call(ctx context.Context, tabID int, cmd string, args, out any) (*toolResult, error) {
-	callCtx, cancel := context.WithTimeout(ctx, r.limits.toolTimeout)
+	return r.callFor(ctx, r.limits.toolTimeout, tabID, cmd, args, out)
+}
+
+// callFor 和 call 一样，期限由调用方给：收割要边滚边等图加载，比别的命令慢得多
+func (r *agentRun) callFor(ctx context.Context, timeout time.Duration, tabID int, cmd string, args, out any) (*toolResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	data, err := r.browser.Call(callCtx, tabID, cmd, args)
