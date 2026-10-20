@@ -13,15 +13,15 @@ export function Followups({ followups }: { followups: readonly string[] }) {
     return null;
   }
   return (
-    <div role="group" aria-label="接着问" className="mt-4 flex flex-col items-start gap-2">
+    <div role="group" aria-label="接着问" className="mt-3 flex flex-col items-start gap-0.5">
       {followups.map((text) => (
         <ThreadPrimitive.Suggestion
           key={text}
           prompt={text}
           send
-          className="group flex max-w-full items-center gap-2 rounded-xl bg-muted px-3.5 py-2 text-left text-sm text-foreground/90 transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="group flex max-w-full items-center gap-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          <CornerDownRightIcon className="size-3.5 shrink-0 text-muted-foreground group-hover:text-accent-foreground" />
+          <CornerDownRightIcon className="size-3 shrink-0 opacity-60 group-hover:opacity-100" />
           <span className="min-w-0">{text}</span>
         </ThreadPrimitive.Suggestion>
       ))}
