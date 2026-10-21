@@ -270,7 +270,6 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("历史从日志里来：接着 parent_id 那条分支，最后一条是新消息", func(t *testing.T) {
-		skipProject(t)
 		// Arrange：日志里已经有一轮
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(doneCall("c1", "好"))}}
 		log := &fakeChatLog{entries: []Entry{

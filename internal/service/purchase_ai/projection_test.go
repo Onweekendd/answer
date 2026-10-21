@@ -28,12 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// skipProject 写完 project 以后删掉
-func skipProject(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 project 删掉这一行")
-}
-
 // callMsg 是一条只调用工具的 assistant 消息
 func callMsg(reasoning string, calls ...llm.ToolCall) llm.Message {
 	return llm.Message{Role: llm.RoleAssistant, Reasoning: reasoning, ToolCalls: calls}
@@ -53,7 +47,6 @@ func twoTurns() []Entry {
 }
 
 func TestProject_MessagesComeBackInOrder(t *testing.T) {
-	skipProject(t)
 	// Act
 	got := project(twoTurns())
 
@@ -64,18 +57,17 @@ func TestProject_MessagesComeBackInOrder(t *testing.T) {
 	assert.Len(t, got[3].Parts, 1, "Details 里的图不会变成消息的一段")
 }
 
-func TestProject_OnlyTheLatestSnapshotIsKept(t *testing.T) {
-	skipProject(t)
+func TestProject_SnapshotsAreOmitted(t *testing.T) {
 	// Act
 	got := project(twoTurns())
 
-	// Assert：第一轮的快照换成占位语，第二轮的原样
+	// Assert：历史里的页面都已经关了，最后一份也不留全文
 	assert.Equal(t, snapshotOmitted, got[2].Parts[0].Text)
-	assert.Equal(t, "第二份快照", got[6].Parts[0].Text)
+	assert.Equal(t, snapshotOmitted, got[6].Parts[0].Text)
+	assert.Equal(t, "c2", got[6].ToolCallID, "结果还在，只是换了内容：调用要有回答")
 }
 
 func TestProject_OldPictureRefsBecomeText(t *testing.T) {
-	skipProject(t)
 	// Arrange：第二轮用 done 回答，回答在参数里
 	done, _ := json.Marshal(map[string]any{"text": "bose 便宜\n[图2：价格]", "success": true})
 	path := append(twoTurns(),
@@ -95,7 +87,6 @@ func TestProject_OldPictureRefsBecomeText(t *testing.T) {
 }
 
 func TestProject_ReasoningAndCallsAreKept(t *testing.T) {
-	skipProject(t)
 	// Act
 	got := project(twoTurns())
 
@@ -106,7 +97,6 @@ func TestProject_ReasoningAndCallsAreKept(t *testing.T) {
 }
 
 func TestProject_UnfinishedCallsGetAResult(t *testing.T) {
-	skipProject(t)
 	// Arrange：一次调了两个工具，只记下了第一个的结果就断了；之后用户又发了一条
 	path := []Entry{
 		msgEntry("u1", "", llm.Text(llm.RoleUser, "XM5 值不值"), messageMeta{}),
@@ -128,7 +118,6 @@ func TestProject_UnfinishedCallsGetAResult(t *testing.T) {
 }
 
 func TestProject_UnfinishedCallsAtTheEnd(t *testing.T) {
-	skipProject(t)
 	// Arrange：最后一条就是带调用的 assistant，一个结果都没有
 	path := []Entry{
 		msgEntry("u1", "", llm.Text(llm.RoleUser, "XM5 值不值"), messageMeta{}),
