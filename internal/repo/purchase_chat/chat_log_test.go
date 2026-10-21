@@ -30,14 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// skipChatLog 写完 Entries 和 Append 以后删掉
-func skipChatLog(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(你来写)：chatLog.Entries / Append，写完删掉 skipChatLog")
-}
-
 func TestChatLog(t *testing.T) {
-	skipChatLog(t)
 	ctx := context.Background()
 
 	newLog := func(t *testing.T) (*chatLog, *entity.PurchaseChat) {

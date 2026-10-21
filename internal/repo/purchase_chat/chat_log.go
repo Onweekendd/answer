@@ -22,12 +22,12 @@ package purchasechat
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/apache/answer/internal/base/data"
 	"github.com/apache/answer/internal/entity"
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
+	"xorm.io/xorm"
 )
 
 // chatLog keeps each conversation's log in purchase_chat_entry.
@@ -134,7 +134,43 @@ func (r *chatLog) Entries(ctx context.Context, chatID int64, userID string) ([]p
 //   - 为什么要放在一个事务里？想想插到第 15 条时数据库断了，下一轮 pathTo 会看到什么
 //   - xorm 支持 session.Insert(&rows) 一次插一批，为什么这里一条一条插？提示：看 Entries 靠什么排序
 func (r *chatLog) Append(ctx context.Context, chatID int64, entries []purchaseai.Entry) error {
-	return errors.New("TODO: chatLog.Append")
+	if len(entries) == 0 {
+		return nil
+	}
+
+	rows := make([]*entity.PurchaseChatEntry, 0)
+
+	for _, e := range entries {
+		row, err := toRow(chatID, e)
+		if err != nil {
+			return err
+		}
+
+		rows = append(rows, row)
+	}
+
+	_, err := r.data.DB.Transaction(func(session *xorm.Session) (any, error) {
+		session = session.Context(ctx)
+
+		for _, row := range rows {
+			if _, err := session.Insert(row); err != nil {
+				return nil, err
+			}
+		}
+
+		_, err := session.ID(chatID).Cols("updated_at").Update(&entity.PurchaseChat{})
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+
+	if err != nil {
+		return dbError(err)
+	}
+
+	return nil
 }
 
 func toRow(chatID int64, e purchaseai.Entry) (*entity.PurchaseChatEntry, error) {
