@@ -26,6 +26,7 @@ import (
 
 	"github.com/apache/answer/internal/base/data"
 	"github.com/apache/answer/internal/entity"
+	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
 	purchasechat "github.com/apache/answer/internal/service/purchase_chat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,33 +41,12 @@ func newRepo(t *testing.T) (purchasechat.PurchaseChatRepo, *xorm.Engine) {
 	// 每个连接是一个独立的内存库，只留一个连接，事务和普通查询才看得到同一份数据
 	x.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = x.Close() })
-	require.NoError(t, x.Sync(new(entity.PurchaseChat), new(entity.PurchaseChatMessage)))
+	require.NoError(t, x.Sync(new(entity.PurchaseChat), new(entity.PurchaseChatEntry)))
 	return NewPurchaseChatRepo(&data.Data{DB: x}), x
 }
 
 func TestPurchaseChatRepo(t *testing.T) {
 	ctx := context.Background()
-
-	t.Run("同一条消息再存一次是覆盖，不会多一行", func(t *testing.T) {
-		// Arrange
-		repo, _ := newRepo(t)
-		chat := &entity.PurchaseChat{UserID: "1", Title: "显示器"}
-		require.NoError(t, repo.AddChat(ctx, chat))
-		require.NoError(t, repo.SaveMessage(ctx, &entity.PurchaseChatMessage{ChatID: chat.ID, MessageID: "u1", Content: `{"v":1}`}))
-		require.NoError(t, repo.SaveMessage(ctx, &entity.PurchaseChatMessage{ChatID: chat.ID, MessageID: "a1", ParentID: "u1", Content: `{"v":1}`}))
-
-		// Act
-		err := repo.SaveMessage(ctx, &entity.PurchaseChatMessage{ChatID: chat.ID, MessageID: "u1", Content: `{"v":2}`})
-
-		// Assert
-		require.NoError(t, err)
-		msgs, err := repo.ListMessages(ctx, chat.ID)
-		require.NoError(t, err)
-		require.Len(t, msgs, 2)
-		assert.Equal(t, "u1", msgs[0].MessageID, "覆盖不改变先后顺序")
-		assert.Equal(t, `{"v":2}`, msgs[0].Content)
-		assert.Equal(t, "u1", msgs[1].ParentID)
-	})
 
 	t.Run("列表只有自己的会话，刚说过话的排前面", func(t *testing.T) {
 		// Arrange
@@ -81,7 +61,8 @@ func TestPurchaseChatRepo(t *testing.T) {
 		past := time.Now().Add(-time.Hour)
 		_, err := x.Exec("UPDATE purchase_chat SET updated_at = ?", past)
 		require.NoError(t, err)
-		require.NoError(t, repo.SaveMessage(ctx, &entity.PurchaseChatMessage{ChatID: old.ID, MessageID: "u1", Content: "{}"}))
+		said := purchaseai.Entry{ID: "e_1", Kind: purchaseai.EntryMessage, Message: &purchaseai.StoredMessage{V: 1, Role: "user"}}
+		require.NoError(t, NewChatLog(&data.Data{DB: x}).Append(ctx, old.ID, []purchaseai.Entry{said}))
 
 		// Act
 		chats, err := repo.ListChats(ctx, "1", 10)

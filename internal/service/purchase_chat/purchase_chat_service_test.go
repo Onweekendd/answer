@@ -30,10 +30,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeRepo keeps chats and messages in maps.
+// fakeRepo keeps chats in a map.
 type fakeRepo struct {
 	chats map[int64]*entity.PurchaseChat
-	msgs  []*entity.PurchaseChatMessage
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{chats: map[int64]*entity.PurchaseChat{}} }
@@ -42,11 +41,6 @@ func (f *fakeRepo) AddChat(_ context.Context, chat *entity.PurchaseChat) error {
 	chat.ID = int64(len(f.chats) + 1)
 	f.chats[chat.ID] = chat
 	return nil
-}
-
-func (f *fakeRepo) GetChat(_ context.Context, id int64) (*entity.PurchaseChat, bool, error) {
-	c, ok := f.chats[id]
-	return c, ok, nil
 }
 
 func (f *fakeRepo) ListChats(_ context.Context, userID string, _ int) ([]*entity.PurchaseChat, error) {
@@ -59,91 +53,26 @@ func (f *fakeRepo) ListChats(_ context.Context, userID string, _ int) ([]*entity
 	return out, nil
 }
 
-func (f *fakeRepo) SaveMessage(_ context.Context, msg *entity.PurchaseChatMessage) error {
-	f.msgs = append(f.msgs, msg)
-	return nil
-}
-
-func (f *fakeRepo) ListMessages(_ context.Context, chatID int64) ([]*entity.PurchaseChatMessage, error) {
-	var out []*entity.PurchaseChatMessage
-	for _, m := range f.msgs {
-		if m.ChatID == chatID {
-			out = append(out, m)
-		}
-	}
-	return out, nil
-}
-
 func TestPurchaseChatService(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("存进去的消息原样取回来", func(t *testing.T) {
+	t.Run("新建的会话在自己的列表里，标题是第一个问题，别人看不到", func(t *testing.T) {
 		// Arrange
 		s := NewPurchaseChatService(newFakeRepo())
+
+		// Act
 		created, err := s.Create(ctx, &schema.PurchaseChatCreateReq{Title: "这个显示器值不值", UserID: "1"})
-		require.NoError(t, err)
-		msg := `{"id":"u1","role":"user","content":[{"type":"text","text":"这个显示器值不值"}]}`
-
-		// Act
-		err = s.SaveMessage(ctx, &schema.PurchaseChatMessageReq{
-			ChatID: created.ID, MessageID: "u1", Message: []byte(msg), UserID: "1",
-		})
-		got, getErr := s.Get(ctx, &schema.PurchaseChatGetReq{ID: created.ID, UserID: "1"})
+		mine, mineErr := s.List(ctx, "1")
+		others, othersErr := s.List(ctx, "2")
 
 		// Assert
 		require.NoError(t, err)
-		require.NoError(t, getErr)
-		assert.Equal(t, "这个显示器值不值", got.Title)
-		require.Len(t, got.Messages, 1)
-		assert.JSONEq(t, msg, string(got.Messages[0].Message))
-	})
-
-	t.Run("别人的会话读不到也写不进", func(t *testing.T) {
-		// Arrange
-		repo := newFakeRepo()
-		s := NewPurchaseChatService(repo)
-		created, err := s.Create(ctx, &schema.PurchaseChatCreateReq{Title: "我的", UserID: "1"})
-		require.NoError(t, err)
-
-		// Act
-		_, getErr := s.Get(ctx, &schema.PurchaseChatGetReq{ID: created.ID, UserID: "2"})
-		saveErr := s.SaveMessage(ctx, &schema.PurchaseChatMessageReq{
-			ChatID: created.ID, MessageID: "x", Message: []byte("{}"), UserID: "2",
-		})
-
-		// Assert
-		assert.Error(t, getErr)
-		assert.Error(t, saveErr)
-		assert.Empty(t, repo.msgs)
-	})
-
-	t.Run("id 不是数字时当作不存在", func(t *testing.T) {
-		// Arrange
-		s := NewPurchaseChatService(newFakeRepo())
-
-		// Act
-		_, err := s.Get(ctx, &schema.PurchaseChatGetReq{ID: "abc", UserID: "1"})
-
-		// Assert
-		assert.Error(t, err)
-	})
-
-	t.Run("太大的消息不存", func(t *testing.T) {
-		// Arrange
-		repo := newFakeRepo()
-		s := NewPurchaseChatService(repo)
-		created, err := s.Create(ctx, &schema.PurchaseChatCreateReq{UserID: "1"})
-		require.NoError(t, err)
-		big := `"` + strings.Repeat("a", maxMessageBytes) + `"`
-
-		// Act
-		err = s.SaveMessage(ctx, &schema.PurchaseChatMessageReq{
-			ChatID: created.ID, MessageID: "u1", Message: []byte(big), UserID: "1",
-		})
-
-		// Assert
-		assert.Error(t, err)
-		assert.Empty(t, repo.msgs)
+		require.NoError(t, mineErr)
+		require.NoError(t, othersErr)
+		require.Len(t, mine, 1)
+		assert.Equal(t, created.ID, mine[0].ID)
+		assert.Equal(t, "这个显示器值不值", mine[0].Title)
+		assert.Empty(t, others)
 	})
 }
 

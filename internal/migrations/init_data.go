@@ -60,7 +60,6 @@ var (
 		&entity.PurchaseDetail{},
 		&entity.PurchaseVote{},
 		&entity.PurchaseChat{},
-		&entity.PurchaseChatMessage{},
 		&entity.PurchaseChatEntry{},
 		&entity.Tag{},
 		&entity.TagRel{},

@@ -286,9 +286,7 @@ func (a *AnswerAPIRouter) RegisterAnswerAPIRouter(r *gin.RouterGroup) {
 
 	// purchase chat history
 	r.GET("/purchase/chats", a.purchaseChatController.List)
-	r.GET("/purchase/chat", a.purchaseChatController.Get)
 	r.POST("/purchase/chat", a.purchaseChatController.Create)
-	r.POST("/purchase/chat/message", a.purchaseChatController.SaveMessage)
 
 	// answer
 	r.POST("/answer", a.answerController.AddAnswer)

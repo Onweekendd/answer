@@ -4892,6 +4892,54 @@ const docTemplate = `{
                 "responses": {}
             }
         },
+        "/answer/api/v1/purchase/ai/chat/history": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PurchaseAI"
+                ],
+                "summary": "a conversation's messages as the page shows them, every branch included",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversation id",
+                        "name": "chat_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/handler.RespBody"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/purchaseai.PageMessage"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/answer/api/v1/purchase/ai/draft/vote": {
             "post": {
                 "security": [
@@ -4982,49 +5030,6 @@ const docTemplate = `{
             }
         },
         "/answer/api/v1/purchase/chat": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "PurchaseChat"
-                ],
-                "summary": "get one of my conversations with its messages",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "conversation id",
-                        "name": "id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/handler.RespBody"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/schema.PurchaseChatResp"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
             "post": {
                 "security": [
                     {
@@ -5069,44 +5074,6 @@ const docTemplate = `{
                                     }
                                 }
                             ]
-                        }
-                    }
-                }
-            }
-        },
-        "/answer/api/v1/purchase/chat/message": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "PurchaseChat"
-                ],
-                "summary": "save one message of a conversation; the same message_id again overwrites it",
-                "parameters": [
-                    {
-                        "description": "message",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/schema.PurchaseChatMessageReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/handler.RespBody"
                         }
                     }
                 }
@@ -8704,6 +8671,215 @@ const docTemplate = `{
                 }
             }
         },
+        "purchaseai.DraftInput": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "description": "这段对话里所有能用的图，页面上可以换",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "category": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "draftId": {
+                    "type": "string"
+                },
+                "images": {
+                    "description": "选中的配图，第一张是封面",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "link": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "vote": {
+                    "description": "只给页面显示「AI 会投：再等等」",
+                    "type": "integer"
+                }
+            }
+        },
+        "purchaseai.Event": {
+            "type": "object",
+            "properties": {
+                "args": {
+                    "description": "tool_start：要做什么",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/purchaseai.ToolView"
+                        }
+                    ]
+                },
+                "delta": {
+                    "description": "reasoning、text",
+                    "type": "string"
+                },
+                "followups": {
+                    "description": "followups：用户接下来可能会说的话，最多 3 句",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "description": "tool_start、tool_end：同一个调用的两条事件 id 一样",
+                    "type": "string"
+                },
+                "input": {
+                    "description": "tool_suspend：交给用户确认的内容（tool_input）",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/purchaseai.DraftInput"
+                        }
+                    ]
+                },
+                "message": {
+                    "description": "error：给用户看的一句话",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "tool_start：工具名",
+                    "type": "string"
+                },
+                "product": {
+                    "description": "product",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/purchaseai.ProductCard"
+                        }
+                    ]
+                },
+                "result": {
+                    "description": "tool_end：做得怎么样",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/purchaseai.ToolView"
+                        }
+                    ]
+                },
+                "saved": {
+                    "description": "saved",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/purchaseai.SavedIDs"
+                        }
+                    ]
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "purchaseai.PageMessage": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "CreatedAt 是 unix 秒",
+                    "type": "integer"
+                },
+                "events": {
+                    "description": "回答：按顺序重放这些事件得到那条回答",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/purchaseai.Event"
+                    }
+                },
+                "id": {
+                    "description": "条目 id：用户消息是它那条 user 条目，回答是那一轮的最后一条（leaf）",
+                    "type": "string"
+                },
+                "images": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "parent_id": {
+                    "description": "页面上的上一条消息；编辑、重新生成会让同一条有好几个下一条",
+                    "type": "string"
+                },
+                "role": {
+                    "description": "user / assistant",
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "purchaseai.ProductCard": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "description": "第几个，从 1 开始；同一个商品再记一次时用它找到原来那张",
+                    "type": "integer"
+                },
+                "image": {
+                    "description": "存下来的商品图的网址；没截到、没存成就没有",
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string"
+                },
+                "priceNote": {
+                    "type": "string"
+                },
+                "shop": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "description": "清洗过的链接，见 cleanProductURL",
+                    "type": "string"
+                }
+            }
+        },
+        "purchaseai.SavedIDs": {
+            "type": "object",
+            "properties": {
+                "leaf": {
+                    "description": "这一轮的最后一条",
+                    "type": "string"
+                },
+                "user": {
+                    "description": "这一轮的用户消息；重新生成时没有新的用户消息，为空",
+                    "type": "string"
+                }
+            }
+        },
+        "purchaseai.ToolView": {
+            "type": "object",
+            "properties": {
+                "ok": {
+                    "description": "只在 tool_end 里有",
+                    "type": "boolean"
+                },
+                "summary": {
+                    "type": "string"
+                }
+            }
+        },
         "schema.AIConversationAdminDeleteReq": {
             "type": "object",
             "required": [
@@ -10847,9 +11023,6 @@ const docTemplate = `{
         },
         "schema.PurchaseAIChatMessage": {
             "type": "object",
-            "required": [
-                "role"
-            ],
             "properties": {
                 "images": {
                     "type": "array",
@@ -10857,13 +11030,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "role": {
-                    "type": "string",
-                    "enum": [
-                        "user",
-                        "assistant"
-                    ]
                 },
                 "text": {
                     "type": "string",
@@ -10874,16 +11040,18 @@ const docTemplate = `{
         "schema.PurchaseAIChatReq": {
             "type": "object",
             "required": [
-                "messages"
+                "chat_id"
             ],
             "properties": {
-                "messages": {
-                    "type": "array",
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/schema.PurchaseAIChatMessage"
-                    }
+                "chat_id": {
+                    "type": "string"
+                },
+                "message": {
+                    "$ref": "#/definitions/schema.PurchaseAIChatMessage"
+                },
+                "parent_id": {
+                    "type": "string",
+                    "maxLength": 32
                 }
             }
         },
@@ -10939,58 +11107,6 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "integer"
-                }
-            }
-        },
-        "schema.PurchaseChatMessageItem": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "object"
-                },
-                "parent_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.PurchaseChatMessageReq": {
-            "type": "object",
-            "required": [
-                "chat_id",
-                "message",
-                "message_id"
-            ],
-            "properties": {
-                "chat_id": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "object"
-                },
-                "message_id": {
-                    "type": "string",
-                    "maxLength": 64
-                },
-                "parent_id": {
-                    "type": "string",
-                    "maxLength": 64
-                }
-            }
-        },
-        "schema.PurchaseChatResp": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "messages": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.PurchaseChatMessageItem"
-                    }
-                },
-                "title": {
-                    "type": "string"
                 }
             }
         },

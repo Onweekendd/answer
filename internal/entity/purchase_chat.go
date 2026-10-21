@@ -21,8 +21,8 @@ package entity
 
 import "time"
 
-// PurchaseChat is one conversation on the chat page. Its messages live in
-// purchase_chat_message.
+// PurchaseChat is one conversation on the chat page. What was said in it is its
+// log in purchase_chat_entry.
 type PurchaseChat struct {
 	ID     int64  `xorm:"not null pk autoincr BIGINT(20) id"`
 	UserID string `xorm:"not null default 0 BIGINT(20) INDEX user_id"`
@@ -37,25 +37,6 @@ type PurchaseChat struct {
 // TableName purchase chat table name
 func (PurchaseChat) TableName() string {
 	return "purchase_chat"
-}
-
-// PurchaseChatMessage is one message of a chat, kept as the page's own JSON so
-// the page gets back exactly what it showed: text, thinking, steps and cards.
-// MessageID is the page's id for the message; (chat_id, message_id) is unique,
-// so saving the same message again overwrites it.
-type PurchaseChatMessage struct {
-	ID        int64     `xorm:"not null pk autoincr BIGINT(20) id"`
-	ChatID    int64     `xorm:"not null UNIQUE(chat_message) BIGINT(20) chat_id"`
-	MessageID string    `xorm:"not null UNIQUE(chat_message) VARCHAR(64) message_id"`
-	ParentID  string    `xorm:"not null default '' VARCHAR(64) parent_id"`
-	Content   string    `xorm:"not null MEDIUMTEXT content"`
-	CreatedAt time.Time `xorm:"created not null default CURRENT_TIMESTAMP TIMESTAMP created_at"`
-	UpdatedAt time.Time `xorm:"updated not null default CURRENT_TIMESTAMP TIMESTAMP updated_at"`
-}
-
-// TableName purchase chat message table name
-func (PurchaseChatMessage) TableName() string {
-	return "purchase_chat_message"
 }
 
 // PurchaseChatEntry is one entry of a conversation's log: a model message, with

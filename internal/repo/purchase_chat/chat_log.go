@@ -121,7 +121,6 @@ func (r *chatLog) Entries(ctx context.Context, chatID int64, userID string) ([]p
 //   - 事务：r.data.DB.Transaction(func(session *xorm.Session) (any, error) { ... })，函数返回 error 就整体回滚。
 //     里面先 session = session.Context(ctx)，再用 session.Insert(row)、session.ID(id).Cols("col").Update(&entity.X{})。
 //     PurchaseChat.UpdatedAt 带 xorm 的 `updated` 标签，Update 时 xorm 自动填当前时间，不用自己给值。
-//     同目录 purchase_chat_repo.go 的 SaveMessage 就是「写消息 + 改 updated_at」放一个事务的例子
 //   - 需要 import "xorm.io/xorm"（Transaction 的参数类型）
 //
 // TODO(精华，你来写)，按这个顺序：

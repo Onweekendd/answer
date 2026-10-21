@@ -49,24 +49,6 @@ func (pcc *PurchaseChatController) List(ctx *gin.Context) {
 	handler.HandleResponse(ctx, err, resp)
 }
 
-// Get one of my conversations with its messages
-// @Summary get one of my conversations with its messages
-// @Tags PurchaseChat
-// @Produce json
-// @Security ApiKeyAuth
-// @Param id query string true "conversation id"
-// @Success 200 {object} handler.RespBody{data=schema.PurchaseChatResp}
-// @Router /answer/api/v1/purchase/chat [get]
-func (pcc *PurchaseChatController) Get(ctx *gin.Context) {
-	req := &schema.PurchaseChatGetReq{}
-	if handler.BindAndCheck(ctx, req) {
-		return
-	}
-	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
-	resp, err := pcc.purchaseChatService.Get(ctx, req)
-	handler.HandleResponse(ctx, err, resp)
-}
-
 // Create start a conversation
 // @Summary start a conversation
 // @Tags PurchaseChat
@@ -84,23 +66,4 @@ func (pcc *PurchaseChatController) Create(ctx *gin.Context) {
 	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
 	resp, err := pcc.purchaseChatService.Create(ctx, req)
 	handler.HandleResponse(ctx, err, resp)
-}
-
-// SaveMessage save one message of a conversation
-// @Summary save one message of a conversation; the same message_id again overwrites it
-// @Tags PurchaseChat
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param data body schema.PurchaseChatMessageReq true "message"
-// @Success 200 {object} handler.RespBody
-// @Router /answer/api/v1/purchase/chat/message [post]
-func (pcc *PurchaseChatController) SaveMessage(ctx *gin.Context) {
-	req := &schema.PurchaseChatMessageReq{}
-	if handler.BindAndCheck(ctx, req) {
-		return
-	}
-	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
-	err := pcc.purchaseChatService.SaveMessage(ctx, req)
-	handler.HandleResponse(ctx, err, nil)
 }

@@ -19,8 +19,6 @@
 
 package schema
 
-import "encoding/json"
-
 // PurchaseDraftVoteReq asks the AI to cast the vote it kept with a draft, on
 // the post the user published from that draft.
 type PurchaseDraftVoteReq struct {
@@ -45,32 +43,4 @@ type PurchaseChatItem struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	UpdatedAt int64  `json:"updated_at"`
-}
-
-// PurchaseChatGetReq asks for one conversation with its messages.
-type PurchaseChatGetReq struct {
-	ID     string `validate:"required" form:"id"`
-	UserID string `json:"-"`
-}
-
-// PurchaseChatResp is one conversation with its messages in the order they were first saved.
-type PurchaseChatResp struct {
-	ID       string                     `json:"id"`
-	Title    string                     `json:"title"`
-	Messages []*PurchaseChatMessageItem `json:"messages"`
-}
-
-// PurchaseChatMessageItem is a saved message. Message is the page's JSON, as it was sent.
-type PurchaseChatMessageItem struct {
-	ParentID string          `json:"parent_id"`
-	Message  json.RawMessage `json:"message" swaggertype:"object"`
-}
-
-// PurchaseChatMessageReq saves one message; saving the same message_id again overwrites it.
-type PurchaseChatMessageReq struct {
-	ChatID    string          `validate:"required" json:"chat_id"`
-	MessageID string          `validate:"required,max=64" json:"message_id"`
-	ParentID  string          `validate:"max=64" json:"parent_id"`
-	Message   json.RawMessage `validate:"required" json:"message" swaggertype:"object"`
-	UserID    string          `json:"-"`
 }

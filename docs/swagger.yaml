@@ -130,6 +130,143 @@ definitions:
       select_theme:
         type: string
     type: object
+  purchaseai.DraftInput:
+    properties:
+      candidates:
+        description: 这段对话里所有能用的图，页面上可以换
+        items:
+          type: string
+        type: array
+      category:
+        type: string
+      content:
+        type: string
+      draftId:
+        type: string
+      images:
+        description: 选中的配图，第一张是封面
+        items:
+          type: string
+        type: array
+      link:
+        type: string
+      price:
+        type: number
+      title:
+        type: string
+      vote:
+        description: 只给页面显示「AI 会投：再等等」
+        type: integer
+    type: object
+  purchaseai.Event:
+    properties:
+      args:
+        allOf:
+        - $ref: '#/definitions/purchaseai.ToolView'
+        description: tool_start：要做什么
+      delta:
+        description: reasoning、text
+        type: string
+      followups:
+        description: followups：用户接下来可能会说的话，最多 3 句
+        items:
+          type: string
+        type: array
+      id:
+        description: tool_start、tool_end：同一个调用的两条事件 id 一样
+        type: string
+      input:
+        allOf:
+        - $ref: '#/definitions/purchaseai.DraftInput'
+        description: tool_suspend：交给用户确认的内容（tool_input）
+      message:
+        description: error：给用户看的一句话
+        type: string
+      name:
+        description: tool_start：工具名
+        type: string
+      product:
+        allOf:
+        - $ref: '#/definitions/purchaseai.ProductCard'
+        description: product
+      result:
+        allOf:
+        - $ref: '#/definitions/purchaseai.ToolView'
+        description: tool_end：做得怎么样
+      saved:
+        allOf:
+        - $ref: '#/definitions/purchaseai.SavedIDs'
+        description: saved
+      type:
+        type: string
+    type: object
+  purchaseai.PageMessage:
+    properties:
+      created_at:
+        description: CreatedAt 是 unix 秒
+        type: integer
+      events:
+        description: 回答：按顺序重放这些事件得到那条回答
+        items:
+          $ref: '#/definitions/purchaseai.Event'
+        type: array
+      id:
+        description: 条目 id：用户消息是它那条 user 条目，回答是那一轮的最后一条（leaf）
+        type: string
+      images:
+        items:
+          type: string
+        type: array
+      parent_id:
+        description: 页面上的上一条消息；编辑、重新生成会让同一条有好几个下一条
+        type: string
+      role:
+        description: user / assistant
+        type: string
+      text:
+        type: string
+    type: object
+  purchaseai.ProductCard:
+    properties:
+      id:
+        description: 第几个，从 1 开始；同一个商品再记一次时用它找到原来那张
+        type: integer
+      image:
+        description: 存下来的商品图的网址；没截到、没存成就没有
+        type: string
+      note:
+        type: string
+      price:
+        type: string
+      priceNote:
+        type: string
+      shop:
+        type: string
+      spec:
+        type: string
+      title:
+        type: string
+      url:
+        description: 清洗过的链接，见 cleanProductURL
+        type: string
+    type: object
+  purchaseai.SavedIDs:
+    properties:
+      leaf:
+        description: 这一轮的最后一条
+        type: string
+      user:
+        description: 这一轮的用户消息；重新生成时没有新的用户消息，为空
+        type: string
+    type: object
+  purchaseai.ToolView:
+    properties:
+      ok:
+        description: 只在 tool_end 里有
+        type: boolean
+      summary:
+        type: string
+    type: object
   schema.AIConversationAdminDeleteReq:
     properties:
       conversation_id:
@@ -1616,27 +1753,21 @@ definitions:
           type: string
         maxItems: 5
         type: array
-      role:
-        enum:
-        - user
-        - assistant
-        type: string
       text:
         maxLength: 8000
         type: string
-    required:
-    - role
     type: object
   schema.PurchaseAIChatReq:
     properties:
-      messages:
-        items:
-          $ref: '#/definitions/schema.PurchaseAIChatMessage'
-        maxItems: 40
-        minItems: 1
-        type: array
+      chat_id:
+        type: string
+      message:
+        $ref: '#/definitions/schema.PurchaseAIChatMessage'
+      parent_id:
+        maxLength: 32
+        type: string
     required:
-    - messages
+    - chat_id
     type: object
   schema.PurchaseAIIdentifyReq:
     properties:
@@ -1674,41 +1805,6 @@ definitions:
         type: string
       updated_at:
         type: integer
-    type: object
-  schema.PurchaseChatMessageItem:
-    properties:
-      message:
-        type: object
-      parent_id:
-        type: string
-    type: object
-  schema.PurchaseChatMessageReq:
-    properties:
-      chat_id:
-        type: string
-      message:
-        type: object
-      message_id:
-        maxLength: 64
-        type: string
-      parent_id:
-        maxLength: 64
-        type: string
-    required:
-    - chat_id
-    - message
-    - message_id
-    type: object
-  schema.PurchaseChatResp:
-    properties:
-      id:
-        type: string
-      messages:
-        items:
-          $ref: '#/definitions/schema.PurchaseChatMessageItem'
-        type: array
-      title:
-        type: string
     type: object
   schema.PurchaseDraftVoteReq:
     properties:
@@ -6538,6 +6634,33 @@ paths:
       summary: chat with the buying agent
       tags:
       - PurchaseAI
+  /answer/api/v1/purchase/ai/chat/history:
+    get:
+      parameters:
+      - description: conversation id
+        in: query
+        name: chat_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handler.RespBody'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/purchaseai.PageMessage'
+                  type: array
+              type: object
+      security:
+      - ApiKeyAuth: []
+      summary: a conversation's messages as the page shows them, every branch included
+      tags:
+      - PurchaseAI
   /answer/api/v1/purchase/ai/draft/vote:
     post:
       consumes:
@@ -6593,30 +6716,6 @@ paths:
       tags:
       - PurchaseAI
   /answer/api/v1/purchase/chat:
-    get:
-      parameters:
-      - description: conversation id
-        in: query
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/handler.RespBody'
-            - properties:
-                data:
-                  $ref: '#/definitions/schema.PurchaseChatResp'
-              type: object
-      security:
-      - ApiKeyAuth: []
-      summary: get one of my conversations with its messages
-      tags:
-      - PurchaseChat
     post:
       consumes:
       - application/json
@@ -6642,30 +6741,6 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: start a conversation
-      tags:
-      - PurchaseChat
-  /answer/api/v1/purchase/chat/message:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: message
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/schema.PurchaseChatMessageReq'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/handler.RespBody'
-      security:
-      - ApiKeyAuth: []
-      summary: save one message of a conversation; the same message_id again overwrites
-        it
       tags:
       - PurchaseChat
   /answer/api/v1/purchase/chats:
