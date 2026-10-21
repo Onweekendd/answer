@@ -68,6 +68,28 @@ describe("toChatTurn", () => {
     expect(got.parent_id).toBe("e_v1");
     expect(got.message?.text).toBe("改过的问题");
   });
+
+  it("follows a question left without an answer, keeping the conversation before it", () => {
+    // Arrange: the server restarted mid-turn, so m3 was logged but never answered
+    const thread = [user("m1", "a"), answer("m2"), user("m3", "那 bose 呢"), user("m4", "再看看淘宝")];
+
+    // Act
+    const got = toChatTurn("7", thread, entryOf({ m1: { user: "e_u1" }, m2: { leaf: "e_v1" }, m3: { user: "e_u2" } }));
+
+    // Assert
+    expect(got.parent_id).toBe("e_u2");
+  });
+
+  it("skips back past an answer that never got its ids", () => {
+    // Arrange: m2's turn ended without a saved event
+    const thread = [user("m1", "a"), answer("m2"), user("m3", "b")];
+
+    // Act
+    const got = toChatTurn("7", thread, entryOf({ m1: { user: "e_u1" } }));
+
+    // Assert
+    expect(got.parent_id).toBe("e_u1");
+  });
 });
 
 const enc = new TextEncoder();

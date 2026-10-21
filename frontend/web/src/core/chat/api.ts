@@ -34,8 +34,10 @@ export interface EntryOf {
 /**
  * The turn to send for the thread assistant-ui hands the adapter, which always ends with a user
  * message. One the server has logged already is being regenerated: rerun it, send nothing new.
- * Otherwise it is new (sent, or edited into a new branch): it follows the answer before it, or
- * starts the conversation.
+ * Otherwise it is new (sent, or edited into a new branch): it follows the nearest message before it
+ * that the server logged, usually the answer just before it, or starts the conversation. A question
+ * left without an answer (the server restarted mid-turn) or an answer that never got its ids still
+ * keeps what came before it, instead of starting over from the root.
  */
 export function toChatTurn(chatId: string, messages: readonly ThreadMessageLike[], entryOf: EntryOf): ChatTurnReq {
   const last = messages.at(-1);
@@ -46,12 +48,23 @@ export function toChatTurn(chatId: string, messages: readonly ThreadMessageLike[
   if (logged) {
     return { chat_id: chatId, parent_id: logged };
   }
-  const before = messages.at(-2);
   return {
     chat_id: chatId,
-    parent_id: (before && entryOf.leaf(before)) ?? "",
+    parent_id: loggedBefore(messages, entryOf) ?? "",
     message: { text: textOf(last), images: imagesOf(last) }
   };
+}
+
+/** The logged id of the nearest message before the last one: an answer's leaf or a question's entry. */
+function loggedBefore(messages: readonly ThreadMessageLike[], entryOf: EntryOf): string | undefined {
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i]!;
+    const id = entryOf.leaf(m) ?? entryOf.user(m);
+    if (id) {
+      return id;
+    }
+  }
+  return undefined;
 }
 
 function textOf(m: ThreadMessageLike): string {
