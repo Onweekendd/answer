@@ -53,6 +53,10 @@ func (f *fakeChatLog) Append(ctx context.Context, _ int64, entries []Entry) erro
 	if f.appendErr != nil {
 		return f.appendErr
 	}
+	// 和真的数据库一样：ctx 已经取消了就写不进去
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.entries = append(f.entries, entries...)
 	return nil
 }

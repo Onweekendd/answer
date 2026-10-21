@@ -39,12 +39,20 @@ import (
 //   - 会出什么事：用户关了页面（请求的 ctx 被取消，Agent 停下）；进程在跑到一半时重启；写库失败（数据库抖了一下）
 //   - 记下来的谁用：下一轮 Chat 用 ChatLog.Entries 读出来，pathTo 从 leaf 走回根，project 变成模型的历史。
 //     所以链必须是连着的：中间断一节，下一轮就走不回根了
+//
+// closeTimeout 是 close 写库最多等多久
+const closeTimeout = 10 * time.Second
+
 type chatRecorder struct {
 	log    ChatLog
 	chatID int64
 	parent string // 下一条接在谁后面：一开始是请求里的 parent_id，每记一条就挪到那一条
 
-	// TODO(精华，你来写)：写入时机要用到的东西加在这里（比如攒着还没写的条目）
+	// pending 是已经串好链、还没写进库的条目。写入时机选的是「每条立刻写，失败的留着下次一起写」：
+	// 进程中途重启时，写进去的那些还在（用户的问题、做到一半的步骤），半截的调用由 project 第 4 步补；
+	// 一条写失败也不会断链，它留在这里，下一次 record 或者 close 时和新的一起重写。
+	// Append 是一个事务，一批要么全进要么全不进，所以整批重写不会写出重复的
+	pending []Entry
 }
 
 func newChatRecorder(log ChatLog, chatID int64, parent string) *chatRecorder {
@@ -65,29 +73,45 @@ func (c *chatRecorder) leaf() string {
 	return c.parent
 }
 
-// record 记下一条，返回它的 ID。
+// record 记下一条，返回它的 ID（页面和下一轮靠这个 ID 接上）。
+//
+// 上下文：
+//   - 谁调用：Chat 记用户消息和最后的 view；Agent 循环里的 agentRun.keep 记每一条模型消息。
+//     都在同一个 goroutine 里一条接一条地调，不会并发，不用加锁
+//   - e：Kind 和 Message（或 View）已经填好，ID、ParentID、CreatedAt 还是空的，由 c.chain 填
+//   - ctx：请求的 ctx。用户关了页面它就被取消了，这时写库会失败，没关系：条目留在 pending 里，close 会换个 ctx 写
+//   - 返回值不带 error：写不进去不该打断这一轮（用户正在等回答），失败的留给 close 兜底并报告
 //
 // TODO(精华，你来写)，按这个顺序：
-//  1. 先决定写入时机，写一句注释说明理由：
-//     A. 每一条都立刻写（Append 一条）：跑到一半崩了，前面的都在；代价是一轮二三十次 INSERT，
-//     而且日志里会留下「只有调用、没有结果」的半截，靠 project 第 4 步补
-//     B. 攒在内存里，close 时一次写完：一次事务，干净；代价是进程崩了这一轮全丢，用户刚才看到的回答下次打开就没了
-//     对照上面「会出什么事」的三种情况，各自在 A、B 下是什么结果
-//  2. 先 c.chain(e) 拿到带 ID 的条目，再按你的选择写库或者攒起来，返回 ID
-//  3. 选 A 的话，写库失败怎么办：这一条丢了，后面的 ParentID 指向它，链就断了。
-//     要么把没写成的留着、下次 record 或者 close 时再一起写，要么……你来定
+//  1. e = c.chain(e)，拿到带 ID 的条目
+//  2. 追加到 c.pending
+//  3. c.flush(ctx) 试着写掉，错误先忽略（写 `_ = c.flush(ctx)`，让读代码的人知道是故意不管的）
+//  4. 返回 e.ID
 func (c *chatRecorder) record(ctx context.Context, e Entry) string {
 	return c.chain(e).ID
 }
 
-// close 在这一轮结束时调一次：正常结束、出错、用户关了页面都要调（Chat 里 defer）。
+// flush 把 pending 里的全部条目一次写进库，成功就清空，失败就原样留着、返回错误。
+//
+// 能用的：c.log.Append(ctx, c.chatID, entries) error。它就是你写的 chatLog.Append，在一个事务里按顺序插入；
+// 测试里是 fakeChatLog（chatlog_test.go），它可以模拟写库出错（appendErr）、记下写库时 ctx 有没有被取消（ctxErr）
 //
 // TODO(精华，你来写)：
-//  1. 把还没写进库的写掉
-//  2. ctx 很关键：调用方给的是请求的 ctx，用户关了页面它就已经被取消了，拿它写库会立刻失败，
-//     偏偏这正是最需要把前面的记下来的时候。用 context.WithoutCancel(ctx) 摘掉取消，
-//     再套一个 context.WithTimeout 给个期限（比如 10 秒），别让一次卡住的写库拖住 goroutine
-//  3. 返回写库的错误，Chat 会打日志
+//  1. pending 是空的就直接返回 nil（不要白开一个事务）
+//  2. Append 整个 pending；出错就返回这个错误，pending 不动
+//  3. 成功就清空 pending（c.pending = nil），返回 nil
+func (c *chatRecorder) flush(ctx context.Context) error {
+	return nil
+}
+
+// close 在这一轮结束时调一次：正常结束、出错、用户关了页面都要调（chat.go 里 record 完 view 以后）。
+//
+// TODO(精华，你来写)：
+//  1. 换一个写库用的 ctx：调用方给的是请求的 ctx，用户关了页面它就已经被取消了，拿它写库会立刻失败，
+//     偏偏这正是最需要把前面的记下来的时候。context.WithoutCancel(ctx) 摘掉取消（ctx 里带的值还在），
+//     再套一层 context.WithTimeout(…, closeTimeout) 给个期限，别让一次卡住的写库拖住 goroutine；
+//     WithTimeout 返回的 cancel 要 defer 调掉
+//  2. 用这个 ctx flush，把它的错误返回（Chat 会打日志）
 func (c *chatRecorder) close(ctx context.Context) error {
 	return nil
 }

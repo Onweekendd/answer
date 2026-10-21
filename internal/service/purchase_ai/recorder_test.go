@@ -72,22 +72,72 @@ func TestChatRecorder_EverythingIsInTheLogAfterClose(t *testing.T) {
 	assert.Equal(t, "三", log.entries[2].Message.Parts[0].Text)
 }
 
+func TestChatRecorder_EachEntryIsWrittenRightAway(t *testing.T) {
+	skipRecorder(t)
+	// Arrange
+	log := &fakeChatLog{}
+	rec := newChatRecorder(log, fakeChatID, "")
+
+	// Act：还没 close，进程这时候重启的话
+	a := rec.record(context.Background(), textEntry("一"))
+
+	// Assert：已经在库里了
+	require.Len(t, log.entries, 1)
+	assert.Equal(t, a, log.entries[0].ID)
+}
+
+func TestChatRecorder_FailedWriteIsRetriedWithTheNext(t *testing.T) {
+	skipRecorder(t)
+	// Arrange：第一条写的时候数据库抖了一下
+	log := &fakeChatLog{appendErr: errors.New("database is down")}
+	rec := newChatRecorder(log, fakeChatID, "")
+	a := rec.record(context.Background(), textEntry("一"))
+	log.appendErr = nil
+
+	// Act
+	b := rec.record(context.Background(), textEntry("二"))
+
+	// Assert：没写成的那条没丢，和下一条一起按顺序写进去，链是连着的
+	require.Len(t, log.entries, 2)
+	assert.Equal(t, []string{a, b}, []string{log.entries[0].ID, log.entries[1].ID})
+	assert.Equal(t, a, log.entries[1].ParentID)
+}
+
 func TestChatRecorder_CloseWritesEvenAfterThePageIsClosed(t *testing.T) {
 	skipRecorder(t)
-	// Arrange：用户关了页面，请求的 ctx 已经取消了
+	// Arrange：第一条写进去以后用户关了页面，请求的 ctx 取消了，之后的 record 都写不进去
 	log := &fakeChatLog{}
 	ctx, cancel := context.WithCancel(context.Background())
 	rec := newChatRecorder(log, fakeChatID, "")
-	rec.record(ctx, textEntry("一"))
+	a := rec.record(ctx, textEntry("一"))
 	cancel()
+	b := rec.record(ctx, textEntry("二"))
+	c := rec.record(ctx, Entry{Kind: EntryView, View: &StoredView{V: storedVersion}})
 
 	// Act
 	err := rec.close(ctx)
 
-	// Assert：前面的都要记下来，写库时用的 ctx 不能是已经取消的那个
+	// Assert：前面的都要记下来，close 写库时用的 ctx 不能是已经取消的那个
 	require.NoError(t, err)
-	assert.Len(t, log.entries, 1)
+	require.Len(t, log.entries, 3)
+	assert.Equal(t, []string{a, b, c}, []string{log.entries[0].ID, log.entries[1].ID, log.entries[2].ID})
 	assert.NoError(t, log.ctxErr)
+}
+
+func TestChatRecorder_NothingLeftCloseDoesNotWrite(t *testing.T) {
+	skipRecorder(t)
+	// Arrange：都已经写进去了
+	log := &fakeChatLog{}
+	rec := newChatRecorder(log, fakeChatID, "")
+	rec.record(context.Background(), textEntry("一"))
+	before := log.appends
+
+	// Act
+	err := rec.close(context.Background())
+
+	// Assert：不白开一个事务
+	require.NoError(t, err)
+	assert.Equal(t, before, log.appends)
 }
 
 func TestChatRecorder_FailedWriteIsReported(t *testing.T) {
