@@ -99,7 +99,7 @@ it("小红书：笔记浮层的图片区编进快照，好让截图只截图片�
   // Assert
   expect(result.elements.map((el) => el.textContent)).toEqual(["2/6"]);
   expect(result.labels.get(result.elements[0])).toBe("笔记图片 第2/6张");
-  expect(result.stats).toEqual({ strategy: "xiaohongshu-note", strategyMatched: 1 });
+  expect(result.stats).toEqual({ strategy: "xiaohongshu", strategyMatched: 1 });
 });
 
 it("小红书：单图笔记没有 2/6 也认得出是图片，视频笔记说是视频", () => {
