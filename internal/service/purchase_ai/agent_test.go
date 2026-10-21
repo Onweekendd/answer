@@ -817,6 +817,38 @@ func Test_run(t *testing.T) {
 		}
 	})
 
+	t.Run("有工作台时剩 deliverAt 步提醒开始做交付物，没有工作台不提醒", func(t *testing.T) {
+		for _, sandbox := range []bool{true, false} {
+			// Arrange
+			limits := testLimits()
+			limits.maxSteps = 4
+			limits.warnAt = 1
+			limits.deliverAt = 2
+			model := &fakeLLM{replies: []*llm.ChatResp{
+				calls(openJD("c1")),
+				calls(toolCall("c2", toolSnapshot, `{}`)),
+				calls(toolCall("c3", toolScroll, `{"direction":"down"}`)),
+				calls(toolCall("c4", toolScroll, `{"direction":"up"}`)),
+				{Content: "好"},
+			}}
+			r := newAgentRun(model, newFakeBrowser(), limits)
+			if sandbox {
+				r.workspaces = &fakeWorkspaces{ws: &fakeWorkspace{}}
+			}
+
+			// Act
+			_, err := r.run(context.Background(), startMessages(), true)
+
+			// Assert：第 2 步之后剩 2 步
+			require.NoError(t, err)
+			if sandbox {
+				require.Equal(t, deliverWarningText(2), model.lastMessage(2))
+			} else {
+				require.NotEqual(t, deliverWarningText(2), model.lastMessage(2))
+			}
+		}
+	})
+
 	t.Run("步数用完走收尾，剩 warnAt 步时提醒一次", func(t *testing.T) {
 		// Arrange
 		limits := testLimits()

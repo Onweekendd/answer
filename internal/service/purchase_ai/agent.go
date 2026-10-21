@@ -191,6 +191,9 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		if restSteps == r.limits.warnAt {
 			messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, stepWarningText(restSteps)), messageMeta{Synthetic: true})
 		}
+		if restSteps == r.limits.deliverAt && r.workspaces != nil {
+			messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, deliverWarningText(restSteps)), messageMeta{Synthetic: true})
+		}
 	}
 
 	return r.finish(ctx, messages, finishSteps)

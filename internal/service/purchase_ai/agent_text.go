@@ -64,6 +64,12 @@ func stepWarningText(remaining int) string {
 	return fmt.Sprintf("只剩 %d 步了。信息够了就调用 done 作答；不够，就用剩下的步数补上最关键的一项。", remaining)
 }
 
+// deliverWarningText 在有工作台、剩 deliverAt 步时追加一次：用户要的图、表、网页留够步数做
+func deliverWarningText(remaining int) string {
+	return fmt.Sprintf("还剩 %d 步。用户要你做图、表格、网页这类东西的话，现在就开始在工作台里做（写网页、shot 截图、看一眼），"+
+		"做完还有步数再补查；用户没要就不用管这条。", remaining)
+}
+
 // loopNudgeText 在同一个动作重复出现时追加（概念 5）
 func loopNudgeText(call llm.ToolCall, times int) string {
 	return fmt.Sprintf("你已经在同一个页面状态下第 %d 次执行 %s(%s)，页面没有出现新的内容。"+

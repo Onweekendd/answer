@@ -108,6 +108,7 @@ type agentResult struct {
 type agentLimits struct {
 	maxSteps    int // 一步 = 调用一次模型（概念 4）
 	warnAt      int // 还剩几步时提醒收尾
+	deliverAt   int // 有工作台时，还剩几步提醒开始做图、表、网页
 	maxFailures int // 连续失败几次就收尾（概念 3）
 
 	loopWindow  int // 循环检测看最近几次动作（概念 5）
@@ -125,6 +126,9 @@ var defaultLimits = agentLimits{
 	// 2026-10-21 提到 50：做功课要去秘塔核实、点开官网原文，再读几篇小红书，30 步时打开了官网原文还没读就被收尾
 	maxSteps:    50,
 	warnAt:      3,
+	// 2026-10-21 成都案例：46 步都在读网页，剩 4 步才开始做行程卡，只好用 Pillow 草草画一张。
+	// 做一张图要写网页、截图、看一眼、改一次，至少 4～5 步，留 10 步
+	deliverAt:   10,
 	maxFailures: 3,
 
 	loopWindow:  10,
