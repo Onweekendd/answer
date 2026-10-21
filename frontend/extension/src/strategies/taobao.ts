@@ -19,6 +19,49 @@
 
 import type { PageProfile } from "./profile";
 
+// 搜索结果的卡片（2026-10-21 用 inspect 看的 s.taobao.com/search?q=电热水器60升）：
+//   - 每个商品是 a[id=item_id_<商品 id>]，里面是 div.doubleCard--：主图 img.mainImg--、标题 div.title--、
+//     规格摘要 descBox-- 里的一个个 text--（"60L""650x310x560mm"）、价格区 priceWrapper--、店铺 shopInfo--
+//   - 价格区是几个兄弟元素：unit--"¥"、priceInt--"7??"、priceFloat--（小数，常常是空的）、priceDesc--"补贴后"、
+//     realSales--"8000+人付款"，后面是发货地。很多商品的价被藏成"7??"，网页上只能看到区间
+//   - 店铺区：shopTagWrapper--"品牌旗舰"，shopNameText--"小米官方旗舰店"
+//   - 广告（直通车）的链接是 click.simba.taobao.com 的跳转，不是商品页；它的店铺链接也是
+// 通用实现取整张卡片的文字当标题，"榜·第5名""直接下单享优惠"都会混进来。比价要的是规格、价、销量、店铺，
+// 所以标题拼成一行：标题 ｜ 规格 ｜ 价 ｜ 销量 ｜ 店铺。模型在工作台读 harvest/items.json 就能直接比
+const CARD = 'a[id^="item_id_"]';
+
+function text(el: Element | null | undefined): string {
+  return el?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function itemID(card: Element): string | undefined {
+  return card.id.replace("item_id_", "") || undefined;
+}
+
+function cardTitle(card: Element): string | undefined {
+  const title = text(card.querySelector('[class*="descWrapper--"] [class*="title--"]'));
+  if (!title) {
+    return undefined;
+  }
+  const specs = Array.from(card.querySelectorAll('[class*="descBox--"] [class*="text--"]'))
+    .map(text)
+    .filter(Boolean)
+    .join(" · ");
+  const price = [
+    text(card.querySelector('[class*="unit--"]')) +
+      text(card.querySelector('[class*="priceInt--"]')) +
+      text(card.querySelector('[class*="priceFloat--"]')),
+    text(card.querySelector('[class*="priceDesc--"]'))
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const sales = text(card.querySelector('[class*="realSales--"]'));
+  const shop = [text(card.querySelector('[class*="shopTagWrapper--"]')), text(card.querySelector('[class*="shopNameText--"]'))]
+    .filter(Boolean)
+    .join(" ");
+  return [title, specs, price, sales, shop].filter(Boolean).join(" ｜ ");
+}
+
 export const taobao: PageProfile = {
   name: "taobao-search",
   matches: (url) => url.hostname === "s.taobao.com" && url.pathname === "/search",
@@ -38,6 +81,25 @@ export const taobao: PageProfile = {
           ].join(", ")
         )
       )
+  },
+  list: {
+    cards: (doc) => Array.from(doc.querySelectorAll(CARD)),
+    sponsored: (card) => (card.getAttribute("href") ?? "").includes("click.simba.taobao.com"),
+    // 卡片的 href 带着一长串跟踪参数，只留商品 id。天猫的商品在 detail.tmall.com，别的在 item.taobao.com
+    link: (card) => {
+      const id = itemID(card);
+      if (!id) {
+        return undefined;
+      }
+      const host = (card.getAttribute("href") ?? "").includes("tmall.com") ? "detail.tmall.com" : "item.taobao.com";
+      return `https://${host}/item.htm?id=${id}`;
+    },
+    title: cardTitle,
+    image: (card) => card.querySelector<HTMLImageElement>('img[class*="mainImg--"]') ?? undefined,
+    key: (card) => {
+      const id = itemID(card);
+      return id ? `tb:${id}` : undefined;
+    }
   }
 };
 
