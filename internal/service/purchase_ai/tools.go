@@ -233,11 +233,11 @@ func (r *agentRun) tools(browserOn bool) (map[string]agentTool, []llm.Tool, erro
 		// 工作台（概念 4）。harvest 从页面上收卡片放进沙箱；下面四个只碰沙箱
 		{toolHarvest, needBrowserAndSandbox, "把当前页面（搜索结果、瀑布流）上的卡片一次收下来：边滚动边收，去掉广告和重复的，缩略图放进工作台的 /home/user/harvest/，" +
 			"返回一张编了号的总览图。要从很多图里挑参考、做拼图、做图墙时用它，不要一张张截图。收完看总览图挑，编号 = 文件名 = items.json 里的 n。", harvestArgs{}, r.withWorkspace(r.harvest)},
-		{toolBash, needSandbox, "在工作台（一台独立的 Linux 电脑，装了 python3）里执行一条 bash 命令，在 /home/user 下执行，返回退出码和输出。" +
-			"处理图片、跑脚本、装包（pip install）都用它；脚本先用 write_file 写进文件再执行，不要把长代码塞进一条命令。", bashArgs{}, r.withWorkspace(r.bash)},
+		{toolBash, needSandbox, "在工作台（一台独立的 Linux 电脑，装了 python3、node、Chromium）里执行一条 bash 命令，在 /home/user 下执行，返回退出码和输出。" +
+			"跑脚本、截图（shot 页面.html 输出.png）、装包都用它；脚本先用 write_file 写进文件再执行，不要把长代码塞进一条命令。", bashArgs{}, r.withWorkspace(r.bash)},
 		{toolReadFile, needSandbox, "读工作台里的一个文件：文本文件带行号返回，可以用 offset、limit 翻页；图片会让你看到，并编成「图N」，能在回答里引用给用户看。" +
-			"生成了图片（拼图、配色卡）就用它打开看一眼，满意了再给用户。", readFileArgs{}, r.withWorkspace(r.readFile)},
-		{toolWriteFile, needSandbox, "在工作台里新建或整个重写一个文件，比如写一个 Python 脚本。只改几行用 edit_file。", writeFileArgs{}, r.withWorkspace(r.writeFile)},
+			"生成了图片（截好的网页、拼图）就用它打开看一眼，满意了再给用户。", readFileArgs{}, r.withWorkspace(r.readFile)},
+		{toolWriteFile, needSandbox, "在工作台里新建或整个重写一个文件，比如写一个网页或脚本。只改几行用 edit_file。", writeFileArgs{}, r.withWorkspace(r.writeFile)},
 		{toolEditFile, needSandbox, "修改工作台里的一个文件：把一段原文换成新文字。原文要和文件里一字不差、只出现一次，拿不准就先 read_file。", editFileArgs{}, r.withWorkspace(r.editFile)},
 		{toolDraft, needDraft, "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
 			"调用以后这次回答就结束了：用户会在页面上修改、发布或者放弃，不用你再说什么。", draftArgs{}, r.draftPost},
