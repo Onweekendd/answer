@@ -43,7 +43,7 @@ const (
 	EventToolSuspend = "tool_suspend"
 	// EventFollowups 是回答后面的几句后续建议，页面上点一下就发出去，见 followups.go
 	EventFollowups = "followups"
-	EventError       = "error"
+	EventError     = "error"
 	// EventSaved 告诉页面这一轮记进日志的条目 id（上下文管理概念 5）：页面下一条消息的 parent_id 是 leaf，
 	// 重新生成这一轮时 parent_id 是 user。在 done 之前、回答之前发
 	EventSaved = "saved"
@@ -62,7 +62,7 @@ type Event struct {
 	Product *ProductCard `json:"product,omitempty"` // product
 	Input   *DraftInput  `json:"input,omitempty"`   // tool_suspend：交给用户确认的内容（tool_input）
 	// followups：用户接下来可能会说的话，最多 3 句
-	Followups []string `json:"followups,omitempty"`
+	Followups []string  `json:"followups,omitempty"`
 	Saved     *SavedIDs `json:"saved,omitempty"` // saved
 }
 
@@ -85,8 +85,14 @@ func (r *agentRun) emit(ctx context.Context, ev Event) {
 	if r.events == nil {
 		return
 	}
+	sendEvent(ctx, r.events, ev)
+}
+
+// sendEvent 把一条事件放进 channel，或者等到 ctx 取消就放弃。直接写 ch <- ev 的话，用户关了页面、
+// 没人再收，缓冲满了以后这个 goroutine 就永远卡在这里（概念 2 规矩 2）
+func sendEvent(ctx context.Context, ch chan<- Event, ev Event) {
 	select {
-	case r.events <- ev:
+	case ch <- ev:
 	case <-ctx.Done():
 	}
 }

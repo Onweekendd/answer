@@ -111,7 +111,8 @@ func pageMessages(entries []Entry, opts chatOptions) []PageMessage {
 		}
 	}
 
-	r := &agentRun{showReasoning: opts.showReasoning, redact: opts.redact}
+	r := &agentRun{}
+	opts.apply(r)
 	out := make([]PageMessage, 0)
 	for _, e := range entries {
 		if !said(e) {

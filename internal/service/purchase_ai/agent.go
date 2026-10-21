@@ -33,10 +33,17 @@ import (
 // runAgent 让模型操作浏览器，直到它调用 done、直接回答，或者走到收尾。
 // browserOn 为 false 时不给任何工具，模型只能直接回答（概念 7 的降级）。
 func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
-	r := newAgentRun(pas.llmClient, pas.browser, defaultLimits)
-	r.images = pas.uploaderService
+	r := pas.newRun()
 	defer r.closeTabs()
 	return r.run(ctx, messages, browserOn)
+}
+
+// newRun 是这个服务跑一次 Agent 用的 agentRun：模型、浏览器、存图都配好。
+// 每个入口都从这里拿，不会漏掉哪一样（漏了存图不报错，只是卡片和回答悄悄地没有图）
+func (pas *PurchaseAIService) newRun() *agentRun {
+	r := newAgentRun(pas.llmClient, pas.browser, defaultLimits)
+	r.images = pas.uploaderService
+	return r
 }
 
 // run 跑完一次任务，结果带上做好的商品卡片和回答引用的图。循环里有好几个出口，在这里统一带上

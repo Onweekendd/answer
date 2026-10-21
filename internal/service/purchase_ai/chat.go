@@ -46,6 +46,13 @@ type chatOptions struct {
 	redact        []string
 }
 
+// apply 把推给用户之前的处理（打码、思考开关）配到 r 上。直播（newChatRun）和重放（pageMessages）都用它，
+// 两边才一样
+func (o chatOptions) apply(r *agentRun) {
+	r.showReasoning = o.showReasoning
+	r.redact = o.redact
+}
+
 func chatOptionsFromEnv() chatOptions {
 	opts := chatOptions{showReasoning: os.Getenv("PURCHASE_AI_SHOW_REASONING") != "false"}
 	if path := os.Getenv("PURCHASE_AI_REDACT_FILE"); path != "" {
@@ -73,12 +80,7 @@ const chatNotFoundText = "找不到这段对话，刷新页面再试试。"
 // 每次发送也都和 ctx.Done() 一起等，所以没人收的时候不会卡住（规矩 2）
 func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAIChatReq) <-chan Event {
 	out := make(chan Event, eventBuffer)
-	send := func(ev Event) {
-		select {
-		case out <- ev:
-		case <-ctx.Done():
-		}
-	}
+	send := func(ev Event) { sendEvent(ctx, out, ev) }
 
 	go func() {
 		defer close(out)
@@ -101,16 +103,7 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		}
 
 		browserOn := pas.browser.Connected()
-		r := newAgentRun(pas.llmClient, pas.browser, defaultLimits)
-		r.events = out
-		r.showReasoning = pas.chatOptions.showReasoning
-		r.redact = pas.chatOptions.redact
-		r.images = pas.uploaderService
-		r.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(path, req.Message), store: pas.drafts}
-		r.workspaces = pas.workspaces
-		r.chatID = chatID
-		r.userID = req.UserID
-		r.rec = newChatRecorder(pas.chatLog, chatID, req.ParentID)
+		r := pas.newChatRun(out, chatID, req, path)
 		defer r.closeTabs()
 
 		messages := []llm.Message{llm.Text(llm.RoleSystem, pas.chatPrompt(browserOn))}
@@ -153,6 +146,20 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		}
 	}()
 	return out
+}
+
+// newChatRun 是对话里的一轮用的 agentRun：在 newRun 的基础上，事件推给页面（out），
+// 加上打码、整理草稿、工作台，这一轮记进日志、接在 parent_id 后面
+func (pas *PurchaseAIService) newChatRun(out chan<- Event, chatID int64, req *schema.PurchaseAIChatReq, path []Entry) *agentRun {
+	r := pas.newRun()
+	r.events = out
+	pas.chatOptions.apply(r)
+	r.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(path, req.Message), store: pas.drafts}
+	r.workspaces = pas.workspaces
+	r.chatID = chatID
+	r.userID = req.UserID
+	r.rec = newChatRecorder(pas.chatLog, chatID, req.ParentID)
+	return r
 }
 
 // chatPath 取出这个对话、按 parent_id 走出这一轮接着的那条分支。
