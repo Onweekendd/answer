@@ -69,7 +69,34 @@ func NewChatLog(data *data.Data) purchaseai.ChatLog {
 //
 // 思考题：为什么按自增的 id 排，而不是按 created_at 排？一轮里的几十条可能在同一秒写进去
 func (r *chatLog) Entries(ctx context.Context, chatID int64, userID string) ([]purchaseai.Entry, bool, error) {
-	return nil, false, errors.New("TODO: chatLog.Entries")
+	// ① 对话是不是 userID 的：chat_id 是前端传上来的，不能信
+	found, err := r.data.DB.Context(ctx).Where("id = ? AND user_id = ?", chatID, userID).Exist(&entity.PurchaseChat{})
+	if err != nil {
+		return nil, false, dbError(err)
+	}
+	if !found {
+		return nil, false, nil
+	}
+
+	// ② 这个对话的全部条目，按写入的先后
+	rows := make([]entity.PurchaseChatEntry, 0)
+	err = r.data.DB.Context(ctx).Where("chat_id = ?", chatID).Asc("id").Find(&rows)
+	if err != nil {
+		return nil, false, dbError(err)
+	}
+
+	// ③ 每一行解开 body，变成 Entry
+	res := make([]purchaseai.Entry, 0, len(rows))
+	for _, row := range rows {
+		e, err := fromRow(&row)
+		if err != nil {
+			return nil, false, err
+		}
+
+		res = append(res, e)
+	}
+
+	return res, true, nil
 }
 
 // Append 把一批条目追加进日志（写），见 ChatLog 接口。
