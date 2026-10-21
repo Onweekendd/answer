@@ -71,6 +71,9 @@ func loopNudgeText(call llm.ToolCall, times int) string {
 		times, call.Name, canonicalArgs(call.Arguments))
 }
 
+// leakedCallText 是收尾时模型把工具调用写成了文字以后，再问一次时追加的话
+const leakedCallText = "你刚才写的是一个工具调用，不是回答。现在已经不能再调用任何工具了：直接用文字把回答写给用户，没查到的说明没查到。"
+
 // finishPrompts 是收尾时追加的话，按原因（概念 4）。收尾时不给工具，模型只能用文字回答
 var finishPrompts = map[finishReason]string{
 	finishSteps:       "步数已经用完了，不能再操作浏览器。请根据已经看到的信息作答，没查到的信息直接说明未能核实。",

@@ -485,6 +485,33 @@ func Test_run(t *testing.T) {
 		require.Equal(t, "**再等等** 双 11 前别买", res.Text)
 	})
 
+	t.Run("收尾时模型把别的工具调用当成文字写了出来，再问一次", func(t *testing.T) {
+		// Arrange：收尾的第一次回复是一个写成文字的 open，第二次才是回答
+		leakedOpen := `<｜｜DSML｜｜ calls>
+<｜｜DSML｜｜ invoke name="open">
+<｜｜DSML｜｜ parameter name="url" string="true">https://www.bing.com/search?q=x</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>`
+		model := &fakeLLM{replies: []*llm.ChatResp{
+			calls(openJD("c1")),
+			{Content: leakedOpen},
+			{Content: "**再等等** 双 11 前别买"},
+		}}
+		limits := testLimits()
+		limits.maxSteps = 1
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), limits)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, finishSteps, res.Finish)
+		require.Equal(t, "**再等等** 双 11 前别买", res.Text)
+		require.Len(t, model.reqs, 3)
+		require.Empty(t, model.reqs[2].Tools)
+		require.Equal(t, leakedCallText, model.lastMessage(2))
+	})
+
 	t.Run("同一轮里的调用按顺序执行：先填字，再点搜索", func(t *testing.T) {
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{
@@ -722,6 +749,27 @@ func Test_run(t *testing.T) {
 		require.Equal(t, finishPrompts[finishFailures], model.lastMessage(4))
 		// 每次失败模型都能看到原因
 		require.Contains(t, toolReplies(model, 2)[1].Parts[0].Text, "没有这个编号的元素")
+	})
+
+	t.Run("换着网页各读一次不算打转：read 的指纹跟着网址变", func(t *testing.T) {
+		// Arrange：拍过一次快照，之后 navigate 到 5 个不同的网页，每个都 read，中间不拍快照
+		replies := []*llm.ChatResp{calls(openJD("c0")), calls(toolCall("s", toolSnapshot, `{}`))}
+		for i := 1; i <= 5; i++ {
+			url := fmt.Sprintf(`{"url":"https://example.test/page%d"}`, i)
+			replies = append(replies,
+				calls(toolCall(fmt.Sprintf("n%d", i), toolNavigate, url)),
+				calls(toolCall(fmt.Sprintf("r%d", i), toolRead, `{}`)))
+		}
+		replies = append(replies, calls(doneCall("d", "读完了")))
+		model := &fakeLLM{replies: replies}
+
+		// Act
+		res, err := runAgentWith(model, newFakeBrowser(), testLimits())
+
+		// Assert
+		require.NoError(t, err)
+		require.Empty(t, res.Finish)
+		require.Equal(t, "读完了", res.Text)
 	})
 
 	t.Run("滚到底了还在滚：同一个状态第 3 次提醒，第 5 次收尾", func(t *testing.T) {

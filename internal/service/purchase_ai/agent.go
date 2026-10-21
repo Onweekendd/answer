@@ -322,6 +322,15 @@ func (r *agentRun) finish(ctx context.Context, messages []llm.Message, reason fi
 	if err != nil {
 		return nil, err
 	}
+	// 写成文字的不是 done、是别的工具调用（2026-10-21 成都案例写了一个 open）：那不是回答，answerText 也取不出来。
+	// 再问一次，明说不能再调用工具
+	if leakedCall(resp) {
+		messages = r.keep(ctx, messages, assistantMessage(resp), messageMeta{PromptTokens: resp.Usage.PromptTokens})
+		messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, leakedCallText), messageMeta{Synthetic: true})
+		if resp, err = r.chat(ctx, &llm.ChatReq{Messages: messages}); err != nil {
+			return nil, err
+		}
+	}
 	// 收尾的回答也记进日志：下一轮要知道这一轮是怎么结束的
 	r.keep(ctx, messages, assistantMessage(resp), messageMeta{PromptTokens: resp.Usage.PromptTokens, Details: r.answerDetails(ctx, answerText(resp))})
 
@@ -361,6 +370,11 @@ func answerText(resp *llm.ChatResp) string {
 		}
 	}
 	return resp.Content
+}
+
+// leakedCall 说模型是不是把 done 以外的工具调用写成了文字
+func leakedCall(resp *llm.ChatResp) bool {
+	return strings.Contains(resp.Content, "DSML") && !leakedDoneText.MatchString(resp.Content)
 }
 
 // doneResult 找出这一轮里 done 的结果

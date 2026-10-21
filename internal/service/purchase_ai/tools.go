@@ -288,6 +288,12 @@ func (r *agentRun) runTool(ctx context.Context, tools map[string]agentTool, call
 	started := time.Now()
 	res, err := tool.run(ctx, call.Arguments)
 	res.PageHash = before
+	// 换了页面（open、navigate、点开了新页面）以后不一定拍快照，页面状态要跟着网址换：
+	// 不然在几个网页上各 read 一次，指纹都是"read@上一份快照"，被当成原地打转
+	// （2026-10-21 成都案例：熊猫基地官网、秘塔、必应、官网票务页各读一次，第 5 次 read 就被收尾）
+	if res.PageChanged && res.URL != "" {
+		r.pageHash = pageState("url:"+res.URL, 0)
+	}
 
 	r.steps = append(r.steps, stepRecord{
 		Step:      r.step,
