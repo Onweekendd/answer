@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+// shot 页面.html 输出.png [宽]：把工作台里的网页整页截成一张图（表格、清单、行程卡）。
+// chromium --screenshot 只截给定的窗口大小，长页面下面被截掉、宽表格右边被裁掉，
+// Agent 要试好几次窗口大小（2026-10-21 家电清单试了 3 次还是裁掉了一列），所以放一个现成的：
+//   - 整页截图，高度跟着内容走
+//   - 内容比给的宽度宽，就把窗口加宽到装得下
+//   - 2 倍像素，发到手机上字也清楚
+// 只截本地文件：工作台不是用户的浏览器，不拿它去打开外面的网站
+const path = require("path");
+const { chromium } = require("playwright-core");
+
+const [, , input, output, widthArg = "1200"] = process.argv;
+if (!input || !output || /^[a-z]+:/i.test(input)) {
+  console.error("用法：shot 页面.html 输出.png [宽度，默认 1200]（只截工作台里的文件）");
+  process.exit(2);
+}
+
+(async () => {
+  const width = Number(widthArg) || 1200;
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROME_PATH || "/usr/bin/chromium",
+    args: ["--no-sandbox"]
+  });
+  try {
+    const page = await browser.newPage({ viewport: { width, height: 800 }, deviceScaleFactor: 2 });
+    await page.goto("file://" + path.resolve(input), { waitUntil: "load" });
+    const contentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    if (contentWidth > width) {
+      await page.setViewportSize({ width: contentWidth, height: 800 });
+    }
+    await page.screenshot({ path: output, fullPage: true });
+    const size = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.scrollHeight]);
+    console.log(`截好了：${output}，页面 ${size[0]}×${size[1]}（图片是两倍像素）`);
+  } finally {
+    await browser.close();
+  }
+})().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});

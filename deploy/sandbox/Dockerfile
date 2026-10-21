@@ -6,7 +6,7 @@
 #   docker push 127.0.0.1:5000/answer-sandbox:v2      # Cube 只从镜像仓库拉，不读本机 docker；本地起的是 registry:2（answer-registry）
 #   cubemastercli tpl create-from-image --image 127.0.0.1:5000/answer-sandbox:v2 --writable-layer-size 4G \
 #     --expose-port 49983 --expose-port 49999 --probe 49983 --probe-path /health
-# 拿到的 tpl-… 填进 CUBE_TEMPLATE_ID。2026-10-21 建的 v1 是 tpl-c9d6c8041d644d4684b55010。
+# 拿到的 tpl-… 填进 CUBE_TEMPLATE_ID。2026-10-21 建的：v1 tpl-c9d6c8041d644d4684b55010，v2（加了 shot）tpl-b25625065f3b426990ede91e。
 #
 # 在 sandbox-code（Debian 12 + Python 3.12 + envd，启动脚本原样沿用）上加 node、Chromium、
 # 中日韩字体和常用的 Python 包，让 Agent 不用每次现装。装包都走国内镜像：WSL 里的 docker 不走代理
@@ -35,5 +35,9 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     CHROME_PATH=/usr/bin/chromium \
     NODE_PATH=/usr/local/lib/node_modules
 
-RUN fc-cache -f >/dev/null \
+# shot 页面.html 输出.png：整页截图，Agent 做清单、行程卡用（说明在文件开头）
+COPY shot /usr/local/bin/shot
+
+RUN chmod +x /usr/local/bin/shot \
+ && fc-cache -f >/dev/null \
  && node -v && npm -v && chromium --version && python3 -c "import PIL, pandas, pptx; print('py ok')"
