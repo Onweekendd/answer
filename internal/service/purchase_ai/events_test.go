@@ -350,7 +350,6 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("这一轮记进日志：用户消息、调用和结果、最后一条 view", func(t *testing.T) {
-		skipRecorder(t)
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "**买**"))}}
 		log := &fakeChatLog{}

@@ -29,12 +29,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// skipRecorder 写完 record 和 close 以后删掉
-func skipRecorder(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 chatRecorder 的 record 和 close 删掉这一行")
-}
-
 func textEntry(text string) Entry {
 	return Entry{Kind: EntryMessage, Message: storeMessage(llm.Text(llm.RoleUser, text), messageMeta{})}
 }
@@ -53,7 +47,6 @@ func TestChatRecorder_ChainsFromTheParent(t *testing.T) {
 }
 
 func TestChatRecorder_EverythingIsInTheLogAfterClose(t *testing.T) {
-	skipRecorder(t)
 	// Arrange
 	log := &fakeChatLog{}
 	rec := newChatRecorder(log, fakeChatID, "v0")
@@ -73,7 +66,6 @@ func TestChatRecorder_EverythingIsInTheLogAfterClose(t *testing.T) {
 }
 
 func TestChatRecorder_EachEntryIsWrittenRightAway(t *testing.T) {
-	skipRecorder(t)
 	// Arrange
 	log := &fakeChatLog{}
 	rec := newChatRecorder(log, fakeChatID, "")
@@ -87,7 +79,6 @@ func TestChatRecorder_EachEntryIsWrittenRightAway(t *testing.T) {
 }
 
 func TestChatRecorder_FailedWriteIsRetriedWithTheNext(t *testing.T) {
-	skipRecorder(t)
 	// Arrange：第一条写的时候数据库抖了一下
 	log := &fakeChatLog{appendErr: errors.New("database is down")}
 	rec := newChatRecorder(log, fakeChatID, "")
@@ -104,7 +95,6 @@ func TestChatRecorder_FailedWriteIsRetriedWithTheNext(t *testing.T) {
 }
 
 func TestChatRecorder_CloseWritesEvenAfterThePageIsClosed(t *testing.T) {
-	skipRecorder(t)
 	// Arrange：第一条写进去以后用户关了页面，请求的 ctx 取消了，之后的 record 都写不进去
 	log := &fakeChatLog{}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -125,7 +115,6 @@ func TestChatRecorder_CloseWritesEvenAfterThePageIsClosed(t *testing.T) {
 }
 
 func TestChatRecorder_NothingLeftCloseDoesNotWrite(t *testing.T) {
-	skipRecorder(t)
 	// Arrange：都已经写进去了
 	log := &fakeChatLog{}
 	rec := newChatRecorder(log, fakeChatID, "")
@@ -141,7 +130,6 @@ func TestChatRecorder_NothingLeftCloseDoesNotWrite(t *testing.T) {
 }
 
 func TestChatRecorder_FailedWriteIsReported(t *testing.T) {
-	skipRecorder(t)
 	// Arrange：数据库出错
 	log := &fakeChatLog{appendErr: errors.New("database is down")}
 	rec := newChatRecorder(log, fakeChatID, "")

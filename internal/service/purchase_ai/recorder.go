@@ -88,7 +88,13 @@ func (c *chatRecorder) leaf() string {
 //  3. c.flush(ctx) 试着写掉，错误先忽略（写 `_ = c.flush(ctx)`，让读代码的人知道是故意不管的）
 //  4. 返回 e.ID
 func (c *chatRecorder) record(ctx context.Context, e Entry) string {
-	return c.chain(e).ID
+	e = c.chain(e)
+
+	c.pending = append(c.pending, e)
+
+	_ = c.flush(ctx)
+
+	return e.ID
 }
 
 // flush 把 pending 里的全部条目一次写进库，成功就清空，失败就原样留着、返回错误。
@@ -101,6 +107,16 @@ func (c *chatRecorder) record(ctx context.Context, e Entry) string {
 //  2. Append 整个 pending；出错就返回这个错误，pending 不动
 //  3. 成功就清空 pending（c.pending = nil），返回 nil
 func (c *chatRecorder) flush(ctx context.Context) error {
+	if len(c.pending) == 0 {
+		return nil
+	}
+
+	err := c.log.Append(ctx, c.chatID, c.pending)
+	if err != nil {
+		return err
+	}
+
+	c.pending = nil
 	return nil
 }
 
@@ -113,7 +129,10 @@ func (c *chatRecorder) flush(ctx context.Context) error {
 //     WithTimeout 返回的 cancel 要 defer 调掉
 //  2. 用这个 ctx flush，把它的错误返回（Chat 会打日志）
 func (c *chatRecorder) close(ctx context.Context) error {
-	return nil
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), closeTimeout)
+	defer cancel()
+
+	return c.flush(dbCtx)
 }
 
 // keep 把一条消息接到这一轮的对话后面，有 recorder 时同时记进日志。
