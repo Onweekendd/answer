@@ -182,10 +182,12 @@ func (r *agentRun) bashResult(ctx context.Context, res sandbox.RunResult, err er
 		b.WriteString("，没有输出。")
 	}
 	if res.Stdout != "" {
-		b.WriteString("\n\nstdout：\n" + clipMiddle(res.Stdout, bashOutputMax))
+		b.WriteString("\n\nstdout：\n")
+		b.WriteString(clipMiddle(res.Stdout, bashOutputMax))
 	}
 	if res.Stderr != "" {
-		b.WriteString("\n\nstderr：\n" + clipMiddle(res.Stderr, bashOutputMax))
+		b.WriteString("\n\nstderr：\n")
+		b.WriteString(clipMiddle(res.Stderr, bashOutputMax))
 	}
 	return toolResult{
 		Text:    b.String(),
