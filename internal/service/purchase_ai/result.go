@@ -47,6 +47,19 @@ type toolResult struct {
 
 	URL      string // 执行完以后所在的网址（知道的话），给每一步的记录用
 	PageHash string // 执行这个动作时的页面状态：最新快照的哈希加上滚动位置，循环检测用（概念 5）
+
+	// 页面上的这张卡片，记进日志的 Details（chatlog.go）
+	Summary string       // tool_start 那句话，runCalls 发卡片时填；跳过的、done 没有
+	Product *ProductCard // pick_product 做好的卡片
+	Draft   *DraftInput  // draft_post 交给用户的草稿
+}
+
+// details 是记进日志的那份只给页面看的东西：页面上有卡片的才有。带着回答的那份另外由 answerDetails 补上
+func (res toolResult) details() *Details {
+	if res.Summary == "" && res.Product == nil && res.Draft == nil {
+		return nil
+	}
+	return &Details{Summary: res.Summary, Failed: res.Failed, Display: res.Display, Product: res.Product, Draft: res.Draft}
 }
 
 // finishReason 是走到收尾的原因（概念 4）。空字符串表示模型自己调用了 done，或者直接回答了。

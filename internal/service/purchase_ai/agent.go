@@ -44,7 +44,7 @@ func (r *agentRun) run(ctx context.Context, messages []llm.Message, browserOn bo
 	res, err := r.loop(ctx, messages, browserOn)
 	if res != nil {
 		res.Products = r.products
-		res.Shots = r.citedShots(ctx, res.Text)
+		res.Shots = r.shots
 	}
 	return res, err
 }
@@ -93,17 +93,23 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		if empty {
 			msg.Parts = []llm.Part{{Text: emptyReply}}
 		}
-		messages = r.keep(ctx, messages, msg, messageMeta{PromptTokens: resp.Usage.PromptTokens})
+		// ③ 只回了文字：没给工具、已经提醒过一次，或者这是最后一步（提醒了也没有步数去调用 done），
+		// 就当作答案；否则提醒它调用 done。空回复当不了答案：最后再问一次，不给工具，让它把回答写出来
+		// 插件没连着时只有 draft_post，没有 done：直接回答就是答案。
+		// 记进日志之前就要知道它是不是答案：答案引用的图要存好，和它一起记下（日志只追加，记了就改不了）
+		answer := len(resp.ToolCalls) == 0 && !empty && (!browserOn || reminded || step == r.limits.maxSteps-1)
+		meta := messageMeta{PromptTokens: resp.Usage.PromptTokens}
+		if answer {
+			meta.Details = r.answerDetails(ctx, answerText(resp))
+		}
+		messages = r.keep(ctx, messages, msg, meta)
 
 		if len(resp.ToolCalls) == 0 {
-			// ③ 只回了文字：没给工具、已经提醒过一次，或者这是最后一步（提醒了也没有步数去调用 done），
-			// 就当作答案；否则提醒它调用 done。空回复当不了答案：最后再问一次，不给工具，让它把回答写出来
-			// 插件没连着时只有 draft_post，没有 done：直接回答就是答案
-			if !browserOn || reminded || step == r.limits.maxSteps-1 {
-				if empty {
-					return r.finish(ctx, messages, finishEmpty)
-				}
+			if answer {
 				return &agentResult{Text: answerText(resp), Success: true, Steps: r.steps, Reasoning: resp.Reasoning}, nil
+			}
+			if !browserOn || reminded || step == r.limits.maxSteps-1 {
+				return r.finish(ctx, messages, finishEmpty)
 			}
 			reminder := doneReminder
 			if empty {
@@ -126,7 +132,17 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 			if results[i].Snapshot {
 				snapshotAt = append(snapshotAt, len(messages))
 			}
-			messages = r.keep(ctx, messages, toolMessage(call.ID, results[i].Text), messageMeta{ToolName: call.Name})
+			details := results[i].details()
+			if results[i].Done {
+				// 带着回答的那条：回答引用的图在这里存好、一起记下
+				answer := r.answerDetails(ctx, results[i].Answer)
+				if details == nil {
+					details = answer
+				} else {
+					details.Final, details.Shots = answer.Final, answer.Shots
+				}
+			}
+			messages = r.keep(ctx, messages, toolMessage(call.ID, results[i].Text), messageMeta{ToolName: call.Name, Details: details})
 		}
 		// 截图放在这一轮全部工具回复的后面：assistant 调用了几个工具，紧跟着的就必须是这几条回复
 		for _, res := range results {
@@ -245,14 +261,17 @@ func (r *agentRun) runCalls(ctx context.Context, tools map[string]agentTool, cal
 		// 跳过的调用不发事件，用户只看到真的做了的事；done 不是一张工具卡片，它的回答走 text
 		id := fmt.Sprintf("%d-%d", r.step, i)
 		shown := call.Name != toolDone
+		summary := ""
 		if shown {
-			r.emitToolStart(ctx, id, call)
+			summary = r.describeCall(call.Name, call.Arguments)
+			r.emitToolStart(ctx, id, call.Name, summary)
 		}
 
 		r.callID = id
 		res, err := r.runTool(ctx, tools, call)
+		res.Summary = summary
 		if errors.Is(err, errBrowserGone) {
-			toolRes[i] = toolResult{Failed: true, Text: browserGoneText}
+			toolRes[i] = toolResult{Failed: true, Text: browserGoneText, Summary: summary}
 			if shown {
 				r.emitToolEnd(ctx, id, toolRes[i])
 			}
@@ -281,6 +300,12 @@ func (r *agentRun) runCalls(ctx context.Context, tools map[string]agentTool, cal
 	return toolRes, gone
 }
 
+// answerDetails 把回答引用的图存到服务器，记在 r.shots（run 交给结果），返回和回答一起记进日志的那份
+func (r *agentRun) answerDetails(ctx context.Context, text string) *Details {
+	r.shots = r.citedShots(ctx, text)
+	return &Details{Final: true, Shots: r.shots}
+}
+
 // finish 是被迫停下时的最后一步（⑥）：说明原因，不给工具再问一次模型，让它把回答写出来
 func (r *agentRun) finish(ctx context.Context, messages []llm.Message, reason finishReason) (*agentResult, error) {
 	messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, finishPrompts[reason]), messageMeta{Synthetic: true})
@@ -291,7 +316,7 @@ func (r *agentRun) finish(ctx context.Context, messages []llm.Message, reason fi
 		return nil, err
 	}
 	// 收尾的回答也记进日志：下一轮要知道这一轮是怎么结束的
-	r.keep(ctx, messages, assistantMessage(resp), messageMeta{PromptTokens: resp.Usage.PromptTokens})
+	r.keep(ctx, messages, assistantMessage(resp), messageMeta{PromptTokens: resp.Usage.PromptTokens, Details: r.answerDetails(ctx, answerText(resp))})
 
 	return &agentResult{
 		Text:      answerText(resp),

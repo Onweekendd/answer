@@ -34,7 +34,7 @@ import (
 //     ① Chat 开始一轮时 newChatRecorder，先 record 这一轮的用户消息（重新生成时没有这一条）；
 //     ② Agent 循环每往对话里加一条消息（assistant 的调用、工具结果、提醒、截图那条）都经过
 //     agentRun.keep，它调 record；
-//     ③ Chat 最后 record 一条 view（这一轮推给页面的事件），然后 close
+//     ③ Agent 跑完，Chat 调 close
 //   - 一轮会记多少：典型的一轮二三十条，快照那几条各有 8000 字
 //   - 会出什么事：用户关了页面（请求的 ctx 被取消，Agent 停下）；进程在跑到一半时重启；写库失败（数据库抖了一下）
 //   - 记下来的谁用：下一轮 Chat 用 ChatLog.Entries 读出来，pathTo 从 leaf 走回根，project 变成模型的历史。
@@ -120,7 +120,7 @@ func (c *chatRecorder) flush(ctx context.Context) error {
 	return nil
 }
 
-// close 在这一轮结束时调一次：正常结束、出错、用户关了页面都要调（chat.go 里 record 完 view 以后）。
+// close 在这一轮结束时调一次：正常结束、出错、用户关了页面都要调（chat.go 里 Agent 跑完以后）。
 //
 // TODO(精华，你来写)：
 //  1. 换一个写库用的 ctx：调用方给的是请求的 ctx，用户关了页面它就已经被取消了，拿它写库会立刻失败，

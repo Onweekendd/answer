@@ -71,7 +71,7 @@ type agentRun struct {
 
 	// rec 把这一轮的消息记进对话日志（recorder.go）。nil 表示不记：帖子的后台分析、case 运行器
 	rec   *chatRecorder
-	shown []Event // 这一轮推给页面的事件，rec 不为 nil 时才留
+	shots []Shot // 回答引用、已经存好的图（answerDetails），run 交给结果
 
 	// 推给前端的事件（阶段 3）。events 为 nil 表示没人在听
 	events        chan<- Event

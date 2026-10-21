@@ -276,10 +276,9 @@ func Test_Chat(t *testing.T) {
 		log := &fakeChatLog{entries: []Entry{
 			msgEntry("u1", "", llm.Text(llm.RoleUser, "iPhone 17 值得买吗"), messageMeta{}),
 			msgEntry("a1", "u1", llm.Text(llm.RoleAssistant, "**再等等**"), messageMeta{}),
-			viewEntry("v1", "a1", Event{Type: EventText, Delta: "**再等等**"}),
 		}}
 		req := chatReq("那 Pro 呢")
-		req.ParentID = "v1"
+		req.ParentID = "a1"
 
 		// Act
 		collect(chatServiceWith(model, log).Chat(context.Background(), req))
@@ -320,12 +319,12 @@ func Test_Chat(t *testing.T) {
 	})
 
 	t.Run("重新生成：parent_id 要是一条用户消息", func(t *testing.T) {
-		// Arrange：parent 是上一轮的 view，又没带新消息
+		// Arrange：parent 是上一轮的回答，又没带新消息
 		log := &fakeChatLog{entries: []Entry{
 			msgEntry("u1", "", llm.Text(llm.RoleUser, "XM5 值不值"), messageMeta{}),
-			viewEntry("v1", "u1"),
+			msgEntry("a1", "u1", llm.Text(llm.RoleAssistant, "值"), messageMeta{}),
 		}}
-		req := &schema.PurchaseAIChatReq{ChatID: "1", UserID: fakeUserID, ParentID: "v1"}
+		req := &schema.PurchaseAIChatReq{ChatID: "1", UserID: fakeUserID, ParentID: "a1"}
 
 		// Act
 		got := collect(chatServiceWith(&fakeLLM{}, log).Chat(context.Background(), req))
@@ -349,7 +348,7 @@ func Test_Chat(t *testing.T) {
 		assert.NotEmpty(t, got[n-3].Saved.Leaf)
 	})
 
-	t.Run("这一轮记进日志：用户消息、调用和结果、最后一条 view", func(t *testing.T) {
+	t.Run("这一轮记进日志：用户消息、调用和结果，最后一条是 done 的结果", func(t *testing.T) {
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "**买**"))}}
 		log := &fakeChatLog{}
@@ -364,8 +363,11 @@ func Test_Chat(t *testing.T) {
 		assert.Equal(t, saved.User, first.ID)
 		assert.Equal(t, "XM5 值不值", first.Message.Parts[0].Text)
 		assert.Equal(t, saved.Leaf, last.ID)
-		require.NotNil(t, last.View, "最后一条是 view")
-		assert.Contains(t, last.View.Events, Event{Type: EventText, Delta: "**买**"})
+		assert.Equal(t, toolDone, last.Message.ToolName, "页面上的回答不另存，最后一条就是带着回答的 done 的结果")
+		opened := entries[2].Message
+		require.NotNil(t, opened.Details, "页面上的卡片要的东西记在工具结果上")
+		assert.Equal(t, "打开 www.jd.com", opened.Details.Summary)
+		assert.Equal(t, "打开了「京东」", opened.Details.Display)
 
 		var tools []string
 		for _, e := range entries {

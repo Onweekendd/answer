@@ -146,7 +146,8 @@ func Test_draftCandidates(t *testing.T) {
 	// Act
 	path := []Entry{
 		msgEntry("u1", "", userMessage(&schema.PurchaseAIChatMessage{Text: "值不值", Images: []string{upload1}}), messageMeta{}),
-		viewEntry("v1", "u1", Event{Type: EventText, Delta: "看图\n\n![图1](" + shot1 + ")\n*图1：价格*\n别的站的图 ![x](https://cdn.example.com/a.jpg)"}),
+		msgEntry("a1", "u1", callMsg("", doneCall("c1", "看图 [图1：价格]")), messageMeta{}),
+		msgEntry("t1", "a1", toolMessage("c1", "已结束。"), messageMeta{ToolName: toolDone, Details: &Details{Final: true, Shots: []Shot{{ID: 1, Image: shot1}}}}),
 	}
 	got := draftCandidates(path, &schema.PurchaseAIChatMessage{Text: "帮我发到社区", Images: []string{upload1}})
 

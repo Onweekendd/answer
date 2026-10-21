@@ -141,7 +141,7 @@ func (r *agentRun) pickProduct(ctx context.Context, arguments string) (toolResul
 	if card.Image == "" {
 		text += "没有截到商品图。"
 	}
-	return toolResult{Text: text, Display: "记下了「" + card.Title + "」"}, nil
+	return toolResult{Text: text, Display: "记下了「" + card.Title + "」", Product: &card}, nil
 }
 
 // cardText 是卡片上的一个字段：压成一行、截短，再过打码和屏蔽词（模型写的，可能复述页面内容）

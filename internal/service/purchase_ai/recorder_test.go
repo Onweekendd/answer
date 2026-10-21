@@ -102,7 +102,7 @@ func TestChatRecorder_CloseWritesEvenAfterThePageIsClosed(t *testing.T) {
 	a := rec.record(ctx, textEntry("一"))
 	cancel()
 	b := rec.record(ctx, textEntry("二"))
-	c := rec.record(ctx, Entry{Kind: EntryView, View: &StoredView{V: storedVersion}})
+	c := rec.record(ctx, textEntry("三"))
 
 	// Act
 	err := rec.close(ctx)

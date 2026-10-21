@@ -82,10 +82,6 @@ type ToolView struct {
 // emit 把事件交给另一头（SSE）。没人在听（帖子的后台分析、case 运行器）就什么都不做。
 // 发送一定要和 ctx.Done() 一起等：用户走了，handler 不再收，不这样写这个 goroutine 就永远卡在这里（概念 2）
 func (r *agentRun) emit(ctx context.Context, ev Event) {
-	// 记日志的一轮（对话）把推给页面的事件留一份，最后记成 view，打开历史对话时重放
-	if r.rec != nil {
-		r.shown = append(r.shown, ev)
-	}
 	if r.events == nil {
 		return
 	}
@@ -106,8 +102,8 @@ func (r *agentRun) emitReasoning(ctx context.Context, resp *llm.ChatResp) {
 	}
 }
 
-func (r *agentRun) emitToolStart(ctx context.Context, id string, call llm.ToolCall) {
-	r.emit(ctx, Event{Type: EventToolStart, ID: id, Name: call.Name, Args: &ToolView{Summary: r.view(r.describeCall(call.Name, call.Arguments))}})
+func (r *agentRun) emitToolStart(ctx context.Context, id, name, summary string) {
+	r.emit(ctx, Event{Type: EventToolStart, ID: id, Name: name, Args: &ToolView{Summary: r.view(summary)}})
 }
 
 func (r *agentRun) emitToolEnd(ctx context.Context, id string, res toolResult) {

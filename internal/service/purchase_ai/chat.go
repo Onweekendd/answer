@@ -138,10 +138,8 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 			finals = r.answerEvents(res)
 		}
 
-		// 先把这一轮记完（最后一条是 view：页面上看到的样子，打开历史对话时重放），再告诉页面条目的 id，
-		// 页面下一条消息拿 leaf 当 parent_id。顺序不能反：页面拿到 id 马上就可能发下一条
-		r.shown = append(r.shown, finals...)
-		r.rec.record(ctx, Entry{Kind: EntryView, View: &StoredView{V: storedVersion, Events: r.shown}})
+		// 先把这一轮记完，再告诉页面条目的 id，页面下一条消息拿 leaf 当 parent_id。
+		// 顺序不能反：页面拿到 id 马上就可能发下一条。页面上的这条回答不另存：打开历史对话时从这一轮的消息重放
 		if err := r.rec.close(ctx); err != nil {
 			log.Errorf("purchase ai: cannot save chat %d: %v", chatID, err)
 		} else {

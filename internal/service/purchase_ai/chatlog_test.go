@@ -61,13 +61,9 @@ func (f *fakeChatLog) Append(ctx context.Context, _ int64, entries []Entry) erro
 	return nil
 }
 
-// msgEntry、viewEntry 拼测试用的日志条目
+// msgEntry 拼一条测试用的日志条目
 func msgEntry(id, parent string, m llm.Message, meta messageMeta) Entry {
 	return Entry{ID: id, ParentID: parent, Kind: EntryMessage, Message: storeMessage(m, meta)}
-}
-
-func viewEntry(id, parent string, events ...Event) Entry {
-	return Entry{ID: id, ParentID: parent, Kind: EntryView, View: &StoredView{V: storedVersion, Events: events}}
 }
 
 func TestStoreMessage_DataImagesAreNotKept(t *testing.T) {

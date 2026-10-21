@@ -45,23 +45,23 @@ func twoTurns() []Entry {
 		msgEntry("u1", "", llm.Text(llm.RoleUser, "XM5 值不值"), messageMeta{}),
 		msgEntry("a1", "u1", callMsg("先看页面", llm.ToolCall{ID: "c1", Name: toolSnapshot}), messageMeta{}),
 		msgEntry("t1", "a1", toolMessage("c1", "第一份快照"), messageMeta{ToolName: toolSnapshot}),
-		msgEntry("a2", "t1", llm.Text(llm.RoleAssistant, "券后 2299\n[图1：券后价]"), messageMeta{}),
-		viewEntry("v1", "a2", Event{Type: EventText, Delta: "券后 2299"}),
-		msgEntry("u2", "v1", llm.Text(llm.RoleUser, "那 bose 的呢"), messageMeta{}),
+		msgEntry("a2", "t1", llm.Text(llm.RoleAssistant, "券后 2299\n[图1：券后价]"), messageMeta{Details: &Details{Final: true, Shots: []Shot{{ID: 1, Image: "https://x/uploads/agent/1.jpg"}}}}),
+		msgEntry("u2", "a2", llm.Text(llm.RoleUser, "那 bose 的呢"), messageMeta{}),
 		msgEntry("a3", "u2", callMsg("再看", llm.ToolCall{ID: "c2", Name: toolSnapshot}), messageMeta{}),
 		msgEntry("t2", "a3", toolMessage("c2", "第二份快照"), messageMeta{ToolName: toolSnapshot}),
 	}
 }
 
-func TestProject_ViewEntriesAreLeftOut(t *testing.T) {
+func TestProject_MessagesComeBackInOrder(t *testing.T) {
 	skipProject(t)
 	// Act
 	got := project(twoTurns())
 
-	// Assert：8 条里去掉 1 条 view
+	// Assert：一条不少，回答上只给页面看的图模型看不到
 	require.Len(t, got, 7)
-	assert.Equal(t, llm.RoleUser, got[4].Role, "第二轮的用户消息紧接着第一轮的回答，中间没有 view")
+	assert.Equal(t, llm.RoleUser, got[4].Role, "第二轮的用户消息紧接着第一轮的回答")
 	assert.Equal(t, "那 bose 的呢", got[4].Parts[0].Text)
+	assert.Len(t, got[3].Parts, 1, "Details 里的图不会变成消息的一段")
 }
 
 func TestProject_OnlyTheLatestSnapshotIsKept(t *testing.T) {

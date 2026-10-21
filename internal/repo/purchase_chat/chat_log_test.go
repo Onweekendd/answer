@@ -49,8 +49,9 @@ func TestChatLog(t *testing.T) {
 			ToolCalls: []purchaseai.StoredCall{{ID: "c1", Name: "open", Arguments: `{"url":"https://www.jd.com"}`}}}}
 	result := purchaseai.Entry{ID: "e_3", ParentID: "e_2", Kind: purchaseai.EntryMessage,
 		Message: &purchaseai.StoredMessage{V: 1, Role: "tool", ToolCallID: "c1", ToolName: "open", Parts: []purchaseai.StoredPart{{Text: "已打开"}}}}
-	view := purchaseai.Entry{ID: "e_4", ParentID: "e_3", Kind: purchaseai.EntryView,
-		View: &purchaseai.StoredView{V: 1, Events: []purchaseai.Event{{Type: purchaseai.EventText, Delta: "值"}}}}
+	done := purchaseai.Entry{ID: "e_4", ParentID: "e_3", Kind: purchaseai.EntryMessage,
+		Message: &purchaseai.StoredMessage{V: 1, Role: "tool", ToolCallID: "c2", ToolName: "done", Parts: []purchaseai.StoredPart{{Text: "已结束。"}},
+			Details: &purchaseai.Details{Shots: []purchaseai.Shot{{ID: 1, Image: "https://example.com/uploads/agent/1.jpg"}}}}}
 
 	t.Run("追加以后按顺序原样读回来", func(t *testing.T) {
 		// Arrange
@@ -58,7 +59,7 @@ func TestChatLog(t *testing.T) {
 
 		// Act
 		require.NoError(t, log.Append(ctx, chat.ID, []purchaseai.Entry{user, call}))
-		require.NoError(t, log.Append(ctx, chat.ID, []purchaseai.Entry{result, view}))
+		require.NoError(t, log.Append(ctx, chat.ID, []purchaseai.Entry{result, done}))
 		got, found, err := log.Entries(ctx, chat.ID, "1")
 
 		// Assert
@@ -68,8 +69,7 @@ func TestChatLog(t *testing.T) {
 		assert.Equal(t, []string{"e_1", "e_2", "e_3", "e_4"}, []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID})
 		assert.Equal(t, call.Message, got[1].Message)
 		assert.Equal(t, "open", got[2].Message.ToolName)
-		assert.Equal(t, "值", got[3].View.Events[0].Delta)
-		assert.Nil(t, got[3].Message)
+		assert.Equal(t, done.Message, got[3].Message, "只给页面看的 Details 也原样存取")
 	})
 
 	t.Run("别人的对话当作不存在", func(t *testing.T) {

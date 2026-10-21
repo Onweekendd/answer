@@ -22,7 +22,6 @@ package purchaseai
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -99,9 +98,6 @@ type draftContext struct {
 	store      DraftStore
 }
 
-// uploadedImage 认出回答里本站存的图：Agent 存的（uploads/agent）和用户上传的（uploads/post）
-var uploadedImage = regexp.MustCompile(`https?://[^\s()"'<>]+/uploads/(?:agent|post)/[0-9A-Za-z._-]+`)
-
 // draftCandidates 是对话里能当配图的图：用户上传的截图，和回答里出现过的本站的图，去重，最多 draftMaxCandidates 张
 func draftCandidates(path []Entry, latest *schema.PurchaseAIChatMessage) []string {
 	out := []string{} // 不是 nil：nil 会编成 JSON 的 null，页面会把整份草稿当成坏的
@@ -119,14 +115,10 @@ func draftCandidates(path []Entry, latest *schema.PurchaseAIChatMessage) []strin
 					add(p.Image)
 				}
 			}
-		case e.View != nil:
-			// 回答里的图：页面上的回答已经把 [图N] 换成了存好的图片网址
-			for _, ev := range e.View.Events {
-				if ev.Type == EventText {
-					for _, url := range uploadedImage.FindAllString(ev.Delta, -1) {
-						add(url)
-					}
-				}
+		case e.Message != nil && e.Message.Details != nil:
+			// 回答引用过、存到服务器的图
+			for _, shot := range e.Message.Details.Shots {
+				add(shot.Image)
 			}
 		}
 	}
@@ -182,6 +174,7 @@ func (r *agentRun) draftPost(ctx context.Context, arguments string) (toolResult,
 		Done:    true,
 		Answer:  draftAnswer,
 		Success: true,
+		Draft:   &input,
 	}, nil
 }
 

@@ -34,16 +34,16 @@ const unfinishedCallText = "这一步没有做完：上一轮在这里中断了�
 // 上下文：
 //   - 谁调用：Chat 开始一轮时，先 ChatLog.Entries 取出这个对话的全部条目，pathTo 走出请求指定的那条分支，
 //     再交给这里。返回的消息接在系统提示词后面、这一轮的用户消息前面，交给 Agent 循环
-//   - path 里是什么：从根到叶，按时间先后。每条要么是 EntryMessage（Message 不为 nil，一条模型消息），
-//     要么是 EntryView（View 不为 nil，页面用的事件）。一轮典型的样子：
+//   - path 里是什么：从根到叶，按时间先后。现在每条都是 EntryMessage（Message 不为 nil，一条模型消息）；
+//     以后会有别的种类（第二批的压缩摘要），所以还是按 Kind 认。一轮典型的样子：
 //     user「那 bose 的呢」→ assistant(tool_calls: open) → tool(ToolName open) → assistant(tool_calls: snapshot)
-//     → tool(ToolName snapshot，8000 字) → user(Synthetic，「这是第 3 步截的图」+ 图片占位语) → … → assistant(回答) → view
+//     → tool(ToolName snapshot，8000 字) → user(Synthetic，「这是第 3 步截的图」+ 图片占位语) → … → assistant(调用 done) → tool(done 的结果)
 //   - 截图在写日志时（storeParts）就已经换成了 imageOmitted，这里不用管；用户上传的图是网址，原样留着，
 //     Chat 发给模型前会把网址换成 data URI
 //   - 消息怎么还原：e.Message.Message() 得到 llm.Message
 //
 // TODO(精华，你来写)，按这个顺序：
-//  1. 只要 Kind 为 EntryMessage 的条目，view 跳过（模型永远看不到页面的东西）
+//  1. 只要 Kind 为 EntryMessage 的条目，别的种类跳过。Details 不用管：Message() 不带它，模型永远看不到页面的东西
 //  2. 快照只留整条分支上最新的一份：ToolName 为 toolSnapshot 的 tool 消息，除了最后一条，
 //     其余的 Parts 整个换成 []llm.Part{{Text: snapshotOmitted}}（和循环里 compactSnapshots 一样，扩展到跨轮次）。
 //     提示：先扫一遍找到最后一份快照的下标，再还原消息

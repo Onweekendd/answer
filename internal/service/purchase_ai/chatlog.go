@@ -37,12 +37,14 @@ import (
 //
 // 一轮「那 bose 的呢？」追加的条目：
 //
-//	user（用户的话）→ assistant（工具调用）→ tool（结果）→ … → assistant（回答）→ view（页面要的东西）
+//	user（用户的话）→ assistant（工具调用）→ tool（结果）→ … → assistant 或 done 的结果（回答）
+//
+// 页面上的东西不另存一份：只有运行时才知道的（调用的摘要、做好的商品卡片、回答引用的图）放在
+// 消息的 Details 里，和 pi 工具结果的 details 一样，发给模型时不带
 
-// 条目的种类
+// 条目的种类。现在只有消息；以后的压缩摘要也是一种条目
 const (
-	EntryMessage = "message" // 一条模型消息，进模型的上下文
-	EntryView    = "view"    // 这一轮推给页面的事件，只给页面看，模型永远看不到
+	EntryMessage = "message" // 一条模型消息
 )
 
 // storedVersion 是存储格式的版本。存下来的东西是对未来的承诺：llm.Message 可以随便改，
@@ -55,7 +57,6 @@ type Entry struct {
 	ParentID  string // 上一条的 ID；空表示根
 	Kind      string
 	Message   *StoredMessage // Kind 为 message 时有
-	View      *StoredView    // Kind 为 view 时有
 	CreatedAt time.Time
 }
 
@@ -74,6 +75,33 @@ type StoredMessage struct {
 	Synthetic bool `json:"synthetic,omitempty"`
 	// PromptTokens：assistant 消息那次调用的上下文有多少 token，第二批压缩判断要不要压时用
 	PromptTokens int `json:"prompt_tokens,omitempty"`
+	// Details：只给页面看的东西，Message() 不带它，模型永远看不到
+	Details *Details `json:"details,omitempty"`
+}
+
+// Details 是一条消息上只给页面看的东西（pi 工具结果的 details）：运行时才知道、事后从消息里算不出来的。
+// 打开历史对话时，页面上的那条回答从消息和它们的 Details 重放出来（replayTurn）。
+// 怎么显示（打码、回答的排版）不存，重放时现做：规则改了，旧对话跟着变
+type Details struct {
+	// 以下在 tool 结果上，一个调用一份
+
+	// Summary 是这次调用写成的人话（tool_start），还没打码。要查当时那份快照里的元素名，事后算不出来。
+	// 空的表示页面上没有这张卡片：跳过了的调用、done
+	Summary string `json:"summary,omitempty"`
+	Failed  bool   `json:"failed,omitempty"`  // 没做成（tool_end）
+	Display string `json:"display,omitempty"` // 做成了的一句话（tool_end），空的显示「完成」；还没打码
+	// Product 是 pick_product 做好的卡片：链接和图是插件从页面上取的
+	Product *ProductCard `json:"product,omitempty"`
+	// Draft 是 draft_post 交给用户确认的草稿：草稿 id、候选图是运行时定的
+	Draft *DraftInput `json:"draft,omitempty"`
+
+	// 以下在带着这一轮回答的那一条上：做成了的 done、draft_post 的结果，或者直接回答、收尾的 assistant
+
+	// Final 标出带着回答的那一条。没有它就分不清：失败的、被跳过的、做成了的 done 都可能没有别的 Details。
+	// 一轮里找不到它，就是这一轮没跑完（模型出错、用户关了页面）
+	Final bool `json:"final,omitempty"`
+	// Shots 是回答引用了、存到服务器的图
+	Shots []Shot `json:"shots,omitempty"`
 }
 
 // StoredPart 是消息的一段：文字或者一张图的网址。截图这类 data: 图片不存，见 storeParts
@@ -87,12 +115,6 @@ type StoredCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
-}
-
-// StoredView 是一轮推给页面的事件，打开历史对话时页面用它们重放出那条回答
-type StoredView struct {
-	V      int     `json:"v"`
-	Events []Event `json:"events"`
 }
 
 // ChatLog 是对话日志的存取，定义在用它的这一边；实现在 internal/repo/purchase_chat
@@ -115,7 +137,7 @@ func newEntryID() string {
 }
 
 // imageOmitted 是截图这类 data: 图片在日志里的样子。base64 一张就一两百 KB，不存；
-// 回答引用了的图已经存到服务器了，网址在 view 里
+// 回答引用了的图已经存到服务器了，网址在那条回答的 Details.Shots 里
 const imageOmitted = "（这里原来有一张图，没有保存）"
 
 // messageMeta 是 llm.Message 里没有、存的时候要带上的东西
@@ -123,6 +145,7 @@ type messageMeta struct {
 	ToolName     string
 	Synthetic    bool
 	PromptTokens int
+	Details      *Details
 }
 
 // storeMessage 把一条模型消息变成存储格式
@@ -136,6 +159,7 @@ func storeMessage(m llm.Message, meta messageMeta) *StoredMessage {
 		ToolName:     meta.ToolName,
 		Synthetic:    meta.Synthetic,
 		PromptTokens: meta.PromptTokens,
+		Details:      meta.Details,
 	}
 	for _, c := range m.ToolCalls {
 		s.ToolCalls = append(s.ToolCalls, StoredCall{ID: c.ID, Name: c.Name, Arguments: c.Arguments})
@@ -181,10 +205,10 @@ var errNoSuchEntry = errors.New("purchase ai: no such entry in the chat")
 //     → 结果交给 project 拼成历史发给模型，最后一条就是这一轮新消息的 parent
 //   - entries：整个对话的所有条目，按写入先后，所有分支混在一起。比如问了一次、又重新生成了一次：
 //     {ID: "e1", ParentID: ""}    用户「XM5 值不值」
-//     {ID: "e2", ParentID: "e1"}  assistant 回答
-//     {ID: "e3", ParentID: "e2"}  view
+//     {ID: "e2", ParentID: "e1"}  assistant 调用 done
+//     {ID: "e3", ParentID: "e2"}  done 的结果
 //     {ID: "e4", ParentID: "e1"}  assistant 重新生成的回答（和 e2 是兄弟）
-//     {ID: "e5", ParentID: "e4"}  view
+//     {ID: "e5", ParentID: "e4"}  done 的结果
 //   - leafID：请求里的 parent_id，前端从上一轮的 saved 事件里拿到的 leaf。
 //     pathTo(entries, "e5") 应该得到 [e1 e4 e5]，e2、e3 是另一条分支，不能混进来
 //   - leafID 为空：新对话的第一条消息，前面什么都没有，返回 nil, nil

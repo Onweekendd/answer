@@ -102,7 +102,7 @@ func (r *chatLog) Entries(ctx context.Context, chatID int64, userID string) ([]p
 // Append 把一批条目追加进日志（写），见 ChatLog 接口。
 //
 // 上下文：
-//   - 谁调用：chatRecorder（recorder.go）。一轮里先记用户消息，Agent 循环每加一条消息记一条，最后记一条 view；
+//   - 谁调用：chatRecorder（recorder.go）。一轮里先记用户消息，Agent 循环每加一条消息记一条；
 //     record 是每条立刻 Append，还是攒着在 close 里一次 Append，是你在 recorder 那个 TODO 里决定的。
 //     所以这里的 entries 可能是 1 条，也可能是一轮的二三十条
 //   - entries 长什么样（一轮）：
@@ -110,7 +110,7 @@ func (r *chatLog) Entries(ctx context.Context, chatID int64, userID string) ([]p
 //     {ID: "e_a1", ParentID: "e_u1", Kind: "message", Message: &StoredMessage{Role: "assistant", ToolCalls: [...]}}
 //     {ID: "e_t1", ParentID: "e_a1", Kind: "message", Message: &StoredMessage{Role: "tool", ToolName: "open", ...}}
 //     ……
-//     {ID: "e_v1", ParentID: "e_a9", Kind: "view", View: &StoredView{Events: [...]}}
+//     {ID: "e_t9", ParentID: "e_a9", Kind: "message", Message: &StoredMessage{Role: "tool", ToolName: "done", Details: &Details{...}}}
 //     ID 是 recorder 用 newEntryID 生成的，ParentID 已经串好了，这里只管按顺序存
 //   - 写的两张表：每个条目在 purchase_chat_entry 插一行（toRow 转好）；再把 purchase_chat 这一行的
 //     updated_at 改成现在，侧边栏的对话列表按 updated_at 倒序（purchaseChatRepo.ListChats），刚聊过的排最前
@@ -178,8 +178,6 @@ func toRow(chatID int64, e purchaseai.Entry) (*entity.PurchaseChatEntry, error) 
 	switch e.Kind {
 	case purchaseai.EntryMessage:
 		body = e.Message
-	case purchaseai.EntryView:
-		body = e.View
 	default:
 		return nil, fmt.Errorf("purchase chat: unknown entry kind %q", e.Kind)
 	}
@@ -197,9 +195,6 @@ func fromRow(row *entity.PurchaseChatEntry) (purchaseai.Entry, error) {
 	case purchaseai.EntryMessage:
 		e.Message = &purchaseai.StoredMessage{}
 		err = json.Unmarshal([]byte(row.Body), e.Message)
-	case purchaseai.EntryView:
-		e.View = &purchaseai.StoredView{}
-		err = json.Unmarshal([]byte(row.Body), e.View)
 	default:
 		err = fmt.Errorf("unknown entry kind %q", row.Kind)
 	}
