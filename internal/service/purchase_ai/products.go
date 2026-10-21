@@ -186,10 +186,12 @@ var productParams = map[string][]string{
 	"www.ikea.cn":              {},
 	"detail.1688.com":          {},
 	"www.goofish.com":          {"id"}, // 闲鱼，网址里还有 spm、categoryId
+	// 小红书的笔记网址要带 xsec_token 才能打开，去掉了就是「当前笔记暂时无法浏览」（300031，2026-10-20 实测）
+	"www.xiaohongshu.com": {"xsec_token", "xsec_source"},
 }
 
 // trackingParams 是没列出的网站上要去掉的参数（前缀）
-var trackingParams = []string{"spm", "scm", "utm_", "pvid", "abbucket", "ali_trackid", "ali_refid", "priceTId", "trackInfo", "xsec_"}
+var trackingParams = []string{"spm", "scm", "utm_", "pvid", "abbucket", "ali_trackid", "ali_refid", "priceTId", "trackInfo"}
 
 // redirectHosts 是广告跳转的域名：链接里只有加密的参数，看不出是哪个商品，跳过去的地方也不一定对
 var redirectHosts = []string{"click.simba.taobao.com", "s.click.taobao.com", "ccc-x.jd.com", "union-click.jd.com", "dj.1688.com"}

@@ -172,6 +172,7 @@ func Test_cleanProductURL(t *testing.T) {
 		{"闲鱼只留 id", "https://www.goofish.com/item?spm=a21ybx.search.searchFeedList.14&id=1083647455304&categoryId=50023914", "https://www.goofish.com/item?id=1083647455304", true},
 		{"1688 的广告跳转也不要", "https://dj.1688.com/ci_bb?a=7255&e=x", "", false},
 		{"1688 商品页去掉参数", "http://detail.1688.com/offer/828190408511.html?sortType=&pageId=&abBizDataType=cbuOffer", "http://detail.1688.com/offer/828190408511.html", true},
+		{"小红书留着 xsec_token，不然笔记打不开", "https://www.xiaohongshu.com/explore/6ad5?xsec_token=AB1=&xsec_source=pc_feed&source=web_explore_feed", "https://www.xiaohongshu.com/explore/6ad5?xsec_source=pc_feed&xsec_token=AB1%3D", true},
 		{"不是网页地址不要", "javascript:alert(1)", "", false},
 	}
 	for _, c := range cases {
