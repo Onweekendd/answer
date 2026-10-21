@@ -25,6 +25,8 @@
 //	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase -case 京东 -n 3      # 名字里带"京东"的，每个 3 次
 //	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase -task "在淘宝搜……"   # 临时跑一个任务，不判定
 //
+// 配了 CUBE_TEMPLATE_ID（和 script/dev.sh --cube 同一组环境变量）时 Agent 有工作台，每次一台临时沙箱；-sandbox=false 关掉。
+//
 // 真实网站只能低频地跑：默认每个 case 1 次，两次运行之间至少等 -gap（默认 30 秒）。
 //
 // 模型从 script/agentcase/llm.local.json 读（不提交，格式见 llm.example.json）。key 不会被打印。
@@ -53,6 +55,7 @@ import (
 
 type options struct {
 	hub, llmConfig, cases, only, task, out, redact string
+	sandbox                                        bool
 	n                                              int
 	gap                                            time.Duration
 }
@@ -67,6 +70,7 @@ func main() {
 	flag.IntVar(&o.n, "n", 1, "runs per case")
 	flag.DurationVar(&o.gap, "gap", 30*time.Second, "pause between two runs (real sites: keep it low-frequency)")
 	flag.StringVar(&o.out, "out", "script/agentcase/out", "where full records go (not committed)")
+	flag.BoolVar(&o.sandbox, "sandbox", true, "give the agent a temporary sandbox when CUBE_TEMPLATE_ID is set")
 	flag.StringVar(&o.redact, "redact", "script/pagebench/redact.txt", "words to hide in records and answers, one per line (not committed)")
 	flag.Parse()
 
@@ -126,9 +130,15 @@ func run(ctx context.Context, o options) error {
 	if !b.Connected() {
 		return fmt.Errorf("the extension is not connected to the hub at %s (start answer browser and check the popup)", o.hub)
 	}
+	// 沙箱：没配 CUBE_TEMPLATE_ID 时 NewWorkspaces 返回 nil，Agent 不给沙箱工具。
+	// 只用临时沙箱，不碰数据库，所以 store 给 nil
+	var ws purchaseai.Workspaces
+	if o.sandbox {
+		ws = purchaseai.NewWorkspaces(nil)
+	}
 	redact := loadRedact(o.redact)
 	runDir := filepath.Join(o.out, time.Now().Format("20060102-150405"))
-	fmt.Printf("model %s，%d 个 case，每个 %d 次，记录写到 %s\n", provider.Model, len(cases), o.n, runDir)
+	fmt.Printf("model %s，%d 个 case，每个 %d 次，沙箱 %v，记录写到 %s\n", provider.Model, len(cases), o.n, ws != nil, runDir)
 
 	var all []attempt
 	for _, c := range cases {
@@ -148,7 +158,7 @@ func run(ctx context.Context, o options) error {
 
 			fmt.Printf("\n==== %s（第 %d/%d 次）====\n任务：%s\n", c.Name, i, o.n, c.Task)
 			path := filepath.Join(runDir, fmt.Sprintf("%s-%d.json", c.Name, i))
-			a, err := runOnce(ctx, b, *provider, c, i, adhoc, func(rec runRecord) {
+			a, err := runOnce(ctx, b, ws, *provider, c, i, adhoc, func(rec runRecord) {
 				if err := save(path, rec, redact); err != nil {
 					fmt.Fprintln(os.Stderr, "save record:", err)
 				}
@@ -170,7 +180,7 @@ func run(ctx context.Context, o options) error {
 
 // runOnce 跑一次 case。返回的 error 只给"再跑也没用"的情况（模型配置错了），其余都折算成 outcome。
 // 每次调用模型以后、以及结束时，都把当时的记录交给 save：中途被打断也有记录可看
-func runOnce(ctx context.Context, b purchaseai.Browser, p llm.StaticProvider, c Case, i int, adhoc bool, save func(runRecord)) (attempt, error) {
+func runOnce(ctx context.Context, b purchaseai.Browser, ws purchaseai.Workspaces, p llm.StaticProvider, c Case, i int, adhoc bool, save func(runRecord)) (attempt, error) {
 	a := attempt{c: c, i: i}
 	rec := runRecord{Case: c.Name, Attempt: i, Task: c.Task, Outcome: "进行中"}
 	defer func() { save(rec) }()
@@ -188,7 +198,7 @@ func runOnce(ctx context.Context, b purchaseai.Browser, p llm.StaticProvider, c 
 		save(rec)
 	}
 	started := time.Now()
-	res, err := purchaseai.RunTask(ctx, model, b, c.Task)
+	res, err := purchaseai.RunTask(ctx, model, b, c.Task, purchaseai.WithWorkspaces(ws))
 	a.elapsed, a.usage, a.ran, a.res = time.Since(started), model.usage, true, res
 	rec.Usage, rec.Calls = model.usage, model.calls
 

@@ -46,9 +46,18 @@ type TaskStep struct {
 	Duration  time.Duration
 }
 
+// TaskOption 调整 RunTask 的一次运行
+type TaskOption func(*agentRun)
+
+// WithWorkspaces 让 Agent 有工作台（沙箱），ws 为 nil 时不给。RunTask 没有对话，
+// 用的是临时沙箱（chatID 0）：不记进数据库，闲置以后 Cube 自己销毁
+func WithWorkspaces(ws Workspaces) TaskOption {
+	return func(r *agentRun) { r.workspaces = ws }
+}
+
 // RunTask 不经过帖子，直接让 Agent 做一个任务：系统提示词和 Analyze 用的一样，用户消息就是 task。
 // 给 case 运行器和手动试跑用，它们在 answer run 外面，自己带模型和浏览器。
-func RunTask(ctx context.Context, client llm.Client, b Browser, task string) (*TaskResult, error) {
+func RunTask(ctx context.Context, client llm.Client, b Browser, task string, opts ...TaskOption) (*TaskResult, error) {
 	browserOn := b.Connected()
 	messages := []llm.Message{
 		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn)),
@@ -56,6 +65,9 @@ func RunTask(ctx context.Context, client llm.Client, b Browser, task string) (*T
 	}
 
 	r := newAgentRun(client, b, defaultLimits)
+	for _, opt := range opts {
+		opt(r)
+	}
 	defer r.closeTabs()
 	res, err := r.run(ctx, messages, browserOn)
 	if err != nil {
