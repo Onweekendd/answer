@@ -152,19 +152,61 @@ func (r *agentRun) bash(ctx context.Context, ws Workspace, arguments string) (to
 
 // bashResult 把一条命令的结果写给模型看。一条命令可能在三个不同的地方出问题（概念 4）：
 // 沙箱连不上（传输层）、跑太久被杀（进程层）、程序自己失败（退出码不是 0）。
-//
-// TODO(精华，你来写)，按这个顺序：
-//  1. err 不为 nil 时先看 ctx.Err()：整次任务结束了（用户关了页面、超时）就原样返回 ctx.Err()，循环会立刻停
-//  2. err 不为 nil、ctx 还活着：传输层出错，沙箱连不上了。把 r.ws 设成 nil，下一次调用会重新 Acquire
-//     （沙箱真没了的话会重建，并带上 workspaceResetText）；返回 Failed 的结果，告诉模型工作台暂时连不上，可以再试一次
-//  3. res.TimedOut：进程跑过了 timeout 被杀掉了。告诉模型跑了多久被终止、可以怎么拆小。
-//     算不算 Failed 你来定：Failed 会计入连续失败，连着 3 次就收尾（failureCounter）
-//  4. 其余情况都是程序跑完了：退出码不管是不是 0 都**不算** Failed，它是信息不是故障，模型看了 traceback 自己修。
-//     Text 写上退出码、stdout、stderr（分开标注，空的不写）；每一段超过 bashOutputMax 个字就截断：
-//     结尾留得比开头多（报错和 traceback 在最后），中间写上省略了多少。按 rune 截，别把汉字切成两半
-//  5. Display 是给用户看的一句话，只写退出码这类没有内容的东西（resultSummary 里说的白名单）
+// 返回的 error 只在整次任务结束了（用户关了页面、超时）时不为 nil，循环看到它就停
 func (r *agentRun) bashResult(ctx context.Context, res sandbox.RunResult, err error, timeout time.Duration) (toolResult, error) {
-	return toolResult{Failed: true, Text: "bash 还没写好。"}, nil
+	if err != nil {
+		if ctx.Err() != nil {
+			return toolResult{}, ctx.Err()
+		}
+		// 传输层：沙箱连不上了。丢掉 r.ws，下一次调用重新 Acquire（真没了会重建并带上 workspaceResetText）。
+		// 不能把 err 往上返回：那会让整次任务停下来，而这只是一次调用失败，模型可以再试
+		log.Warnf("purchase ai: sandbox command failed for chat %d: %v", r.chatID, err)
+		r.ws = nil
+		return toolResult{Failed: true, Text: "工作台暂时连不上，命令没有执行完。可以再试一次；连着失败就先不用工作台，直接回答用户。"}, nil
+	}
+
+	// 进程层：跑过期限被杀掉了。算 Failed：连着超时说明路子不对，failureCounter 会让它收尾
+	if res.TimedOut {
+		return toolResult{
+			Failed: true,
+			Text: fmt.Sprintf("命令跑了 %d 秒还没结束，被终止了，输出也没有拿到。"+
+				"把它拆小一点：一次只处理一部分文件、下载的加上超时，或者放到后台跑（nohup … > log.txt 2>&1 &），再用 cat log.txt 看进度。",
+				int(timeout.Seconds())),
+		}, nil
+	}
+
+	// 程序跑完了：退出码不是 0 也不算 Failed，模型看了 traceback 自己修
+	var b strings.Builder
+	fmt.Fprintf(&b, "退出码 %d", res.ExitCode)
+	if res.Stdout == "" && res.Stderr == "" {
+		b.WriteString("，没有输出。")
+	}
+	if res.Stdout != "" {
+		b.WriteString("\n\nstdout：\n" + clipMiddle(res.Stdout, bashOutputMax))
+	}
+	if res.Stderr != "" {
+		b.WriteString("\n\nstderr：\n" + clipMiddle(res.Stderr, bashOutputMax))
+	}
+	return toolResult{
+		Text:    b.String(),
+		Display: fmt.Sprintf("退出码 %d", res.ExitCode), // 输出里可能有网页上的内容，用户这边只说退出码
+	}, nil
+}
+
+// bashHeadShare 是截断时开头占几分之一：其余留给结尾，报错和 traceback 都在最后
+const bashHeadShare = 4
+
+// clipMiddle 把 s 截到最多 max 个字（rune，汉字不会被切成两半）：留开头一小段、结尾一大段，
+// 中间写上省略了多少
+func clipMiddle(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	head := max / bashHeadShare
+	tail := max - head
+	return fmt.Sprintf("%s\n…（中间省略了 %d 个字）…\n%s",
+		string(runes[:head]), len(runes)-head-tail, string(runes[len(runes)-tail:]))
 }
 
 // ---------- read_file ----------

@@ -300,15 +300,26 @@ func TestContactSheet_TenColumnsAndAGreyCellForMissingThumbs(t *testing.T) {
 	assert.LessOrEqual(t, sheet.Width, imageMaxWidth)
 }
 
-// ---------- bash（TODO） ----------
+// ---------- bash ----------
 
-func skipBash(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 bashResult 删掉这一行")
+func Test_clipMiddle(t *testing.T) {
+	t.Run("不超过的原样返回", func(t *testing.T) {
+		assert.Equal(t, "短", clipMiddle("短", 8))
+	})
+
+	t.Run("按字截，开头留四分之一，结尾留其余，中间写省略了多少", func(t *testing.T) {
+		// Arrange：20 个汉字，最多留 8 个
+		s := "一二三四五六七八九十甲乙丙丁戊己庚辛壬癸"
+
+		// Act
+		got := clipMiddle(s, 8)
+
+		// Assert
+		assert.Equal(t, "一二\n…（中间省略了 12 个字）…\n戊己庚辛壬癸", got)
+	})
 }
 
 func TestBash_NonZeroExitIsNotAFailure(t *testing.T) {
-	skipBash(t)
 	// Arrange
 	ws := newFakeWorkspace()
 	ws.run = func(string) (sandbox.RunResult, error) {
@@ -327,7 +338,6 @@ func TestBash_NonZeroExitIsNotAFailure(t *testing.T) {
 }
 
 func TestBash_LongOutputKeepsTheEnd(t *testing.T) {
-	skipBash(t)
 	// Arrange：一大段输出，最后是 traceback
 	ws := newFakeWorkspace()
 	noise := strings.Repeat("downloading 一张图……\n", 2000)
@@ -345,7 +355,6 @@ func TestBash_LongOutputKeepsTheEnd(t *testing.T) {
 }
 
 func TestBash_TimedOutTellsHowLong(t *testing.T) {
-	skipBash(t)
 	// Arrange
 	ws := newFakeWorkspace()
 	ws.run = func(string) (sandbox.RunResult, error) { return sandbox.RunResult{TimedOut: true}, nil }
@@ -360,7 +369,6 @@ func TestBash_TimedOutTellsHowLong(t *testing.T) {
 }
 
 func TestBash_TransportErrorDropsTheWorkspace(t *testing.T) {
-	skipBash(t)
 	// Arrange：沙箱连不上了
 	ws := newFakeWorkspace()
 	ws.run = func(string) (sandbox.RunResult, error) { return sandbox.RunResult{}, errors.New("502 Bad Gateway") }
@@ -377,7 +385,6 @@ func TestBash_TransportErrorDropsTheWorkspace(t *testing.T) {
 }
 
 func TestBash_CanceledTaskStopsTheLoop(t *testing.T) {
-	skipBash(t)
 	// Arrange
 	r, _ := sandboxRun(newFakeWorkspace())
 	ctx, cancel := context.WithCancel(context.Background())
