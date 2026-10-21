@@ -20,12 +20,17 @@
 package purchaseai
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/jpeg"
 	"strings"
 	"testing"
 
 	"github.com/apache/answer/internal/service/browser"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,6 +89,58 @@ func Test_hover(t *testing.T) {
 	res, err = r.hover(context.Background(), `{"index":3}`)
 	require.NoError(t, err)
 	require.True(t, res.Failed)
+}
+
+func Test_shotForModel(t *testing.T) {
+	jpegShot := func(t *testing.T, w, h int) screenshotData {
+		t.Helper()
+		var buf bytes.Buffer
+		require.NoError(t, jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, w, h)), &jpeg.Options{Quality: shotKeepQuality}))
+		return screenshotData{Data: base64.StdEncoding.EncodeToString(buf.Bytes()), Mime: "image/jpeg", Width: w, Height: h}
+	}
+
+	t.Run("整屏截图按屏幕原样截，发给模型的缩到 1600 宽", func(t *testing.T) {
+		// Arrange
+		shot := jpegShot(t, 2560, 888)
+
+		// Act
+		uri, w, h := shotForModel(shot)
+
+		// Assert：模型那份变小了，原图（存给用户看的）不动
+		assert.Equal(t, screenshotMaxWidth, w)
+		assert.Equal(t, 555, h)
+		raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(uri, "data:image/jpeg;base64,"))
+		require.NoError(t, err)
+		img, err := jpeg.Decode(bytes.NewReader(raw))
+		require.NoError(t, err)
+		assert.Equal(t, screenshotMaxWidth, img.Bounds().Dx())
+		assert.Equal(t, 2560, shot.Width)
+	})
+
+	t.Run("只截一个元素的小图原样发", func(t *testing.T) {
+		// Arrange
+		shot := jpegShot(t, 496, 504)
+
+		// Act
+		uri, w, h := shotForModel(shot)
+
+		// Assert
+		assert.Equal(t, "data:image/jpeg;base64,"+shot.Data, uri)
+		assert.Equal(t, 496, w)
+		assert.Equal(t, 504, h)
+	})
+
+	t.Run("解不开的图原样发", func(t *testing.T) {
+		// Arrange
+		shot := screenshotData{Data: base64.StdEncoding.EncodeToString([]byte("shot1")), Mime: "image/jpeg", Width: 1024, Height: 576}
+
+		// Act
+		uri, w, _ := shotForModel(shot)
+
+		// Assert
+		assert.Equal(t, "data:image/jpeg;base64,"+shot.Data, uri)
+		assert.Equal(t, 1024, w)
+	})
 }
 
 func Test_screenshot(t *testing.T) {

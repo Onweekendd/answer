@@ -26,6 +26,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"image"
+	_ "image/jpeg" // image.DecodeConfig reads the size of JPEGs and PNGs
+	_ "image/png"
 	"os"
 
 	"github.com/disintegration/imaging"
@@ -66,4 +69,31 @@ func DataURI(path string, maxSide int) (string, error) {
 	}
 
 	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+// FitWidth shrinks an image to at most maxWidth pixels wide, keeping its shape,
+// and re-encodes it as JPEG at the given quality. An image already narrow
+// enough comes back as it was, with resized false: encoding it again would only
+// lose detail. Only the header is read in that case, not the pixels.
+func FitWidth(data []byte, maxWidth, quality int) (out []byte, width, height int, resized bool, err error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, 0, false, fmt.Errorf("imgprep: read size: %w", err)
+	}
+	if cfg.Width <= maxWidth {
+		return data, cfg.Width, cfg.Height, false, nil
+	}
+
+	img, err := imaging.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, 0, false, fmt.Errorf("imgprep: decode: %w", err)
+	}
+	img = imaging.Resize(img, maxWidth, 0, imaging.Lanczos)
+
+	var buf bytes.Buffer
+	if err := imaging.Encode(&buf, img, imaging.JPEG, imaging.JPEGQuality(quality)); err != nil {
+		return nil, 0, 0, false, fmt.Errorf("imgprep: encode: %w", err)
+	}
+	b := img.Bounds()
+	return buf.Bytes(), b.Dx(), b.Dy(), true, nil
 }

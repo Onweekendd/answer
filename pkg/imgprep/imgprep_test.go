@@ -158,3 +158,52 @@ func TestDataURI(t *testing.T) {
 		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 }
+
+func TestFitWidth(t *testing.T) {
+	encode := func(t *testing.T, w, h int) []byte {
+		t.Helper()
+		var buf bytes.Buffer
+		require.NoError(t, jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, w, h)), &jpeg.Options{Quality: 90}))
+		return buf.Bytes()
+	}
+
+	t.Run("比上限宽的等比缩到上限", func(t *testing.T) {
+		// Arrange: a full-resolution screenshot of a 2880-pixel-wide screen
+		data := encode(t, 2880, 1000)
+
+		// Act
+		out, w, h, resized, err := FitWidth(data, 1600, 80)
+
+		// Assert
+		require.NoError(t, err)
+		require.True(t, resized)
+		require.Equal(t, 1600, w)
+		require.Equal(t, 556, h)
+		img, err := jpeg.Decode(bytes.NewReader(out))
+		require.NoError(t, err)
+		require.Equal(t, 1600, img.Bounds().Dx())
+	})
+
+	t.Run("本来就够窄的原样返回，不再压一遍", func(t *testing.T) {
+		// Arrange: a shot of one product card
+		data := encode(t, 496, 504)
+
+		// Act
+		out, w, h, resized, err := FitWidth(data, 1600, 80)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, resized)
+		require.Equal(t, data, out)
+		require.Equal(t, 496, w)
+		require.Equal(t, 504, h)
+	})
+
+	t.Run("不是图片就报错", func(t *testing.T) {
+		// Act
+		_, _, _, _, err := FitWidth([]byte("shot1"), 1600, 80)
+
+		// Assert
+		require.Error(t, err)
+	})
+}

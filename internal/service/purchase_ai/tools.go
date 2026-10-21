@@ -22,6 +22,7 @@ package purchaseai
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/apache/answer/internal/service/browser"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/pkg/imgprep"
 	"github.com/segmentfault/pacman/log"
 )
 
@@ -155,10 +157,17 @@ type screenshotArgs struct {
 //     12px 的小字（月销、地点、标签）整屏截图基本读不全
 //   - 只截一张商品卡片（331×336）约 200 个 token，标题、标签、价格、小字全对
 //
-// 所以整屏截图基本不缩小，只用来看布局和状态；读价格、小字靠只截那个元素
+// 所以整屏截图基本不缩小，只用来看布局和状态；读价格、小字靠只截那个元素。
+//
+// 截下来的图有两份用处：发给模型看，和回答引用了以后存下来给用户看（citedShots）。
+// 2026-10-20 用户反馈页面上的截图糊：屏幕实际宽 2500 多像素，整屏缩到 1600 宽只剩 0.6 倍。
+// 所以按屏幕的实际像素截、质量高一点，存的是这一份；发给模型前在服务端缩到 screenshotMaxWidth，
+// 模型那边的 token 不跟着涨
 const (
-	screenshotMaxWidth = 1600 // 输出图片最宽多少像素（实际像素，已经算上屏幕缩放）
-	screenshotQuality  = 80   // jpeg 质量：1600 宽也只有十几 KB，再低字的边缘会糊
+	screenshotMaxWidth = 1600 // 发给模型的图最宽多少像素（实际像素，已经算上屏幕缩放）
+	screenshotQuality  = 80   // 发给模型的 jpeg 质量：1600 宽也只有十几 KB，再低字的边缘会糊
+	shotKeepWidth      = 2880 // 截图本身最宽多少像素：一般的屏幕不用缩小，存下来给用户看的就是它
+	shotKeepQuality    = 90   // 截图本身的 jpeg 质量：给人看的，字的边缘要干净
 )
 
 type indexArgs struct {
@@ -483,7 +492,7 @@ func (r *agentRun) screenshot(ctx context.Context, arguments string) (toolResult
 	if res := r.requireTab(); res != nil {
 		return *res, nil
 	}
-	req := map[string]any{"maxWidth": screenshotMaxWidth, "quality": screenshotQuality}
+	req := map[string]any{"maxWidth": shotKeepWidth, "quality": shotKeepQuality}
 	what := "当前这一屏"
 	if args.Index != nil {
 		req["index"] = *args.Index
@@ -496,12 +505,34 @@ func (r *agentRun) screenshot(ctx context.Context, arguments string) (toolResult
 	if shot.Data == "" || shot.Mime == "" {
 		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
+	image, width, height := shotForModel(shot)
 	return toolResult{
-		Text:    fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, shot.Width, shot.Height) + r.numberPicture(shot),
-		Display: fmt.Sprintf("截了一张图（%d×%d）", shot.Width, shot.Height),
-		Image:   "data:" + shot.Mime + ";base64," + shot.Data,
+		// 编号记下的是原图（numberPicture），回答引用了存的就是它
+		Text:    fmt.Sprintf("已截图（%s，%d×%d），图片在下一条消息里。", what, width, height) + r.numberPicture(shot),
+		Display: fmt.Sprintf("截了一张图（%d×%d）", width, height),
+		Image:   image,
 		URL:     shot.URL,
 	}, nil
+}
+
+// shotForModel 是发给模型的那一份截图（data URI）和它的尺寸：比 screenshotMaxWidth 宽就缩小、重新压缩，
+// 不宽的原样发。解不开就原样发：模型多花点 token，总比没有图好
+func shotForModel(shot screenshotData) (image string, width, height int) {
+	original := "data:" + shot.Mime + ";base64," + shot.Data
+	raw, err := base64.StdEncoding.DecodeString(shot.Data)
+	if err != nil {
+		log.Warnf("purchase ai: bad screenshot from the extension: %v", err)
+		return original, shot.Width, shot.Height
+	}
+	out, w, h, resized, err := imgprep.FitWidth(raw, screenshotMaxWidth, screenshotQuality)
+	if err != nil {
+		log.Warnf("purchase ai: cannot shrink the screenshot: %v", err)
+		return original, shot.Width, shot.Height
+	}
+	if !resized {
+		return original, w, h
+	}
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(out), w, h
 }
 
 // formatSnapshot 把快照写给模型看。页面内容来自外部网站，开头标明它只是资料
