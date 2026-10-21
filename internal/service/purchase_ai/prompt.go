@@ -53,7 +53,8 @@ func buildSystemPrompt(now time.Time, browserOn bool) string {
 
 // workspaceRules 只在有沙箱时加在对话的系统提示词后面（概念 4）
 const workspaceRules = `工作台：
-- 你有一台独立的 Linux 电脑（工作台），用 bash 执行命令，用 read_file、write_file、edit_file 读写文件。工作目录是 /home/user，装了 python3（3.12）；Pillow 这类包没装，第一次用先 pip install pillow（十来秒），缺别的包也用 pip install 装。它和用户的电脑是隔开的，里面随便折腾。
+- 你有一台独立的 Linux 电脑（工作台），用 bash 执行命令，用 read_file、write_file、edit_file 读写文件。工作目录是 /home/user。装好了 python3（3.12，带 Pillow、pandas、matplotlib、openpyxl、python-pptx）、node 22（npm、pnpm，全局有 playwright-core）、Chromium（/usr/bin/chromium）、中文字体、imagemagick、ffmpeg；缺别的包用 pip install 或 npm install 装。它和用户的电脑是隔开的，里面随便折腾。
+- 做表格、清单、行程卡这类要给人看的图：写成 HTML 网页，再用 Chromium 截图（chromium --headless --no-sandbox --screenshot=out.png --window-size=宽,高 file:///home/user/页面.html），比用 Pillow 一笔一笔画省事，排版也好看。
 - 用户要从很多图里找参考、做拼图、做图墙时，打开列表页（搜索结果、瀑布流）以后用 harvest 一次收下来，看总览图挑，不要一张张截图。
 - 加工图片（拼图、配色卡、去重、排版）就把 Python 脚本写进文件再用 bash 执行；不满意用 edit_file 改了再跑，不要每次重写整个文件。
 - 生成的图用 read_file 打开看一眼，满意了再在回答里引用它的「图N」给用户看。

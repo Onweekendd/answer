@@ -39,7 +39,7 @@ import (
 // Configured 说的是有没有配沙箱：CUBE_TEMPLATE_ID 没设就当没有，Agent 不给沙箱工具。
 // 其余的配置都是 SDK 自己从环境变量读的：
 //   - CUBE_API_URL：CubeAPI，默认 http://127.0.0.1:3000
-//   - CUBE_TEMPLATE_ID：要有 python 的模板（sandbox-code 镜像建的那个）
+//   - CUBE_TEMPLATE_ID：用 deploy/sandbox/Dockerfile 建的模板（python、node、Chromium、中文字体）
 //   - CUBE_PROXY_NODE_IP：CubeProxy 的 IP。设了以后传文件、跑命令都直接连这个 IP，不解析 *.cube.app，
 //     Clash 的 fake-ip 就劫持不到（SDK 的 transport.go，DialContext 不管域名）
 //   - CUBE_PROXY_PORT_HTTP：CubeProxy 的端口。本地 WSL 里是 443（TLS）

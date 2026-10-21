@@ -60,7 +60,7 @@ const (
 )
 
 type bashArgs struct {
-	Command string `json:"command" description:"要执行的 bash 命令，在 /home/user 下执行，比如 python3 collage.py、ls harvest | head、pip install pillow"`
+	Command string `json:"command" description:"要执行的 bash 命令，在 /home/user 下执行，比如 python3 collage.py、ls harvest | head、node shot.js"`
 	Timeout int    `json:"timeout,omitempty" description:"最多跑多少秒，默认 60，最多 120。跑得久的任务（下载很多图）拆成几次"`
 }
 
