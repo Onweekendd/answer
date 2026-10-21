@@ -32,14 +32,18 @@ import (
 )
 
 func Test_skills(t *testing.T) {
-	t.Run("编进程序的 skill 都能读出名字和描述：现在有 site-guide", func(t *testing.T) {
+	t.Run("编进程序的 skill 都能读出名字和描述：现在有 homework、site-guide", func(t *testing.T) {
 		// Act
 		list, err := listSkills(skillFiles)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, "site-guide", list[0].Name)
-		require.NotEmpty(t, list[0].Description)
+		require.Len(t, list, 2)
+		require.Equal(t, "homework", list[0].Name)
+		require.Equal(t, "site-guide", list[1].Name)
+		for _, s := range list {
+			require.NotEmpty(t, s.Description, s.Name)
+		}
 	})
 
 	t.Run("SKILL.md 里提到的 reference 都存在，references 里的每个文件也都在 SKILL.md 里提到", func(t *testing.T) {

@@ -35,7 +35,14 @@ import { displayUrl } from "./snapshot/links";
 import { maskPrivate } from "./snapshot/privacy";
 import { waitForStable } from "./snapshot/stable";
 import { clip, paragraphs } from "./snapshot/text";
-import { collectStrategyElements, profileFor, StepFailures, strategyMain, withFallback } from "./strategies";
+import {
+  collectStrategyElements,
+  profileFor,
+  StepFailures,
+  strategyMain,
+  strategyReady,
+  withFallback
+} from "./strategies";
 
 // content script：Go 第一次要操作某个页面时，由 background 注入进去（commands.ts 的 inject），
 // 和网页跑在同一个渲染进程，能读写 DOM，但看不到网页自己的 JS 变量（isolated world）。
@@ -68,8 +75,10 @@ async function handle(req: TabRequest): Promise<unknown> {
       return result;
     }
     case "read":
-      // 和 snapshot 一样先等页面安静：浮层刚打开时正文常常还在加载
+      // 和 snapshot 一样先等页面安静：浮层刚打开时正文常常还在加载。
+      // 边生成边显示的页面（秘塔）安静一下不代表写完了，再等页面的增强说写完了
       await waitForStable(document.body);
+      await waitForReady();
       return readText(req.maxChars, req.index);
     case "prepareInput":
       return prepareInput(req.index, req.editable);
@@ -460,6 +469,18 @@ const MIN_MAIN_CHARS = 200;
 
 // readText 读出一块区域的文字。用 innerText：它按 CSS 排版取字，display:none 的不算，
 // 块级元素之间有换行，滚动容器里没露出来的部分也算（笔记正文很长时，不用滚动就能读完）
+// 等页面的内容写完最多等多久：秘塔的回答实测二三十秒写完（2026-10-21），留些余量。
+// 等不到也照常读：读到半截总比报错好，模型看得出话没说完
+const READY_WAIT_MS = 45_000;
+const READY_POLL_MS = 500;
+
+async function waitForReady(): Promise<void> {
+  const deadline = Date.now() + READY_WAIT_MS;
+  while (!strategyReady(new URL(location.href), document) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
+  }
+}
+
 function readText(maxChars: number, index?: number): ReadResult {
   const { roots, scope } = readRoot(index);
   // 先整理、再打码、最后截断：截断不会切开一个手机号，让一半漏过打码。几块正文区之间空一行
@@ -676,6 +697,7 @@ async function harvestOnPage(limit: number, maxScrolls: number): Promise<Harvest
       strategy: profile?.name,
       ...(failures.size > 0 ? { strategyError: failures.toString() } : {}),
       ...stats,
+      thumbWidth: steps.thumbWidth(),
       ms: Math.round(performance.now() - started)
     }
   };

@@ -78,6 +78,9 @@ export const xiaohongshu: PageProfile = {
     key: (card) => {
       const id = card.getAttribute("data-note-id");
       return id ? `xhs:${id}` : undefined;
-    }
+    },
+    // 封面 img 没有 srcset，页面上最大的就是这张 640 宽的预览图（2026-10-21 收割实测 640×853）。
+    // 原图要点开笔记才有，一篇一篇点会触发风控，所以把预览图原样带回去当素材
+    thumbWidth: () => 640
   }
 };

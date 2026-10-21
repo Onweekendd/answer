@@ -85,6 +85,11 @@ describe("xiaohongshu 列表收割", () => {
     expect(s.key(card)).toBe("xhs:6a51b2720000000011011469");
   });
 
+  it("缩略图留 640 宽：页面上最大的就是封面预览图，它就是素材；别的网站还是 200", () => {
+    expect(steps().thumbWidth()).toBe(640);
+    expect(genericList.thumbWidth()).toBe(200);
+  });
+
   it("封面链接里没有 token 时也给出笔记页", () => {
     // Arrange
     document.body.innerHTML = note("69b2cc6f0000000022023cd0", "别装成出租屋", "");

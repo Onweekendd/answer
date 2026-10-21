@@ -1,6 +1,6 @@
 ---
 name: site-guide
-description: 在电商和内容网站上查资料的做法。打开淘宝、京东、1688、闲鱼、小红书这些网站之前，先读这个 skill，再读对应网站的 reference。
+description: 在电商和内容网站上查资料的做法。打开淘宝、京东、1688、闲鱼、小红书、秘塔这些网站之前，先读这个 skill，再读对应网站的 reference。
 ---
 
 # 在常用网站上查资料
@@ -15,6 +15,7 @@ description: 在电商和内容网站上查资料的做法。打开淘宝、京�
 | 闲鱼 | references/goofish.md | 查二手价格、成色时 |
 | 小红书 | references/xiaohongshu.md | 看用户的使用体验、口碑、避坑经验时 |
 | 宜家 | references/ikea.md | 查宜家商品的价格、尺寸、填充物和材料时 |
+| 秘塔 AI 搜索 | references/metaso.md | 核实资质、认证、政策、机构背景这类说法，找政府网站、协会官网的原文时 |
 
 ## 通用做法
 

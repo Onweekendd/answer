@@ -562,6 +562,21 @@ func Test_afterAct(t *testing.T) {
 		require.True(t, res.PageChanged)
 		require.Contains(t, res.Text, "已经切换到这个标签页")
 	})
+
+	t.Run("新标签页自己关掉了（文件下载）：留在原来的标签页，让模型换一个来源", func(t *testing.T) {
+		// Arrange
+		r := openedRun(t, newFakeBrowser())
+
+		// Act
+		res := r.afterAct("已点击 [19]。", actResult{URL: "https://metaso.cn/chat/1", NewTabClosed: true})
+
+		// Assert
+		require.Equal(t, 1, r.tabID)
+		require.False(t, res.Failed)
+		require.False(t, res.PageChanged, "页面没变，编号还能用")
+		require.Contains(t, res.Text, "文件下载")
+		require.Contains(t, res.Text, "不要再点它")
+	})
 }
 
 func Test_closeTabs(t *testing.T) {

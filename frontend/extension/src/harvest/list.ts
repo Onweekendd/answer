@@ -18,7 +18,7 @@
  */
 
 import { displayedSource, largestSource } from "../imagesrc";
-import type { HarvestItem, HarvestResult } from "../protocol";
+import { GENERIC_THUMB_WIDTH, type HarvestItem, type HarvestResult } from "../protocol";
 import type { ListSteps } from "../strategies";
 import { repeatedCards } from "./cards";
 
@@ -58,7 +58,8 @@ export const genericList: ListSteps = {
     return text.replace(/\s+/g, " ").trim().slice(0, TITLE_MAX) || undefined;
   },
   image: (card) => largestImg(card),
-  key: () => undefined
+  key: () => undefined,
+  thumbWidth: () => GENERIC_THUMB_WIDTH
 };
 
 export async function harvestList(
@@ -66,7 +67,7 @@ export async function harvestList(
   steps: ListSteps,
   options: HarvestOptions,
   page: HarvestPage
-): Promise<Omit<HarvestResult, "stats"> & { stats: Omit<HarvestResult["stats"], "ms"> }> {
+): Promise<Omit<HarvestResult, "stats"> & { stats: Omit<HarvestResult["stats"], "ms" | "thumbWidth"> }> {
   const items: HarvestItem[] = [];
   const seen = new Set<string>();
   let sponsored = 0;

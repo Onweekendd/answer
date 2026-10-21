@@ -419,7 +419,7 @@ func (r *agentRun) read(ctx context.Context, arguments string) (toolResult, erro
 		req["index"] = *args.Index
 	}
 	var data readData
-	if res, err := r.call(ctx, r.tabID, "read", req, &data); res != nil {
+	if res, err := r.callFor(ctx, readTimeout, r.tabID, "read", req, &data); res != nil {
 		return *res, err
 	}
 	display := fmt.Sprintf("读了「%s」，%d 字", oneLine(data.Title), data.TotalChars)
@@ -645,9 +645,15 @@ func (r *agentRun) press(ctx context.Context, arguments string) (toolResult, err
 }
 
 // actResult 是插件 click / type 的结果
+// readTimeout 比别的命令长：边生成边显示的页面（秘塔的 AI 回答），插件要等它写完才读，最多等 45 秒（插件的 READY_WAIT_MS）
+const readTimeout = 60 * time.Second
+
 type actResult struct {
 	URL    string    `json:"url"`    // 动作之后这个标签页的网址
 	NewTab *pageInfo `json:"newTab"` // 动作在新标签页里打开了页面
+	// NewTabClosed：动作开了一个新标签页，还没加载完就自己关掉了。多半是文件下载（Word、PDF），
+	// 网页里看不了（2026-10-21 秘塔的「管理办法」来源，模型连点三次都是插件报错）
+	NewTabClosed bool `json:"newTabClosed"`
 }
 
 // afterAct 写出点击、回车之后的结果。在新标签页里打开了的，切换过去并记下来，结束时一起关掉：
@@ -661,6 +667,14 @@ func (r *agentRun) afterAct(done string, act actResult) toolResult {
 			Display:     "在新标签页里打开了「" + oneLine(tab.Title) + "」",
 			PageChanged: true,
 			URL:         tab.URL,
+		}
+	}
+	if act.NewTabClosed {
+		return toolResult{
+			Text: done + "点开的是一个新标签页，但它还没加载完就自己关掉了：多半是文件下载（Word、PDF），在网页里看不了。" +
+				"不要再点它，换一个是网页的来源。页面没有变，快照里的编号还能用。",
+			Display: "点开的是文件下载，换一个来源",
+			URL:     act.URL,
 		}
 	}
 	return toolResult{

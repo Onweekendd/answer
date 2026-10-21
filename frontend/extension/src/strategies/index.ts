@@ -21,6 +21,7 @@ import { alibabaDetail, alibabaSearch } from "./alibaba1688";
 import { StepFailures, withFallback } from "./fallback";
 import { goofishItem, goofishSearch } from "./goofish";
 import { jd, jdItem } from "./jd";
+import { metaso } from "./metaso";
 import { pinterestSearch } from "./pinterest";
 import type { PageProfile, ReadSteps, SnapshotSteps } from "./profile";
 import { taobao, taobaoItem } from "./taobao";
@@ -40,7 +41,8 @@ const profiles: readonly PageProfile[] = [
   alibabaDetail,
   goofishSearch,
   goofishItem,
-  pinterestSearch
+  pinterestSearch,
+  metaso
 ];
 
 // profileFor 是认得这个网址的那类页面。matches 抛错当作不认得：一个写坏的增强不能挡住后面的
@@ -63,7 +65,8 @@ const genericSnapshot: SnapshotSteps = {
 
 // 读正文的通用实现：不指定，内核自己找 <main>，找不到读整页
 const genericRead: ReadSteps = {
-  main: () => []
+  main: () => [],
+  ready: () => true
 };
 
 export interface StrategyStats {
@@ -109,6 +112,12 @@ export function strategyMain(url: URL, doc: Document, registry: readonly PagePro
   const profile = profileFor(url, registry);
   const steps = withFallback("read", profile?.read, genericRead, new StepFailures());
   return steps.main(doc).filter((el): el is Element => el !== null);
+}
+
+// strategyReady 说匹配到的那类页面的内容写完了没有；没有匹配、没给、或者出错，都算写完了
+export function strategyReady(url: URL, doc: Document, registry: readonly PageProfile[] = profiles): boolean {
+  const profile = profileFor(url, registry);
+  return withFallback("read", profile?.read, genericRead, new StepFailures()).ready(doc);
 }
 
 export function statsOf(profile: PageProfile, matched: number, failures: StepFailures): StrategyStats {

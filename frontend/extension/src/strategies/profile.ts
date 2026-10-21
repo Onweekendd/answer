@@ -44,6 +44,9 @@ export interface ReadSteps {
   // （京东详情页最上面是这个浏览器账号的"最近感兴趣"；1688 详情页的价格在 3000 字以后）。
   // 一块都没找到就照常找 <main>，找不到读整页
   main(doc: Document): (Element | null)[];
+  // 页面上的内容写完了没有。边生成边显示的页面（秘塔的 AI 回答要写二三十秒）在写完之前 read，
+  // 读到的是半截话，模型只好一遍遍重读（2026-10-21 连读 6 次）。通用实现：页面安静了就算写完
+  ready(doc: Document): boolean;
 }
 
 // 列表收割：搜索页、瀑布流里一张张卡片的图、标题、链接。骨架在 ../harvest/list.ts
@@ -60,6 +63,9 @@ export interface ListSteps {
   image(card: Element): HTMLImageElement | undefined;
   // 去重用的键：同一张卡片滚上滚下会被看到好几次。undefined：用链接，没有链接用缩略图地址
   key(card: Element): string | undefined;
+  // 带回去的缩略图压到多宽。通用实现 200：只用来拼总览图初选，要用的图再按原图地址取。
+  // 页面上拿不到更大的图时（小红书列表只有 640 宽的封面预览，原图要点开笔记），缩略图就是素材本身，压小了就没了
+  thumbWidth(): number;
 }
 
 // 一类页面：按网址匹配，对各项能力的增强都是可选的，每项能力里也只写不同的那几步

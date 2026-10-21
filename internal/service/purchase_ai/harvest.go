@@ -73,7 +73,18 @@ type harvestData struct {
 		Sponsored int  `json:"sponsored"`
 		NoImage   int  `json:"noImage"`
 		Ended     bool `json:"ended"`
+		// ThumbWidth 是缩略图压到了多宽，页面的增强定的（插件的 ListSteps.thumbWidth）。
+		// 比 harvestPickWidth 宽说明页面上拿不到更大的图，缩略图就是素材本身
+		ThumbWidth int `json:"thumbWidth"`
 	} `json:"stats"`
+}
+
+// harvestPickWidth 是只够挑选的缩略图有多宽（插件的默认值）
+const harvestPickWidth = 200
+
+// thumbsAreMaterial 说缩略图是不是就是素材：页面上拿不到更大的图（小红书列表只有 640 宽的封面预览，原图要点开笔记）
+func (d harvestData) thumbsAreMaterial() bool {
+	return d.Stats.ThumbWidth > harvestPickWidth
 }
 
 func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) (toolResult, error) {
@@ -98,10 +109,15 @@ func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) 
 	items := make([]sandbox.Item, 0, len(data.Items))
 	for _, it := range data.Items {
 		thumb, _ := base64.StdEncoding.DecodeString(it.ThumbData) // 解不开就当插件没拿到
-		items = append(items, sandbox.Item{
+		item := sandbox.Item{
 			Title: oneLine(it.Title), URL: it.URL, Original: it.Original,
 			Width: it.Width, Height: it.Height, Thumb: thumb,
-		})
+		}
+		if data.thumbsAreMaterial() {
+			// 原图地址就是缩略图那张，清单里给了，模型会从工作台去这个网站下载（不是用户的浏览器，容易被拦）
+			item.Original = ""
+		}
+		items = append(items, item)
 	}
 	entries := sandbox.Number(items)
 	if len(entries) == 0 {
@@ -138,8 +154,14 @@ func harvestText(entries []sandbox.Entry, data harvestData) string {
 		fmt.Fprintf(&b, "，还没加载出图的 %d 张", data.Stats.NoImage)
 	}
 	b.WriteString("）。\n")
-	fmt.Fprintf(&b, "素材放在工作台的 %s/：001.jpg 这样按编号命名的是缩略图（两三百像素宽，只够挑选和预览）；", sandbox.HarvestDir)
-	b.WriteString("items.json 是清单，每条有 n（编号）、file、title、url（出处）、original（原图地址）。编号 = 文件名 = 清单里的 n。")
+	if data.thumbsAreMaterial() {
+		fmt.Fprintf(&b, "素材放在工作台的 %s/：001.jpg 这样按编号命名的图（最宽 %d 像素）已经是这个网站列表页上能拿到的最大图，直接用它们做素材；", sandbox.HarvestDir, data.Stats.ThumbWidth)
+		b.WriteString("items.json 是清单，每条有 n（编号）、file、title、url（出处）。编号 = 文件名 = 清单里的 n。")
+		b.WriteString("\n不要用 bash 从这个网站另外下载图：工作台不是用户的浏览器，去这个网站下载容易被拦，还可能连累用户的账号。")
+	} else {
+		fmt.Fprintf(&b, "素材放在工作台的 %s/：001.jpg 这样按编号命名的是缩略图（%d 像素宽，只够挑选和预览）；", sandbox.HarvestDir, max(data.Stats.ThumbWidth, harvestPickWidth))
+		b.WriteString("items.json 是清单，每条有 n（编号）、file、title、url（出处）、original（原图地址）。编号 = 文件名 = 清单里的 n。")
+	}
 	if noThumb > 0 {
 		fmt.Fprintf(&b, "\n另有 %d 张插件没拿到缩略图，没有收。", noThumb)
 	}

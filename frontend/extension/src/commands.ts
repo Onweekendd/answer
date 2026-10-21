@@ -23,6 +23,7 @@ import {
   type Command,
   type CommandArgs,
   CommandError,
+  GENERIC_THUMB_WIDTH,
   type HarvestResult,
   type ImageSource,
   type InputAction,
@@ -55,8 +56,7 @@ const DEFAULT_HARVEST_SCROLLS = 10;
 const MAX_HARVEST_SCROLLS = 40;
 // 取缩略图：几百张从缓存里读、缩小，每张几毫秒到十几毫秒
 const HARVEST_THUMBS_TIMEOUT_MS = 60_000;
-// 缩略图压到多宽、什么质量：2026-10-20 Pinterest 的缩略图平均 59KB，压到 200 宽以后几 KB
-const HARVEST_THUMB_WIDTH = 200;
+// 缩略图的质量。压到多宽由页面的增强定（stats.thumbWidth），预算不够时退回 GENERIC_THUMB_WIDTH
 const HARVEST_THUMB_QUALITY = 70;
 // 一条结果里缩略图的 base64 加起来最多多少，留出余量给其余字段
 const HARVEST_THUMBS_BUDGET = 3 << 20;
@@ -264,6 +264,8 @@ async function loadIn(tabId: number, start: () => Promise<unknown>): Promise<Pag
 interface ActResult {
   url: string; // 动作之后这个标签页的网址；还在跳转的话是要去的网址
   newTab?: { tabId: number } & PageInfo;
+  // 新标签页还没加载完就自己关掉了：多半是文件下载（2026-10-21 秘塔来源里的「管理办法」，Chrome 开了又关）
+  newTabClosed?: boolean;
 }
 
 // 新标签页一般在动作之后几百毫秒内出现，等这么久还没有就算没有
@@ -295,7 +297,12 @@ async function actIn(tabId: number, req: InputAction): Promise<ActResult> {
     const tab = await chrome.tabs.get(tabId);
     const result: ActResult = { url: tab.pendingUrl ?? tab.url ?? "" };
     if (newTabId !== undefined) {
-      result.newTab = { tabId: newTabId, ...(await waitLoaded(newTabId)) };
+      try {
+        result.newTab = { tabId: newTabId, ...(await waitLoaded(newTabId)) };
+      } catch {
+        // waitLoaded 里 chrome.tabs.get 找不到它：标签页已经没了，不是动作失败
+        result.newTabClosed = true;
+      }
     }
     return result;
   } finally {
@@ -407,8 +414,9 @@ async function harvest(tabId: number, args: CommandArgs["harvest"]): Promise<Har
     maxScrolls: Math.min(args.maxScrolls ?? DEFAULT_HARVEST_SCROLLS, MAX_HARVEST_SCROLLS)
   })) as HarvestResult;
   if (args.thumbs) {
-    // 缩略图压到 HARVEST_THUMB_WIDTH 宽：只用来拼总览图初选，拼进去也就这么大。
-    // 一条结果总共不超过 HARVEST_THUMBS_BUDGET：Hub 一条消息最多收 4MB，超了它会断开连接
+    // 缩略图压到 stats.thumbWidth 宽：一般是 200，只用来拼总览图初选；页面上拿不到更大的图时更宽，它就是素材本身。
+    // 一条结果总共不超过 HARVEST_THUMBS_BUDGET：Hub 一条消息最多收 4MB，超了它会断开连接。
+    // 宽图放不下了就退回 200 宽：素材小一点，总览图还是齐的
     let budget = HARVEST_THUMBS_BUDGET;
     let skipped = 0;
     await withDebugger(
@@ -421,9 +429,17 @@ async function harvest(tabId: number, args: CommandArgs["harvest"]): Promise<Har
             continue;
           }
           try {
-            const small = await toJpeg(new Blob([new Uint8Array(bytes)]), HARVEST_THUMB_WIDTH, HARVEST_THUMB_QUALITY);
-            item.thumbData = small.data;
-            budget -= small.data.length;
+            const blob = new Blob([new Uint8Array(bytes)]);
+            let data = (await toJpeg(blob, result.stats.thumbWidth, HARVEST_THUMB_QUALITY)).data;
+            if (data.length > budget && result.stats.thumbWidth > GENERIC_THUMB_WIDTH) {
+              data = (await toJpeg(blob, GENERIC_THUMB_WIDTH, HARVEST_THUMB_QUALITY)).data;
+            }
+            if (data.length > budget) {
+              skipped++;
+              continue;
+            }
+            item.thumbData = data;
+            budget -= data.length;
           } catch {
             skipped++;
           }

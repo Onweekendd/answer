@@ -182,6 +182,10 @@ export interface HarvestItem {
   thumbData?: string; // thumbs 为 true 时：缩略图本身，base64，拿不到就没有
 }
 
+// 收割的缩略图默认压到多宽：2026-10-20 Pinterest 的缩略图平均 59KB，压到 200 宽以后几 KB。
+// 页面的增强可以要更宽的（ListSteps.thumbWidth）；预算不够时 background 也退回这个宽度
+export const GENERIC_THUMB_WIDTH = 200;
+
 export interface HarvestResult {
   items: HarvestItem[];
   stats: {
@@ -192,6 +196,7 @@ export interface HarvestResult {
     sponsored: number; // 其中几张是广告，没收
     noImage: number; // 其中几张没有图（还没加载出来、或者是视频），没收
     ended: boolean; // 滚到底了，或者连着几屏都没有新卡片
+    thumbWidth: number; // 缩略图要压到多宽（页面的增强定的，见 ListSteps.thumbWidth）
     thumbsSkipped?: number; // thumbs 为 true 时：几张没带上缩略图（缓存里没有、解不开、或者超了总量）
     ms: number;
   };
