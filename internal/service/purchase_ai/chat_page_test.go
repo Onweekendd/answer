@@ -30,12 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// skipReplay 写完 replayTurn 以后删掉
-func skipReplay(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 replayTurn 删掉这一行")
-}
-
 func TestPageMessages(t *testing.T) {
 	// Arrange：第一轮带截图、截过一张图（中间有一条截图提醒）；第二轮问完又重新生成了一次（a3 和 a4 是兄弟）；
 	// 第三个问题没等到回答（进程重启了），用户接着又问了一句
@@ -91,7 +85,6 @@ func toolCardTurn() []Entry {
 }
 
 func TestReplayTurn_ToolCards(t *testing.T) {
-	skipReplay(t)
 	// Arrange
 	r := replayRun(true)
 	ok := true
@@ -110,7 +103,6 @@ func TestReplayTurn_ToolCards(t *testing.T) {
 }
 
 func TestReplayTurn_ReasoningOff(t *testing.T) {
-	skipReplay(t)
 	// Act
 	got := replayRun(false).replayTurn(toolCardTurn())
 
@@ -120,7 +112,6 @@ func TestReplayTurn_ReasoningOff(t *testing.T) {
 }
 
 func TestReplayTurn_FailedCall(t *testing.T) {
-	skipReplay(t)
 	// Arrange
 	r := replayRun(false)
 	turn := []Entry{
@@ -139,7 +130,6 @@ func TestReplayTurn_FailedCall(t *testing.T) {
 }
 
 func TestReplayTurn_ProductAndDraft(t *testing.T) {
-	skipReplay(t)
 	// Arrange：第一步记下一个商品，第二步整理草稿挂起
 	r := replayRun(false)
 	card := &ProductCard{ID: 1, Title: "索尼 WH-1000XM5", Price: "¥2299", URL: "https://item.jd.com/100.html", Image: "https://x/uploads/agent/1.jpg"}
@@ -169,7 +159,6 @@ func TestReplayTurn_ProductAndDraft(t *testing.T) {
 }
 
 func TestReplayTurn_DoneAnswer(t *testing.T) {
-	skipReplay(t)
 	// Arrange：第一次 done 没写回答被退回，第二次才做成；回答引用了一张图
 	r := replayRun(false)
 	shots := []Shot{{ID: 1, Image: "https://x/uploads/agent/2.jpg"}}
@@ -189,7 +178,6 @@ func TestReplayTurn_DoneAnswer(t *testing.T) {
 }
 
 func TestReplayTurn_Unfinished(t *testing.T) {
-	skipReplay(t)
 	// Arrange：打开了京东，下一次调用模型时出错了，没有回答
 	r := replayRun(false)
 	turn := toolCardTurn()[:3]
@@ -233,7 +221,6 @@ func liveAndReplayed(t *testing.T, model *fakeLLM, browserOn bool) (live, replay
 }
 
 func TestReplayTurn_SameAsLive(t *testing.T) {
-	skipReplay(t)
 
 	t.Run("打开、被跳过的调用、记商品、截图，done 引用了截图", func(t *testing.T) {
 		// Arrange

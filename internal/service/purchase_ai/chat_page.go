@@ -21,7 +21,10 @@ package purchaseai
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/schema"
@@ -184,13 +187,80 @@ func userPage(e Entry, parent string) PageMessage {
 //     ③ draft_post 的结果：Text 是 draftAnswer
 //     找不到 Final：这一轮没跑完（模型出错、用户关了页面），发一条 error，Message 是 chatFailedText
 //
-// TODO(精华，你来写)，按这个顺序：
-//  1. 先扫一遍 turn，把 tool 消息按 ToolCallID 放进一个 map，后面按调用找结果；顺便记下 Final 的那条
-//  2. 遍历 turn 里的 assistant 消息（step 每遇到一条加一）：先思考，再按上面的规则发每个调用的卡片
-//  3. 按 ①②③ 拼出回答，发 answerEvents；没有 Final 就发 error
+// 做法：先扫一遍，按调用 ID 记下结果、找到 Final 那条；再按步发思考和卡片；最后拼出回答。
 //
 // 测试：chat_page_test.go。TestReplayTurn_* 一条规则一个；TestReplayTurn_SameAsLive 是总验收：
 // 真的跑一轮 Chat，收下推给页面的事件，再从日志里重放，两边必须一模一样
 func (r *agentRun) replayTurn(turn []Entry) []Event {
-	return nil
+	// 先扫一遍：调用 ID → 它的结果，调用 ID → 调用本身（done 的回答在参数里），带着回答的那条
+	results := map[string]*StoredMessage{}
+	calls := map[string]StoredCall{}
+	var final *StoredMessage
+	for _, e := range turn {
+		m := e.Message
+		if m == nil {
+			continue
+		}
+		if m.Role == llm.RoleTool {
+			results[m.ToolCallID] = m
+		}
+		for _, c := range m.ToolCalls {
+			calls[c.ID] = c
+		}
+		if m.Details != nil && m.Details.Final {
+			final = m
+		}
+	}
+
+	// 每条 assistant 是一步：先思考，再是这一步每个调用的卡片（runCalls 发卡片的顺序）
+	var out []Event
+	step := 0
+	for _, e := range turn {
+		m := e.Message
+		if m == nil || m.Role != llm.RoleAssistant {
+			continue
+		}
+		if text := strings.TrimSpace(m.Reasoning); r.showReasoning && text != "" {
+			out = append(out, Event{Type: EventReasoning, Delta: r.view(text)})
+		}
+		for i, c := range m.ToolCalls {
+			res := results[c.ID]
+			if res == nil || res.Details == nil || res.Details.Summary == "" {
+				continue // 跳过了的、done：页面上没有卡片
+			}
+			d := res.Details
+			id := fmt.Sprintf("%d-%d", step, i)
+			out = append(out, Event{Type: EventToolStart, ID: id, Name: c.Name, Args: &ToolView{Summary: r.view(d.Summary)}})
+			if d.Product != nil {
+				out = append(out, Event{Type: EventProduct, Product: d.Product})
+			}
+			if d.Draft != nil {
+				out = append(out, Event{Type: EventToolSuspend, ID: id, Name: c.Name, Input: d.Draft})
+			}
+			ok := !d.Failed
+			out = append(out, Event{Type: EventToolEnd, ID: id, Result: &ToolView{Summary: r.view(resultSummary(toolResult{Failed: d.Failed, Display: d.Display})), OK: &ok}})
+		}
+		step++
+	}
+
+	// 回答：没有 Final 就是这一轮没跑完
+	if final == nil {
+		return append(out, Event{Type: EventError, Message: chatFailedText})
+	}
+	res := &agentResult{Shots: final.Details.Shots}
+	switch {
+	case final.Role == llm.RoleAssistant: // 直接回答、收尾
+		text := ""
+		if len(final.Parts) > 0 {
+			text = final.Parts[0].Text
+		}
+		res.Text = answerText(&llm.ChatResp{Content: text})
+	case final.ToolName == toolDraft:
+		res.Text = draftAnswer
+	default: // done：回答在调用的参数里
+		var args doneArgs
+		_ = json.Unmarshal([]byte(calls[final.ToolCallID].Arguments), &args)
+		res.Text, res.Followups = args.Text, args.Followups
+	}
+	return append(out, r.answerEvents(res)...)
 }
