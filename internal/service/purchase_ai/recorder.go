@@ -75,18 +75,10 @@ func (c *chatRecorder) leaf() string {
 
 // record 记下一条，返回它的 ID（页面和下一轮靠这个 ID 接上）。
 //
-// 上下文：
-//   - 谁调用：Chat 记用户消息和最后的 view；Agent 循环里的 agentRun.keep 记每一条模型消息。
+//   - 谁调用：Chat 记用户消息；Agent 循环里的 agentRun.keep 记每一条模型消息。
 //     都在同一个 goroutine 里一条接一条地调，不会并发，不用加锁
-//   - e：Kind 和 Message（或 View）已经填好，ID、ParentID、CreatedAt 还是空的，由 c.chain 填
 //   - ctx：请求的 ctx。用户关了页面它就被取消了，这时写库会失败，没关系：条目留在 pending 里，close 会换个 ctx 写
 //   - 返回值不带 error：写不进去不该打断这一轮（用户正在等回答），失败的留给 close 兜底并报告
-//
-// TODO(精华，你来写)，按这个顺序：
-//  1. e = c.chain(e)，拿到带 ID 的条目
-//  2. 追加到 c.pending
-//  3. c.flush(ctx) 试着写掉，错误先忽略（写 `_ = c.flush(ctx)`，让读代码的人知道是故意不管的）
-//  4. 返回 e.ID
 func (c *chatRecorder) record(ctx context.Context, e Entry) string {
 	e = c.chain(e)
 
@@ -97,15 +89,8 @@ func (c *chatRecorder) record(ctx context.Context, e Entry) string {
 	return e.ID
 }
 
-// flush 把 pending 里的全部条目一次写进库，成功就清空，失败就原样留着、返回错误。
-//
-// 能用的：c.log.Append(ctx, c.chatID, entries) error。它就是你写的 chatLog.Append，在一个事务里按顺序插入；
-// 测试里是 fakeChatLog（chatlog_test.go），它可以模拟写库出错（appendErr）、记下写库时 ctx 有没有被取消（ctxErr）
-//
-// TODO(精华，你来写)：
-//  1. pending 是空的就直接返回 nil（不要白开一个事务）
-//  2. Append 整个 pending；出错就返回这个错误，pending 不动
-//  3. 成功就清空 pending（c.pending = nil），返回 nil
+// flush 把 pending 里的全部条目一次写进库（一个事务），成功就清空，失败就原样留着、返回错误。
+// pending 是空的不开事务
 func (c *chatRecorder) flush(ctx context.Context) error {
 	if len(c.pending) == 0 {
 		return nil
@@ -120,14 +105,11 @@ func (c *chatRecorder) flush(ctx context.Context) error {
 	return nil
 }
 
-// close 在这一轮结束时调一次：正常结束、出错、用户关了页面都要调（chat.go 里 Agent 跑完以后）。
+// close 在这一轮结束时调一次：正常结束、出错、用户关了页面都要调（chat.go 里 Agent 跑完以后），
+// 把还没写进去的写掉，错误返回给 Chat 打日志。
 //
-// TODO(精华，你来写)：
-//  1. 换一个写库用的 ctx：调用方给的是请求的 ctx，用户关了页面它就已经被取消了，拿它写库会立刻失败，
-//     偏偏这正是最需要把前面的记下来的时候。context.WithoutCancel(ctx) 摘掉取消（ctx 里带的值还在），
-//     再套一层 context.WithTimeout(…, closeTimeout) 给个期限，别让一次卡住的写库拖住 goroutine；
-//     WithTimeout 返回的 cancel 要 defer 调掉
-//  2. 用这个 ctx flush，把它的错误返回（Chat 会打日志）
+// 写库换一个 ctx：请求的 ctx 在用户关了页面时已经取消了，偏偏这正是最需要把前面的记下来的时候。
+// WithoutCancel 摘掉取消（ctx 里带的值还在），WithTimeout 给个期限，别让一次卡住的写库拖住 goroutine
 func (c *chatRecorder) close(ctx context.Context) error {
 	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), closeTimeout)
 	defer cancel()

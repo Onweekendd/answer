@@ -397,15 +397,9 @@ func TestBash_CanceledTaskStopsTheLoop(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-// ---------- read_file（TODO） ----------
-
-func skipReadFile(t *testing.T) {
-	t.Helper()
-	t.Skip("TODO(精华)：写完 fileResult 删掉这一行")
-}
+// ---------- read_file ----------
 
 func TestReadFile_ImageIsShownAndNumbered(t *testing.T) {
-	skipReadFile(t)
 	// Arrange：扩展名是 .jpg，内容其实是 png，按内容认
 	ws := newFakeWorkspace()
 	ws.files["/home/user/out/sheet.jpg"] = pngOf(t, 400, 300)
@@ -423,7 +417,6 @@ func TestReadFile_ImageIsShownAndNumbered(t *testing.T) {
 }
 
 func TestReadFile_TextHasLineNumbers(t *testing.T) {
-	skipReadFile(t)
 	// Arrange
 	ws := newFakeWorkspace()
 	ws.files["/home/user/harvest/items.json"] = []byte("[\n  {\"n\": 1}\n]\n")
@@ -438,8 +431,51 @@ func TestReadFile_TextHasLineNumbers(t *testing.T) {
 	assert.Empty(t, res.Image)
 }
 
+func Test_textFileResult(t *testing.T) {
+	tenLines := strings.Repeat("一行\n", 10)
+
+	t.Run("翻页：说清楚读到第几行、从哪接着读", func(t *testing.T) {
+		// Act
+		res := textFileResult("/home/user/a.txt", tenLines, 3, 4)
+
+		// Assert
+		assert.False(t, res.Failed)
+		assert.Contains(t, res.Text, "一共 10 行，这是第 3 到 6 行，还有 4 行没读，用 offset=7 接着读")
+		assert.Contains(t, res.Text, "     6\t一行")
+		assert.NotContains(t, res.Text, "     7\t")
+	})
+
+	t.Run("读到最后不提还有没读的", func(t *testing.T) {
+		res := textFileResult("/home/user/a.txt", tenLines, 0, 0)
+		assert.Contains(t, res.Text, "这是第 1 到 10 行。")
+	})
+
+	t.Run("offset 超出了算失败，告诉模型一共几行", func(t *testing.T) {
+		res := textFileResult("/home/user/a.txt", tenLines, 11, 0)
+		assert.True(t, res.Failed)
+		assert.Contains(t, res.Text, "一共只有 10 行")
+	})
+
+	t.Run("空文件", func(t *testing.T) {
+		res := textFileResult("/home/user/a.txt", "", 0, 0)
+		assert.False(t, res.Failed)
+		assert.Contains(t, res.Text, "空文件")
+	})
+
+	t.Run("一行很长的文件只给开头", func(t *testing.T) {
+		// Arrange：压缩过的 JSON，只有一行
+		long := strings.Repeat("字", 3*readFileMaxRunes)
+
+		// Act
+		res := textFileResult("/home/user/min.json", long, 0, 0)
+
+		// Assert
+		assert.Contains(t, res.Text, "太长")
+		assert.Less(t, len([]rune(res.Text)), readFileMaxRunes+300)
+	})
+}
+
 func TestReadFile_BinaryOnlyTellsTheSize(t *testing.T) {
-	skipReadFile(t)
 	// Arrange：zip 的魔数 PK\x03\x04
 	ws := newFakeWorkspace()
 	ws.files["/home/user/a.zip"] = append([]byte("PK\x03\x04"), bytes.Repeat([]byte{0}, 996)...)

@@ -28,6 +28,7 @@ import (
 	_ "image/gif" // image.Decode 认得 gif、png（jpeg 在 shots.go 里已经引入了）
 	"image/jpeg"
 	_ "image/png"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -232,18 +233,63 @@ func (r *agentRun) readFile(ctx context.Context, ws Workspace, arguments string)
 	return r.fileResult(p, data, args.Offset, args.Limit), nil
 }
 
-// fileResult 按文件的真实类型决定怎么给模型看（概念 4）。
-//
-// TODO(精华，你来写)，按这个顺序：
-//  1. 用 http.DetectContentType(data) 看开头的魔数判断类型，不看扩展名：.jpg 结尾的不一定是 jpeg
-//  2. 图片（image/png、image/jpeg、image/gif、image/webp）：imageShot 转成 jpeg，再 r.numberPicture 编号。
-//     返回的 toolResult 要带上 Image（"data:image/jpeg;base64," + shot.Data），模型才看得见；
-//     Text 里写尺寸，接上 numberPicture 返回的那句话；Display 也写尺寸。转不了的当二进制处理
-//  3. text/ 开头的（也包括 application/json）：numberedLines 加行号、按 offset 和 limit 截取，
-//     Text 里写清一共多少行、这次是第几到第几行、还有没有没读到的
-//  4. 其余的是二进制（zip、pdf）：只告诉模型类型和大小，不把乱码塞给它
+// fileResult 按文件的真实类型决定怎么给模型看（概念 4）：看开头的魔数，不看扩展名，.jpg 结尾的不一定是 jpeg。
+// 图片让模型看见并编号，文本带行号，其余的（zip、pdf）只说类型和大小，不把乱码塞给它
 func (r *agentRun) fileResult(p string, data []byte, offset, limit int) toolResult {
-	return toolResult{Failed: true, Text: "read_file 还没写好。"}
+	kind := http.DetectContentType(data)
+	switch {
+	case strings.HasPrefix(kind, "image/"):
+		shot, err := imageShot(data)
+		if err != nil {
+			break // 认得是图但解不开（坏图、svg 这类 image.Decode 不认的），当二进制说
+		}
+		return toolResult{
+			Text:    fmt.Sprintf("%s 是一张图片（%d×%d），图片在下一条消息里。", p, shot.Width, shot.Height) + r.numberPicture(shot),
+			Display: fmt.Sprintf("看了一张图（%d×%d）", shot.Width, shot.Height),
+			Image:   "data:" + shot.Mime + ";base64," + shot.Data,
+		}
+	case strings.HasPrefix(kind, "text/") || kind == "application/json":
+		return textFileResult(p, string(data), offset, limit)
+	}
+	return toolResult{
+		Text:    fmt.Sprintf("%s 不是文本也不是能看的图片（%s，%d 字节），内容不显示。要看里面有什么用 bash（unzip -l、file、pdftotext）。", p, kind, len(data)),
+		Display: "不是文本文件",
+	}
+}
+
+// readFileMaxRunes 是 read_file 一次给模型的文字最多多少个字：一行几十万字的压缩 JSON，行数再少也不能整个塞进去
+const readFileMaxRunes = 20000
+
+// textFileResult 给文本文件加上行号，按 offset、limit 取一段，并说清楚还有没有没读到的
+func textFileResult(p, text string, offset, limit int) toolResult {
+	lines, from, to, total := numberedLines(text, offset, limit)
+	if total == 0 {
+		return toolResult{Text: p + " 是空文件。", Display: "空文件"}
+	}
+	if from > to {
+		return toolResult{
+			Failed: true,
+			Text:   fmt.Sprintf("%s 一共只有 %d 行，offset=%d 超出了。", p, total, offset),
+		}
+	}
+
+	var b strings.Builder
+	if runes := []rune(lines); len(runes) > readFileMaxRunes {
+		fmt.Fprintf(&b, "%s 一共 %d 行。第 %d 到 %d 行太长（%d 个字），只给前 %d 个字；行很长的文件用 bash 处理（head -c、python3 -m json.tool）。\n\n",
+			p, total, from, to, len(runes), readFileMaxRunes)
+		b.WriteString(string(runes[:readFileMaxRunes]))
+	} else {
+		fmt.Fprintf(&b, "%s 一共 %d 行，这是第 %d 到 %d 行", p, total, from, to)
+		if to < total {
+			fmt.Fprintf(&b, "，还有 %d 行没读，用 offset=%d 接着读", total-to, to+1)
+		}
+		b.WriteString("。\n\n")
+		b.WriteString(lines)
+	}
+	return toolResult{
+		Text:    b.String(),
+		Display: fmt.Sprintf("读了 %d 行", to-from+1),
+	}
 }
 
 // imageShot 把沙箱里的一张图（png、jpeg、gif、webp）转成和截图一样的 jpeg，宽不超过 imageMaxWidth，

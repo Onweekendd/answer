@@ -216,14 +216,7 @@ var errNoSuchEntry = errors.New("purchase ai: no such entry in the chat")
 //     （用 fmt.Errorf("%w: %s", errNoSuchEntry, id)，Chat 那边靠 errors.Is 认出它，回「找不到这段对话」）
 //   - 数据库里的东西不能全信：如果 parent_id 绕成了环（a 的父是 b、b 的父是 a），也要返回错误，不能死循环
 //
-// TODO(精华，你来写)，按这个顺序：
-//  1. leafID 为空返回 nil, nil
-//  2. 建一个 map[string]Entry，按 ID 能一步找到条目（类比 TS 的 new Map(entries.map(e => [e.id, e]))）
-//  3. 从 leafID 开始循环：查 map → 找不到报错 → 走过的再走到就是环，报错 → 放进结果 → 跳到它的 ParentID，
-//     ParentID 为空就到根了
-//  4. 收集的顺序是从叶到根，最后倒过来（Go 没有 reverse 方法：slices.Reverse，或者两个下标往中间换）
-//
-// 思考题：为什么第 2 步要先建 map，而不是每走一步都在 entries 里从头找一遍？一个聊了很久的对话有几千条
+// 先建 map 再走：每一步按 ID 一次查到，几千条的对话也不用每步从头找一遍
 func pathTo(entries []Entry, leafID string) ([]Entry, error) {
 	entryMap := make(map[string]Entry, len(entries))
 	for _, e := range entries {
