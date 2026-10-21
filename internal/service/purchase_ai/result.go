@@ -121,8 +121,9 @@ type agentLimits struct {
 
 var defaultLimits = agentLimits{
 	// 2026-10-19 从 20 提到 30：小红书一篇笔记要 4 步（点开、snapshot 加 read、截图加 Esc、回到列表），
-	// 读三篇再加上读 skill、打开搜索页，20 步常常用完被迫收尾
-	maxSteps:    30,
+	// 读三篇再加上读 skill、打开搜索页，20 步常常用完被迫收尾。
+	// 2026-10-21 提到 50：做功课要去秘塔核实、点开官网原文，再读几篇小红书，30 步时打开了官网原文还没读就被收尾
+	maxSteps:    50,
 	warnAt:      3,
 	maxFailures: 3,
 
@@ -130,7 +131,7 @@ var defaultLimits = agentLimits{
 	loopNudgeAt: 3,
 	loopStopAt:  5,
 
-	runTimeout:  5 * time.Minute,
+	runTimeout:  8 * time.Minute, // 30 步实测 3 分钟出头（2026-10-21），50 步要留出余量
 	llmTimeout:  60 * time.Second,
 	toolTimeout: 30 * time.Second,
 }

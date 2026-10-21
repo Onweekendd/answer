@@ -44,7 +44,7 @@ import (
 
 const (
 	bashDefaultTimeout = 60 * time.Second
-	// bashMaxTimeout 不能比整次任务的 runTimeout（5 分钟）长太多，不然一条命令就把任务耗完了
+	// bashMaxTimeout 不能比整次任务的 runTimeout（8 分钟）长太多，不然一条命令就把任务耗完了
 	bashMaxTimeout = 120 * time.Second
 	// bashOutputMax 是 stdout、stderr 各自给模型看最多多少个字。怎么分给开头和结尾由你定（bashResult 第 4 步）
 	bashOutputMax = 4000
