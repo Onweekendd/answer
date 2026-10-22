@@ -1,0 +1,2 @@
+# 这里的文件要拷进 Linux 镜像：shot 是脚本，换行变成 CRLF 第一行 #!/usr/bin/env node 就跑不了
+* text eol=lf
