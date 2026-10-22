@@ -13,6 +13,8 @@ export type ChatEvent =
   | { type: "tool_end"; id: string; result: unknown }
   /** A product the agent picked; a card the user can open. Sent again with the same id when it changes. */
   | { type: "product"; product: ProductCard }
+  /** A web page the agent made and handed over. Sent again with the same id when it delivers the page again. */
+  | { type: "artifact"; artifact: Artifact }
   /** A call the agent stopped at for the user to decide: the post draft, in `input`. */
   | { type: "tool_suspend"; id: string; name: string; input: PostDraft }
   /** What the user may want to say next, at most three; shown as buttons that send it. */
@@ -46,8 +48,25 @@ export interface ProductCard {
   image?: string;
 }
 
+/**
+ * A web page the agent made in its sandbox and handed over (artifacts.go). The page and its
+ * screenshot are stored on our own server; the page is served with a sandbox CSP, and it is shown
+ * in a sandboxed iframe, since the model wrote it from what it read on other sites.
+ */
+export interface Artifact {
+  id: number;
+  title: string;
+  url: string;
+  /** The page shot when it was delivered: the card's picture, and what the user saves to share. */
+  image?: string;
+  size: number;
+}
+
 /** The name of the one data part that holds all the cards of a message. */
 export const PRODUCTS_PART = "products";
+
+/** The name of the one data part that holds all the artifacts of a message. */
+export const ARTIFACTS_PART = "artifacts";
 
 /** The name of the data part that holds the answer's follow-up suggestions; nothing renders it in the message. */
 export const FOLLOWUPS_PART = "followups";
@@ -65,6 +84,7 @@ export type ContentPart =
       result?: unknown;
     }
   | { type: "data"; name: typeof PRODUCTS_PART; data: ProductCard[] }
+  | { type: "data"; name: typeof ARTIFACTS_PART; data: Artifact[] }
   | { type: "data"; name: typeof FOLLOWUPS_PART; data: string[] };
 
 /** The server reported a failure mid-stream. */
@@ -114,6 +134,13 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
       cards.sort((a, b) => a.id - b.id);
       return [...parts.filter((p) => p !== old), { type: "data", name: PRODUCTS_PART, data: cards }];
     }
+    case "artifact": {
+      // like the products: one part, and a page delivered again replaces the old one
+      const old = parts.find(isArtifacts);
+      const pages = [...(old?.data ?? []).filter((a) => a.id !== event.artifact.id), event.artifact];
+      pages.sort((a, b) => a.id - b.id);
+      return [...parts.filter((p) => p !== old), { type: "data", name: ARTIFACTS_PART, data: pages }];
+    }
     case "tool_suspend":
       // a part of its own, not the step: the step stays in the process box, the draft goes below the answer
       return [
@@ -140,22 +167,26 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
 }
 
 /**
- * A message reads top to bottom: the process box and the answer, then the products the answer
- * talked about, then a draft waiting for the user, then what to ask next. Cards arrive mid-run,
+ * A message reads top to bottom: the process box and the answer, then the pages the agent made
+ * (what the user asked for), the products the answer talked about, a draft waiting for the user,
+ * then what to ask next. Cards arrive mid-run,
  * before the answer, so every fold puts the parts back in this order; the sort is stable, so the
  * steps and the answer keep theirs. Stored messages from before this order get it on load.
  */
 export function orderParts<P extends { type: string }>(parts: readonly P[]): P[] {
   const rank = (p: P) => {
     const part = p as unknown as ContentPart;
-    if (isProducts(part)) {
+    if (isArtifacts(part)) {
       return 1;
     }
-    if (part.type === "tool-call" && part.toolName === PUBLISH_TOOL) {
+    if (isProducts(part)) {
       return 2;
     }
-    if (part.type === "data" && part.name === FOLLOWUPS_PART) {
+    if (part.type === "tool-call" && part.toolName === PUBLISH_TOOL) {
       return 3;
+    }
+    if (part.type === "data" && part.name === FOLLOWUPS_PART) {
+      return 4;
     }
     return 0;
   };
@@ -164,6 +195,10 @@ export function orderParts<P extends { type: string }>(parts: readonly P[]): P[]
 
 function isProducts(p: ContentPart): p is Extract<ContentPart, { name: typeof PRODUCTS_PART }> {
   return p.type === "data" && p.name === PRODUCTS_PART;
+}
+
+function isArtifacts(p: ContentPart): p is Extract<ContentPart, { name: typeof ARTIFACTS_PART }> {
+  return p.type === "data" && p.name === ARTIFACTS_PART;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -180,6 +215,23 @@ function isProductCard(v: unknown): v is ProductCard {
     typeof v.url === "string" &&
     /^https?:\/\//.test(v.url) &&
     (v.image === undefined || (typeof v.image === "string" && /^https?:\/\//.test(v.image)))
+  );
+}
+
+const isHTTP = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v);
+
+/**
+ * A page needs an id, a title and a page. The page goes into an iframe src and the picture into an
+ * img src, so both must be http(s): a javascript: or data: page would run in our page's origin.
+ */
+function isArtifact(v: unknown): v is Artifact {
+  return (
+    isRecord(v) &&
+    typeof v.id === "number" &&
+    typeof v.title === "string" &&
+    isHTTP(v.url) &&
+    (v.image === undefined || isHTTP(v.image)) &&
+    typeof v.size === "number"
   );
 }
 
@@ -212,6 +264,8 @@ export function toEvent(raw: unknown): ChatEvent | null {
       return typeof raw.id === "string" ? { type: "tool_end", id: raw.id, result: raw.result } : null;
     case "product":
       return isProductCard(raw.product) ? { type: "product", product: raw.product } : null;
+    case "artifact":
+      return isArtifact(raw.artifact) ? { type: "artifact", artifact: raw.artifact } : null;
     case "tool_suspend":
       return typeof raw.id === "string" && typeof raw.name === "string" && isPostDraft(raw.input)
         ? { type: "tool_suspend", id: raw.id, name: raw.name, input: raw.input }

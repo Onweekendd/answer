@@ -176,6 +176,76 @@ describe("product cards", () => {
   });
 });
 
+describe("artifacts", () => {
+  const page = (id: number, title = `网页 ${id}`) => ({
+    id,
+    title,
+    url: `https://buy.example.com/uploads/agent-files/${id}.html`,
+    image: `https://buy.example.com/uploads/agent-files/${id}.png`,
+    size: 4096
+  });
+  const card = { id: 1, title: "商品", url: "https://item.jd.com/1.html" };
+
+  it("keeps every artifact in one part, right below the answer and above the product cards", () => {
+    // Arrange: the artifact is the thing the user asked for, so it comes before the products
+    const events: ChatEvent[] = [
+      { type: "product", product: card },
+      { type: "artifact", artifact: page(1) },
+      { type: "text", delta: "做好了，见文件1" },
+      { type: "followups", followups: ["第三天换个景点"] }
+    ];
+
+    // Act
+    const parts = run(events);
+
+    // Assert
+    expect(parts.map((p) => (p.type === "data" ? p.name : p.type))).toEqual([
+      "text",
+      "artifacts",
+      "products",
+      "followups"
+    ]);
+    expect(parts[1]).toEqual({ type: "data", name: "artifacts", data: [page(1)] });
+  });
+
+  it("replaces an artifact delivered again with the same id: the page was updated", () => {
+    // Act
+    const parts = run([
+      { type: "artifact", artifact: page(1, "v1") },
+      { type: "artifact", artifact: page(2) },
+      { type: "artifact", artifact: page(1, "v2") }
+    ]);
+
+    // Assert
+    expect(parts).toEqual([{ type: "data", name: "artifacts", data: [page(1, "v2"), page(2)] }]);
+  });
+
+  it("parses an artifact event; one without a screenshot is fine", () => {
+    const { image: _, ...noImage } = page(1);
+    expect(parseEvent(JSON.stringify({ type: "artifact", artifact: page(1) }))).toEqual({
+      type: "artifact",
+      artifact: page(1)
+    });
+    expect(parseEvent(JSON.stringify({ type: "artifact", artifact: noImage }))).toEqual({
+      type: "artifact",
+      artifact: noImage
+    });
+  });
+
+  it("drops an artifact whose page or picture is not http(s): they go into an iframe src and an img src", () => {
+    expect(
+      parseEvent(JSON.stringify({ type: "artifact", artifact: { ...page(1), url: "javascript:alert(1)" } }))
+    ).toBeNull();
+    expect(
+      parseEvent(JSON.stringify({ type: "artifact", artifact: { ...page(1), url: "data:text/html,<script>" } }))
+    ).toBeNull();
+    expect(
+      parseEvent(JSON.stringify({ type: "artifact", artifact: { ...page(1), image: "data:image/png,x" } }))
+    ).toBeNull();
+    expect(parseEvent(JSON.stringify({ type: "artifact", artifact: { id: 1, url: page(1).url } }))).toBeNull();
+  });
+});
+
 describe("parseEvent saved", () => {
   it("reads the logged ids; a regenerated turn has no user id", () => {
     expect(parseEvent('{"type":"saved","saved":{"user":"e_u1","leaf":"e_v1"}}')).toEqual({

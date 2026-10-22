@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { AgentProcess, ProcessSteps, ProcessThinking } from "@/components/AgentProcess";
 import { AgentStep } from "@/components/AgentStep";
+import { ArtifactCardsUI } from "@/components/ArtifactCards";
 import { Thread, type ThreadComponents } from "@/components/assistant-ui/thread.aui";
 import { ChatTopBar } from "@/components/ChatHistory";
 import { FollowupsUI } from "@/components/Followups";
@@ -58,6 +59,7 @@ function ChatSession({ chatId, onCreated }: { chatId: string | null; onCreated: 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TooltipProvider>
+        <ArtifactCardsUI />
         <ProductCardsUI />
         <PostDraftUI />
         <FollowupsUI />
