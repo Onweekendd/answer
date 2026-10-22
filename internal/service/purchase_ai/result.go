@@ -49,17 +49,18 @@ type toolResult struct {
 	PageHash string // 执行这个动作时的页面状态：最新快照的哈希加上滚动位置，循环检测用（概念 5）
 
 	// 页面上的这张卡片，记进日志的 Details（chatlog.go）
-	Summary string       // tool_start 那句话，runCalls 发卡片时填；跳过的、done 没有
-	Product *ProductCard // pick_product 做好的卡片
-	Draft   *DraftInput  // draft_post 交给用户的草稿
+	Summary  string       // tool_start 那句话，runCalls 发卡片时填；跳过的、done 没有
+	Product  *ProductCard // pick_product 做好的卡片
+	Draft    *DraftInput  // draft_post 交给用户的草稿
+	Artifact *Artifact    // deliver 交给用户的产物
 }
 
 // details 是记进日志的那份只给页面看的东西：页面上有卡片的才有。带着回答的那份另外由 answerDetails 补上
 func (res toolResult) details() *Details {
-	if res.Summary == "" && res.Product == nil && res.Draft == nil {
+	if res.Summary == "" && res.Product == nil && res.Draft == nil && res.Artifact == nil {
 		return nil
 	}
-	return &Details{Summary: res.Summary, Failed: res.Failed, Display: res.Display, Product: res.Product, Draft: res.Draft}
+	return &Details{Summary: res.Summary, Failed: res.Failed, Display: res.Display, Product: res.Product, Draft: res.Draft, Artifact: res.Artifact}
 }
 
 // finishReason 是走到收尾的原因（概念 4）。空字符串表示模型自己调用了 done，或者直接回答了。
@@ -124,8 +125,8 @@ var defaultLimits = agentLimits{
 	// 2026-10-19 从 20 提到 30：小红书一篇笔记要 4 步（点开、snapshot 加 read、截图加 Esc、回到列表），
 	// 读三篇再加上读 skill、打开搜索页，20 步常常用完被迫收尾。
 	// 2026-10-21 提到 50：做功课要去秘塔核实、点开官网原文，再读几篇小红书，30 步时打开了官网原文还没读就被收尾
-	maxSteps:    50,
-	warnAt:      3,
+	maxSteps: 50,
+	warnAt:   3,
 	// 2026-10-21 成都案例：46 步都在读网页，剩 4 步才开始做行程卡，只好用 Pillow 草草画一张。
 	// 做一张图要写网页、截图、看一眼、改一次，至少 4～5 步，留 10 步
 	deliverAt:   10,

@@ -29,4 +29,7 @@ const (
 	// AgentSubPath holds images the purchase agent saved itself (product card thumbnails).
 	// They belong to no post, so they have no file record and the orphan cleanup leaves them alone.
 	AgentSubPath = "agent"
+	// AgentFilesSubPath holds the files the purchase agent delivered from its sandbox (deliver):
+	// pictures, PDFs, web pages, spreadsheets. Like AgentSubPath they belong to no post.
+	AgentFilesSubPath = "agent-files"
 )

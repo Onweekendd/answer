@@ -158,7 +158,8 @@ func run(ctx context.Context, o options) error {
 
 			fmt.Printf("\n==== %s（第 %d/%d 次）====\n任务：%s\n", c.Name, i, o.n, c.Task)
 			path := filepath.Join(runDir, fmt.Sprintf("%s-%d.json", c.Name, i))
-			a, err := runOnce(ctx, b, ws, *provider, c, i, adhoc, func(rec runRecord) {
+			files := &dirStore{dir: filepath.Join(runDir, fmt.Sprintf("%s-%d-files", c.Name, i))}
+			a, err := runOnce(ctx, b, ws, files, *provider, c, i, adhoc, func(rec runRecord) {
 				if err := save(path, rec, redact); err != nil {
 					fmt.Fprintln(os.Stderr, "save record:", err)
 				}
@@ -180,7 +181,7 @@ func run(ctx context.Context, o options) error {
 
 // runOnce 跑一次 case。返回的 error 只给"再跑也没用"的情况（模型配置错了），其余都折算成 outcome。
 // 每次调用模型以后、以及结束时，都把当时的记录交给 save：中途被打断也有记录可看
-func runOnce(ctx context.Context, b purchaseai.Browser, ws purchaseai.Workspaces, p llm.StaticProvider, c Case, i int, adhoc bool, save func(runRecord)) (attempt, error) {
+func runOnce(ctx context.Context, b purchaseai.Browser, ws purchaseai.Workspaces, files purchaseai.ArtifactStore, p llm.StaticProvider, c Case, i int, adhoc bool, save func(runRecord)) (attempt, error) {
 	a := attempt{c: c, i: i}
 	rec := runRecord{Case: c.Name, Attempt: i, Task: c.Task, Outcome: "进行中"}
 	defer func() { save(rec) }()
@@ -198,7 +199,7 @@ func runOnce(ctx context.Context, b purchaseai.Browser, ws purchaseai.Workspaces
 		save(rec)
 	}
 	started := time.Now()
-	res, err := purchaseai.RunTask(ctx, model, b, c.Task, purchaseai.WithWorkspaces(ws))
+	res, err := purchaseai.RunTask(ctx, model, b, c.Task, purchaseai.WithWorkspaces(ws), purchaseai.WithArtifactStore(files))
 	a.elapsed, a.usage, a.ran, a.res = time.Since(started), model.usage, true, res
 	rec.Usage, rec.Calls = model.usage, model.calls
 
@@ -312,6 +313,9 @@ func printAttempt(a attempt, redact []string) {
 		fmt.Println(redactText(a.res.Text, redact))
 		for _, p := range a.res.Products {
 			fmt.Println(redactText(fmt.Sprintf("卡片 %d：%s · %s · %s %s %s", p.ID, p.Title, p.Shop, p.Price, p.PriceNote, p.URL), redact))
+		}
+		for _, f := range a.res.Artifacts {
+			fmt.Printf("文件 %d：%s %s（截图 %s）\n", f.ID, f.Title, f.URL, f.Image)
 		}
 	}
 }

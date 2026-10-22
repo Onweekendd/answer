@@ -58,6 +58,7 @@ var (
 		constant.BrandingSubPath,
 		constant.FilesPostSubPath,
 		constant.AgentSubPath,
+		constant.AgentFilesSubPath,
 		constant.DeletedSubPath,
 	}
 	supportedThumbFileExtMapping = map[string]imaging.Format{
@@ -76,6 +77,7 @@ type UploaderService interface {
 	AvatarThumbFile(ctx *gin.Context, fileName string, size int) (url string, err error)
 	PostImagePath(ctx context.Context, imageURL string) (localPath string, err error)
 	SaveAgentImage(ctx context.Context, data []byte) (url string, err error)
+	SaveAgentFile(ctx context.Context, ext string, data []byte) (url string, err error)
 }
 
 // uploaderService uploader service

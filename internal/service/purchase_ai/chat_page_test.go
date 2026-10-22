@@ -158,6 +158,30 @@ func TestReplayTurn_ProductAndDraft(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+func TestReplayTurn_Artifact(t *testing.T) {
+	// Arrange：交付了一个网页
+	r := replayRun(false)
+	file := &Artifact{ID: 1, Title: "成都 4 天行程", URL: "https://x/uploads/agent-files/a1.html", Image: "https://x/uploads/agent-files/b2.png", Size: 4096}
+	turn := []Entry{
+		msgEntry("a1", "u1", callMsg("", toolCall("c1", toolDeliver, `{"path":"trip.html","title":"成都 4 天行程"}`)), messageMeta{}),
+		msgEntry("t1", "a1", toolMessage("c1", "已交付 文件1"), messageMeta{ToolName: toolDeliver, Details: &Details{Summary: "交付「成都 4 天行程」", Display: "交付了「成都 4 天行程」", Artifact: file}}),
+		msgEntry("a2", "t1", llm.Text(llm.RoleAssistant, "行程在文件1里"), messageMeta{Details: &Details{Final: true}}),
+	}
+	ok := true
+
+	// Act
+	got := r.replayTurn(turn)
+
+	// Assert：产物和商品卡片一样，夹在开始和结束中间
+	want := []Event{
+		{Type: EventToolStart, ID: "0-0", Name: toolDeliver, Args: &ToolView{Summary: "交付「成都 4 天行程」"}},
+		{Type: EventArtifact, Artifact: file},
+		{Type: EventToolEnd, ID: "0-0", Result: &ToolView{Summary: "交付了「成都 4 天行程」", OK: &ok}},
+	}
+	want = append(want, r.answerEvents(&agentResult{Text: "行程在文件1里"})...)
+	assert.Equal(t, want, got)
+}
+
 func TestReplayTurn_DoneAnswer(t *testing.T) {
 	// Arrange：第一次 done 没写回答被退回，第二次才做成；回答引用了一张图
 	r := replayRun(false)

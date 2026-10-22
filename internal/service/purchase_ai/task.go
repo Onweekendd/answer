@@ -34,6 +34,8 @@ type TaskResult struct {
 	Steps   []TaskStep
 	// Products 是做好的商品卡片。case 运行器没有存图的地方，卡片都没有图
 	Products []ProductCard
+	// Artifacts 是交付的网页，网址是 WithArtifactStore 给的那个存储返回的
+	Artifacts []Artifact
 }
 
 // TaskStep 是执行过的一次工具调用
@@ -55,6 +57,11 @@ func WithWorkspaces(ws Workspaces) TaskOption {
 	return func(r *agentRun) { r.workspaces = ws }
 }
 
+// WithArtifactStore 让 deliver 能把网页存下来。不给的话 deliver 会告诉模型存不了
+func WithArtifactStore(store ArtifactStore) TaskOption {
+	return func(r *agentRun) { r.artifactStore = store }
+}
+
 // RunTask 不经过帖子，直接让 Agent 做一个任务：系统提示词和 Analyze 用的一样，用户消息就是 task。
 // 给 case 运行器和手动试跑用，它们在 answer run 外面，自己带模型和浏览器。
 func RunTask(ctx context.Context, client llm.Client, b Browser, task string, opts ...TaskOption) (*TaskResult, error) {
@@ -68,6 +75,10 @@ func RunTask(ctx context.Context, client llm.Client, b Browser, task string, opt
 	for _, opt := range opts {
 		opt(r)
 	}
+	// 和对话一样：有工作台才告诉模型工作台的规矩（chatPrompt）
+	if r.workspaces != nil {
+		messages[0] = llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn)+"\n\n"+workspaceRules)
+	}
 	defer r.closeTabs()
 	res, err := r.run(ctx, messages, browserOn)
 	if err != nil {
@@ -76,7 +87,7 @@ func RunTask(ctx context.Context, client llm.Client, b Browser, task string, opt
 
 	// 判卷看的是回答本身，后续建议是给页面的按钮
 	answer, _ := splitFollowups(res.Text)
-	out := &TaskResult{Text: answer, Success: res.Success, Finish: string(res.Finish), Products: res.Products}
+	out := &TaskResult{Text: answer, Success: res.Success, Finish: string(res.Finish), Products: res.Products, Artifacts: r.artifacts}
 	for _, s := range res.Steps {
 		out.Steps = append(out.Steps, TaskStep(s))
 	}

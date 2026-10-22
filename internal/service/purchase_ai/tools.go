@@ -70,6 +70,10 @@ type agentRun struct {
 	userID     string    // 对话是谁的：Acquire 要核对，不能拿别人的对话 id 用别人的沙箱
 	ws         Workspace // 第一次用沙箱时才要（懒创建）；连不上了设回 nil，下次重新要
 	wsNote     string    // 要告诉模型的一句话（原来的沙箱没了），加在下一个沙箱工具结果的最前面
+	// 产物（artifacts.go）。artifactStore 为 nil 就交付不了：case 运行器要自己给一个
+	artifactStore ArtifactStore
+	artifacts     []Artifact
+	artifactAt    map[string]int // 工作台里的路径 → artifacts 的下标：再交付同一个文件就是更新它
 
 	// rec 把这一轮的消息记进对话日志（recorder.go）。nil 表示不记：帖子的后台分析、case 运行器
 	rec   *chatRecorder
@@ -116,6 +120,7 @@ const (
 	toolReadFile  = "read_file"
 	toolWriteFile = "write_file"
 	toolEditFile  = "edit_file"
+	toolDeliver   = "deliver"
 )
 
 // toolNeed 是一个工具要什么才能用
@@ -239,6 +244,9 @@ func (r *agentRun) tools(browserOn bool) (map[string]agentTool, []llm.Tool, erro
 			"生成了图片（截好的网页、拼图）就用它打开看一眼，满意了再给用户。", readFileArgs{}, r.withWorkspace(r.readFile)},
 		{toolWriteFile, needSandbox, "在工作台里新建或整个重写一个文件，比如写一个网页或脚本。只改几行用 edit_file。", writeFileArgs{}, r.withWorkspace(r.writeFile)},
 		{toolEditFile, needSandbox, "修改工作台里的一个文件：把一段原文换成新文字。原文要和文件里一字不差、只出现一次，拿不准就先 read_file。", editFileArgs{}, r.withWorkspace(r.editFile)},
+		{toolDeliver, needSandbox, "把工作台里做好的网页交给用户：用户会在回答下方看到一张卡片，点开是网页预览，还能保存成图片发给家人朋友。" +
+			"用户要的对比表、清单、行程卡这类东西，做成网页、用 shot 截图看过没问题以后，一定要用它交付；中间稿、脚本、素材不要交付。" +
+			"只能交付 .html。网页里引用的工作台里的图会自动内嵌；改了以后再交付同一个 path 就是更新它。", deliverArgs{}, r.withWorkspace(r.deliver)},
 		{toolDraft, needDraft, "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
 			"调用以后这次回答就结束了：用户会在页面上修改、发布或者放弃，不用你再说什么。", draftArgs{}, r.draftPost},
 		{toolDone, needBrowser, "任务结束时调用：text 是给用户的完整回答，success 表示用户要求的事有没有做成。调用以后不能再操作浏览器。", doneArgs{}, r.done},

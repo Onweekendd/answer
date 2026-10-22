@@ -94,6 +94,8 @@ type Details struct {
 	Product *ProductCard `json:"product,omitempty"`
 	// Draft 是 draft_post 交给用户确认的草稿：草稿 id、候选图是运行时定的
 	Draft *DraftInput `json:"draft,omitempty"`
+	// Artifact 是 deliver 交给用户的产物：已经从沙箱拷出来存到了我们这边，沙箱没了也打得开
+	Artifact *Artifact `json:"artifact,omitempty"`
 
 	// 以下在带着这一轮回答的那一条上：做成了的 done、draft_post 的结果，或者直接回答、收尾的 assistant
 

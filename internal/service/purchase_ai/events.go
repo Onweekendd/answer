@@ -38,7 +38,8 @@ const (
 	EventText      = "text"      // 回答
 	EventToolStart = "tool_start"
 	EventToolEnd   = "tool_end"
-	EventProduct   = "product" // 一张商品卡片，见 products.go
+	EventProduct   = "product"  // 一张商品卡片，见 products.go
+	EventArtifact  = "artifact" // 一个交给用户的产物，见 artifacts.go
 	// EventToolSuspend 是一个要用户拍板的调用：Agent 停在这里，把 input 交给页面，见 drafts.go
 	EventToolSuspend = "tool_suspend"
 	// EventFollowups 是回答后面的几句后续建议，页面上点一下就发出去，见 followups.go
@@ -52,15 +53,16 @@ const (
 
 // Event 是一条事件。没用到的字段不输出
 type Event struct {
-	Type    string       `json:"type"`
-	Delta   string       `json:"delta,omitempty"`   // reasoning、text
-	ID      string       `json:"id,omitempty"`      // tool_start、tool_end：同一个调用的两条事件 id 一样
-	Name    string       `json:"name,omitempty"`    // tool_start：工具名
-	Args    *ToolView    `json:"args,omitempty"`    // tool_start：要做什么
-	Result  *ToolView    `json:"result,omitempty"`  // tool_end：做得怎么样
-	Message string       `json:"message,omitempty"` // error：给用户看的一句话
-	Product *ProductCard `json:"product,omitempty"` // product
-	Input   *DraftInput  `json:"input,omitempty"`   // tool_suspend：交给用户确认的内容（tool_input）
+	Type     string       `json:"type"`
+	Delta    string       `json:"delta,omitempty"`    // reasoning、text
+	ID       string       `json:"id,omitempty"`       // tool_start、tool_end：同一个调用的两条事件 id 一样
+	Name     string       `json:"name,omitempty"`     // tool_start：工具名
+	Args     *ToolView    `json:"args,omitempty"`     // tool_start：要做什么
+	Result   *ToolView    `json:"result,omitempty"`   // tool_end：做得怎么样
+	Message  string       `json:"message,omitempty"`  // error：给用户看的一句话
+	Product  *ProductCard `json:"product,omitempty"`  // product
+	Artifact *Artifact    `json:"artifact,omitempty"` // artifact
+	Input    *DraftInput  `json:"input,omitempty"`    // tool_suspend：交给用户确认的内容（tool_input）
 	// followups：用户接下来可能会说的话，最多 3 句
 	Followups []string  `json:"followups,omitempty"`
 	Saved     *SavedIDs `json:"saved,omitempty"` // saved
@@ -197,6 +199,12 @@ func (r *agentRun) describeCall(name, arguments string) string {
 		return "把「" + clipRunes(oneLine(p.Title), labelMaxRunes) + "」记下来"
 	case toolHarvest:
 		return "把这一页的图收进工作台"
+	case toolDeliver:
+		var d struct {
+			Title string `json:"title"`
+		}
+		_ = json.Unmarshal([]byte(arguments), &d)
+		return "交付「" + clipRunes(oneLine(d.Title), labelMaxRunes) + "」"
 	case toolBash:
 		var b struct {
 			Command string `json:"command"`

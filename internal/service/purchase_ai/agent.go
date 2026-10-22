@@ -43,6 +43,7 @@ func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Messa
 func (pas *PurchaseAIService) newRun() *agentRun {
 	r := newAgentRun(pas.llmClient, pas.browser, defaultLimits)
 	r.images = pas.uploaderService
+	r.artifactStore = pas.uploaderService
 	return r
 }
 

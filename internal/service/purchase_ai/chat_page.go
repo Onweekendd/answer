@@ -177,7 +177,7 @@ func userPage(e Entry, parent string) PageMessage {
 //   - 每条 assistant 消息是一步，step 从 0 数。思考：showReasoning 开着、Reasoning 不空，发 reasoning，Delta 过 r.view
 //   - 这一步的每个调用 i：它的结果（ToolCallID 对得上的那条 tool 消息）Details.Summary 不空才有卡片
 //     （跳过的、done 没有），id 是 fmt.Sprintf("%d-%d", step, i)，依次发：
-//     tool_start（Name 是工具名，Args.Summary 是 r.view(Summary)）→ 有 Product 发 product → 有 Draft 发
+//     tool_start（Name 是工具名，Args.Summary 是 r.view(Summary)）→ 有 Product 发 product → 有 Artifact 发 artifact → 有 Draft 发
 //     tool_suspend（ID、Name 和 tool_start 一样，Input 是 Draft）→ tool_end（Result.Summary 是
 //     r.view(resultSummary(toolResult{Failed, Display}))，Result.OK 是 !Failed 的指针）
 //   - 最后是回答：找 Details.Final 为 true 的那条，交给 r.answerEvents(&agentResult{Text, Followups, Shots})，
@@ -233,6 +233,9 @@ func (r *agentRun) replayTurn(turn []Entry) []Event {
 			out = append(out, Event{Type: EventToolStart, ID: id, Name: c.Name, Args: &ToolView{Summary: r.view(d.Summary)}})
 			if d.Product != nil {
 				out = append(out, Event{Type: EventProduct, Product: d.Product})
+			}
+			if d.Artifact != nil {
+				out = append(out, Event{Type: EventArtifact, Artifact: d.Artifact})
 			}
 			if d.Draft != nil {
 				out = append(out, Event{Type: EventToolSuspend, ID: id, Name: c.Name, Input: d.Draft})
