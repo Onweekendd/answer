@@ -234,6 +234,9 @@ func screenshotMessage(step int, image string) llm.Message {
 // chat 调用一次模型，期限是 llmTimeout（②）。
 // 整次任务还活着、只是这一次到期了，用同样的请求再试一次；其他错误直接返回
 func (r *agentRun) chat(ctx context.Context, req *llm.ChatReq) (*llm.ChatResp, error) {
+	if req.MaxTokens == 0 {
+		req.MaxTokens = r.limits.maxOutputTokens
+	}
 	once := func() (*llm.ChatResp, error) {
 		callCtx, cancel := context.WithTimeout(ctx, r.limits.llmTimeout)
 		defer cancel()

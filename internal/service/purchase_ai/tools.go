@@ -851,6 +851,12 @@ func decodeArgs(arguments string, v any, example string) *toolResult {
 		arguments = "{}"
 	}
 	if err := json.Unmarshal([]byte(arguments), v); err != nil {
+		// 参数在半截断掉：模型一次要输出的太多（一整个网页），超过了输出上限被截断。
+		// 只说「不是合法的 JSON」，模型会以为是格式错了，原样再写一遍，再被截断一次（2026-10-22 连着三次）
+		if strings.Contains(err.Error(), "unexpected end of JSON input") {
+			return &toolResult{Failed: true, Text: fmt.Sprintf("参数在第 %d 个字符处断掉了：一次要写的内容太长，输出被截断。"+
+				"分几次写：先用 write_file 写前一部分，再用 edit_file 或者 bash 的 cat >> 往后补；表格这类重复的内容也可以用脚本生成。", len(arguments))}
+		}
 		return &toolResult{Failed: true, Text: "参数不是合法的 JSON，格式是 " + example + "。"}
 	}
 	return nil

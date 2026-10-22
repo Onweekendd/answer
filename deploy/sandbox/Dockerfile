@@ -1,12 +1,12 @@
 # 买不买 Agent 的工作台镜像（CubeSandbox 模板）。
 #
 # 改了以后这样更新模板（在装了 Cube 的机器上，本地是 WSL 的 Ubuntu-24.04）：
-#   docker build -t answer-sandbox:v2 deploy/sandbox
-#   docker tag answer-sandbox:v2 127.0.0.1:5000/answer-sandbox:v2
-#   docker push 127.0.0.1:5000/answer-sandbox:v2      # Cube 只从镜像仓库拉，不读本机 docker；本地起的是 registry:2（answer-registry）
-#   cubemastercli tpl create-from-image --image 127.0.0.1:5000/answer-sandbox:v2 --writable-layer-size 4G \
+#   docker build -t answer-sandbox:v3 deploy/sandbox
+#   docker tag answer-sandbox:v3 127.0.0.1:5000/answer-sandbox:v3
+#   docker push 127.0.0.1:5000/answer-sandbox:v3      # Cube 只从镜像仓库拉，不读本机 docker；本地起的是 registry:2（answer-registry）
+#   cubemastercli tpl create-from-image --image 127.0.0.1:5000/answer-sandbox:v3 --writable-layer-size 4G \
 #     --expose-port 49983 --expose-port 49999 --probe 49983 --probe-path /health
-# 拿到的 tpl-… 填进 CUBE_TEMPLATE_ID。2026-10-21 建的：v1 tpl-c9d6c8041d644d4684b55010，v2（加了 shot）tpl-b25625065f3b426990ede91e。
+# 拿到的 tpl-… 填进 CUBE_TEMPLATE_ID。2026-10-21 建的：v1 tpl-c9d6c8041d644d4684b55010，v2（加了 shot）tpl-b25625065f3b426990ede91e；2026-10-22 v3（shot 不靠 NODE_PATH）tpl-3dca5b85eb684c6ab662d534。
 #
 # 在 sandbox-code（Debian 12 + Python 3.12 + envd，启动脚本原样沿用）上加 node、Chromium、
 # 中日韩字体和常用的 Python 包，让 Agent 不用每次现装。装包都走国内镜像：WSL 里的 docker 不走代理

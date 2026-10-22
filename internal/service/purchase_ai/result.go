@@ -116,6 +116,9 @@ type agentLimits struct {
 	loopNudgeAt int // 同一个指纹出现第几次时提醒
 	loopStopAt  int // 出现第几次时收尾
 
+	// maxOutputTokens 是每次调用模型能输出多少（思考加正文）。不设就是 llm 包的默认 4096
+	maxOutputTokens int
+
 	runTimeout  time.Duration // 整次任务（概念 6）
 	llmTimeout  time.Duration // 每次调用模型
 	toolTimeout time.Duration // 每次调用插件
@@ -136,7 +139,12 @@ var defaultLimits = agentLimits{
 	loopNudgeAt: 3,
 	loopStopAt:  5,
 
-	runTimeout:  8 * time.Minute, // 30 步实测 3 分钟出头（2026-10-21），50 步要留出余量
-	llmTimeout:  60 * time.Second,
+	// 2026-10-22 从默认的 4096 提到 8192：写一个 10 KB 的网页（write_file 的参数）加上思考就超过 4096，
+	// 参数被截在半截，是坏的 JSON，连写三次都一样，被当成连续失败收尾
+	maxOutputTokens: 8192,
+
+	runTimeout: 8 * time.Minute, // 30 步实测 3 分钟出头（2026-10-21），50 步要留出余量
+	// 2026-10-22 从 60 秒提到 150 秒：输出能到 8192 个 token，一次写一整个网页，60 秒写不完
+	llmTimeout:  150 * time.Second,
 	toolTimeout: 30 * time.Second,
 }

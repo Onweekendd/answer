@@ -223,3 +223,18 @@ func Test_inlineImages(t *testing.T) {
 	assert.Contains(t, report, "../notes.txt")
 	assert.NotContains(t, report, "外网", "链接不是资源")
 }
+
+func Test_decodeArgs_truncated(t *testing.T) {
+	// Arrange：一整个网页写在 write_file 的参数里，输出到上限被截在半截
+	truncated := `{"path": "trip.html", "content": "<html><body><table><tr><td>冰箱`
+	var args writeFileArgs
+
+	// Act
+	res := decodeArgs(truncated, &args, `{"path": "a.html", "content": "..."}`)
+
+	// Assert：告诉模型是太长被截断了，要分几次写，而不是让它以为格式错了
+	require.NotNil(t, res)
+	assert.True(t, res.Failed)
+	assert.Contains(t, res.Text, "断掉了")
+	assert.Contains(t, res.Text, "分几次写")
+}

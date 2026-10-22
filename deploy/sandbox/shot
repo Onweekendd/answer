@@ -7,7 +7,8 @@
 //   - 2 倍像素，发到手机上字也清楚
 // 只截本地文件：工作台不是用户的浏览器，不拿它去打开外面的网站
 const path = require("path");
-const { chromium } = require("playwright-core");
+// 经 envd 跑的命令不继承镜像里的 ENV（没有 NODE_PATH，2026-10-22 实测），全局装的包按绝对路径找
+const { chromium } = require("/usr/local/lib/node_modules/playwright-core");
 
 const [, , input, output, widthArg = "1200"] = process.argv;
 if (!input || !output || /^[a-z]+:/i.test(input)) {

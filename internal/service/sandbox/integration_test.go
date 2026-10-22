@@ -23,7 +23,7 @@ package sandbox
 
 // 对着真的 Cube 跑（本地是 WSL 里那套），平时的 go test 不跑：
 //
-//	CUBE_TEMPLATE_ID=tpl-b25625065f3b426990ede91e CUBE_PROXY_NODE_IP=172.21.107.18 CUBE_PROXY_PORT_HTTP=443 \
+//	CUBE_TEMPLATE_ID=tpl-3dca5b85eb684c6ab662d534 CUBE_PROXY_NODE_IP=172.21.107.18 CUBE_PROXY_PORT_HTTP=443 \
 //	  CUBE_CA_FILE="$(cygpath -m "$PWD/answer-data/cube/ca.crt")" \
 //	  go test -tags integration -run Cube -v ./internal/service/sandbox/
 //
