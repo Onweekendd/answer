@@ -24,6 +24,8 @@ import {
   CommandError,
   type HarvestResult,
   type ImageSource,
+  MEDIA_RANGE_MAX,
+  type MediaRange,
   type ProductArea,
   type ShotArea,
   type TabRequest,
@@ -107,7 +109,37 @@ async function handle(req: TabRequest): Promise<unknown> {
       return scrollPages();
     case "harvestList":
       return harvestOnPage(req.limit, req.maxScrolls);
+    case "fetchRange":
+      return fetchRange(req.url, req.start, req.end);
   }
+}
+
+// 在页面里下载媒体文件的一段：content script 发的请求和页面同源，带着页面的 Referer，
+// CDN 的防盗链认它（从 background 发没有 Referer，会被拒）
+async function fetchRange(url: string, start: number, end: number): Promise<MediaRange> {
+  if (!/^https:\/\//.test(url) || !(start >= 0 && end >= start && end - start + 1 <= MEDIA_RANGE_MAX)) {
+    throw new CommandError("BAD_MESSAGE", "mediaRange 的 url 要是 https，一段最多 2MB");
+  }
+  const res = await fetch(url, { headers: { Range: `bytes=${start}-${end}` }, credentials: "omit" });
+  // HTTP 错误不抛：403 多半是签名网址过期了，要不要重新拿网址由 Go 决定
+  if (!res.ok) {
+    return { status: res.status, contentType: res.headers.get("content-type") ?? "", data: "" };
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (res.status === 200 && bytes.length > MEDIA_RANGE_MAX) {
+    throw new CommandError("EXEC_FAILED", `服务器不支持分段下载，整个文件 ${bytes.length} 字节，一次传不过去`);
+  }
+  const total = Number(res.headers.get("content-range")?.split("/")[1]);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return {
+    status: res.status,
+    contentType: res.headers.get("content-type") ?? "",
+    total: Number.isFinite(total) ? total : res.status === 200 ? bytes.length : undefined,
+    data: btoa(binary)
+  };
 }
 
 // 压缩前后的数字：调规则时看效果，也是面试时的硬数据。只给 Go 记录，不一定发给模型

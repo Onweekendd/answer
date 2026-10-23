@@ -63,7 +63,12 @@ const tmall = card({
   price: "7??",
   desc: "补贴后"
 });
-const ad = card({ id: "707000000002", href: "https://click.simba.taobao.com/cc_im?p=%E7%83%AD", title: "推广的热水器", price: "599" });
+const ad = card({
+  id: "707000000002",
+  href: "https://click.simba.taobao.com/cc_im?p=%E7%83%AD",
+  title: "推广的热水器",
+  price: "599"
+});
 const taobaoShop = card({
   id: "650000000003",
   href: "//item.taobao.com/item.htm?id=650000000003&ns=1",
@@ -98,7 +103,9 @@ describe("taobao 列表收割", () => {
     const title = steps().title(c);
 
     // Assert
-    expect(title).toBe("某品牌电热水器 60L 一级能效 ｜ 60L · 650x310x560mm ｜ ¥7?? 补贴后 ｜ 8000+人付款 ｜ 品牌旗舰 某品牌官方旗舰店");
+    expect(title).toBe(
+      "某品牌电热水器 60L 一级能效 ｜ 60L · 650x310x560mm ｜ ¥7?? 补贴后 ｜ 8000+人付款 ｜ 品牌旗舰 某品牌官方旗舰店"
+    );
   });
 
   it("链接只留商品 id，天猫和淘宝各回各的域名；图是主图，去重用商品 id", () => {

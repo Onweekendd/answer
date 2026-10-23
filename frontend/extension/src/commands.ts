@@ -20,6 +20,7 @@
 import { cdpClick, cdpHover, cdpPress, cdpResource, cdpScreenshot, cdpScroll, cdpType, withDebugger } from "./cdp";
 import { downloadImage, isRaster, toJpeg } from "./imagefile";
 import {
+  type Capture,
   type Command,
   type CommandArgs,
   CommandError,
@@ -172,6 +173,15 @@ async function executeCommand(cmd: Command): Promise<unknown> {
       return openTab(cmd.args.url);
     case "close":
       return closeTab(cmd.tabId);
+    case "netcapture":
+      return netCapture(cmd.tabId, cmd.args);
+    case "mediaRange":
+      return sendToTab(cmd.tabId, {
+        type: "fetchRange",
+        url: cmd.args.url,
+        start: cmd.args.start,
+        end: cmd.args.end
+      });
     case "reload":
       // 先把结果回给 Go，再重载：reload 一执行，background 和这条 WebSocket 就都没了，结果就发不回去了
       setTimeout(() => chrome.runtime.reload(), 200);
@@ -450,6 +460,69 @@ async function harvest(tabId: number, args: CommandArgs["harvest"]): Promise<Har
     result.stats.thumbsSkipped = skipped;
   }
   return result;
+}
+
+// netcapture 默认等多久、最多等多久；抄下来的返回最多多少字（Hub 一条消息最多收 4MB）
+const DEFAULT_CAPTURE_MS = 8000;
+const MAX_CAPTURE_MS = 30_000;
+const CAPTURE_BUDGET = 3 << 20;
+
+// netCapture 打开 url，把网址里含 match 的 JSON 返回抄下来。
+// 先挂上监听再跳转；返回要等 loadingFinished 以后才取得到内容，取早了 CDP 报 "No data found"。
+// 抄到一份以后再多等 1 秒（同一页常常连着来几份），或者等满 waitMs
+async function netCapture(tabId: number, args: CommandArgs["netcapture"]): Promise<{ captures: Capture[] }> {
+  const waitMs = Math.min(args.waitMs ?? DEFAULT_CAPTURE_MS, MAX_CAPTURE_MS);
+  return withDebugger(
+    tabId,
+    async (target) => {
+      const pending = new Map<string, { url: string; status: number }>();
+      const captures: Capture[] = [];
+      let budget = CAPTURE_BUDGET;
+      let firstAt = 0;
+      const onEvent = (source: chrome.debugger.Debuggee, method: string, params?: object) => {
+        if (source.tabId !== tabId) {
+          return;
+        }
+        const p = params as {
+          requestId: string;
+          response?: { url: string; status: number; mimeType: string };
+        };
+        if (method === "Network.responseReceived" && p.response) {
+          if (p.response.url.includes(args.match) && p.response.mimeType.includes("json")) {
+            pending.set(p.requestId, { url: p.response.url, status: p.response.status });
+          }
+        } else if (method === "Network.loadingFinished" && pending.has(p.requestId)) {
+          const info = pending.get(p.requestId)!;
+          pending.delete(p.requestId);
+          void chrome.debugger
+            .sendCommand(target, "Network.getResponseBody", { requestId: p.requestId })
+            .then((res) => {
+              const { body } = res as { body: string };
+              if (body.length <= budget) {
+                budget -= body.length;
+                captures.push({ ...info, body });
+                firstAt ||= Date.now();
+              }
+            })
+            .catch(() => {});
+        }
+      };
+      chrome.debugger.onEvent.addListener(onEvent);
+      try {
+        await chrome.debugger.sendCommand(target, "Network.enable");
+        await navigate(tabId, args.url);
+        const deadline = Date.now() + waitMs;
+        while (Date.now() < deadline && !(firstAt && Date.now() - firstAt > 1000)) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        return { captures };
+      } finally {
+        chrome.debugger.onEvent.removeListener(onEvent);
+        await chrome.debugger.sendCommand(target, "Network.disable").catch(() => {});
+      }
+    },
+    NAVIGATE_TIMEOUT_MS + MAX_CAPTURE_MS + 5000
+  );
 }
 
 // 把请求转发给标签页里的 content script，等它回复。

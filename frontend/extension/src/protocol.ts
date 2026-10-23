@@ -58,6 +58,11 @@ export interface CommandArgs {
   harvest: { limit?: number; maxScrolls?: number; thumbs?: boolean };
   // 插件从磁盘重新加载自己（开发用：pnpm watch 打包完自动调用）。tabId 填 0
   reload: Record<string, never>;
+  // 试验（2026-10-22 抖音）：在 tabId 里打开 url，用 CDP 听这个标签页的网络，把网址里含 match 的 JSON 返回抄下来。
+  // 只听不发：请求是页面自己发的，签名、cookie 都是页面自己的。最多等 waitMs
+  netcapture: { url: string; match: string; waitMs?: number };
+  // 试验：在页面里下载媒体文件的一段（start 到 end 字节，含两端），带着页面的 Referer。一段最多 MEDIA_RANGE_MAX 字节
+  mediaRange: { url: string; start: number; end: number };
 }
 
 export type CommandName = keyof CommandArgs;
@@ -168,7 +173,27 @@ export type TabRequest =
   | { type: "inspect"; text: string; up?: number }
   | { type: "visibility" }
   | { type: "scrollPosition" }
-  | { type: "harvestList"; limit: number; maxScrolls: number };
+  | { type: "harvestList"; limit: number; maxScrolls: number }
+  | { type: "fetchRange"; url: string; start: number; end: number };
+
+// mediaRange 一段最多多少字节：base64 以后约 2.7MB，Hub 一条消息最多收 4MB
+export const MEDIA_RANGE_MAX = 2 << 20;
+
+// mediaRange 的结果。total 是整个文件多大：服务器没给（没暴露 Content-Range）就没有。
+// HTTP 错误也是正常返回：status 是 403 这类、data 是空的（签名网址过期了要不要重新拿，由 Go 决定）
+export interface MediaRange {
+  status: number;
+  contentType: string;
+  total?: number;
+  data: string; // base64
+}
+
+// netcapture 抄下来的一个返回
+export interface Capture {
+  url: string;
+  status: number;
+  body: string;
+}
 
 // 列表收割收到的一张卡片
 export interface HarvestItem {

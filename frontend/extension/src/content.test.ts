@@ -578,3 +578,50 @@ it("页面被浮层盖住时，浮层的关闭按钮以「关闭弹窗」编进�
   expect(data?.elements).toMatch(/\[\d+\]<div[^>]*>关闭弹窗/);
   expect(data?.stats.overlay).toBe(true);
 });
+
+it("fetchRange 带上 Range 分段下载，从 Content-Range 读出总大小", async () => {
+  // Arrange：服务器回 206 和这一段的 3 个字节
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(new Uint8Array([1, 2, 3]), {
+      status: 206,
+      headers: { "content-type": "video/mp4", "content-range": "bytes 0-2/128" }
+    })
+  );
+  vi.stubGlobal("fetch", fetch);
+
+  // Act
+  const res = await request({ type: "fetchRange", url: "https://v5.zjcdn.com/v.mp4", start: 0, end: 2 });
+
+  // Assert：不带 cookie，数据是 base64
+  expect(fetch).toHaveBeenCalledWith("https://v5.zjcdn.com/v.mp4", {
+    headers: { Range: "bytes=0-2" },
+    credentials: "omit"
+  });
+  expect(res).toEqual({ ok: true, data: { status: 206, contentType: "video/mp4", total: 128, data: "AQID" } });
+});
+
+it("fetchRange 遇到 403 不抛错，把状态码交给 Go 判断是不是网址过期了", async () => {
+  // Arrange
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("expired", { status: 403 })));
+
+  // Act
+  const res = await request({ type: "fetchRange", url: "https://v5.zjcdn.com/v.mp4", start: 0, end: 2 });
+
+  // Assert
+  expect(res).toMatchObject({ ok: true, data: { status: 403, data: "" } });
+});
+
+it("fetchRange 只下 https，一段不超过 2MB", async () => {
+  // Arrange
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+
+  // Act
+  const plain = await request({ type: "fetchRange", url: "http://v5.zjcdn.com/v.mp4", start: 0, end: 2 });
+  const big = await request({ type: "fetchRange", url: "https://v5.zjcdn.com/v.mp4", start: 0, end: 3 << 20 });
+
+  // Assert
+  expect(plain).toMatchObject({ ok: false, error: { code: "BAD_MESSAGE" } });
+  expect(big).toMatchObject({ ok: false, error: { code: "BAD_MESSAGE" } });
+  expect(fetch).not.toHaveBeenCalled();
+});

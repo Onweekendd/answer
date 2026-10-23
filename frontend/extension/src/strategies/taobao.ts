@@ -56,7 +56,10 @@ function cardTitle(card: Element): string | undefined {
     .filter(Boolean)
     .join(" ");
   const sales = text(card.querySelector('[class*="realSales--"]'));
-  const shop = [text(card.querySelector('[class*="shopTagWrapper--"]')), text(card.querySelector('[class*="shopNameText--"]'))]
+  const shop = [
+    text(card.querySelector('[class*="shopTagWrapper--"]')),
+    text(card.querySelector('[class*="shopNameText--"]'))
+  ]
     .filter(Boolean)
     .join(" ");
   return [title, specs, price, sales, shop].filter(Boolean).join(" ｜ ");
