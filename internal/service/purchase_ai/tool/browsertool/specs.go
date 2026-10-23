@@ -35,8 +35,8 @@ const (
 	NameScroll   = "scroll"
 )
 
-// Specs 是浏览器工具，按名字查。顺序由用它的人定：工具定义在请求的最前面，顺序一变前缀缓存就全部失效
-func (s *TaskState) Specs() map[string]tool.Spec {
+// Specs 是浏览器工具，按固定的顺序：工具定义在请求的最前面，顺序一变前缀缓存就全部失效
+func (s *TaskState) Specs() []tool.Spec {
 	list := []tool.Spec{
 		{Name: NameOpen, Description: "在后台新开一个标签页打开网址，之后的操作都在这个标签页里进行。任务开始时用它打开第一个网页。",
 			Args: urlArgs{}, Run: s.Open},
@@ -63,9 +63,5 @@ func (s *TaskState) Specs() map[string]tool.Spec {
 		{Name: NameScroll, Description: "上下滚动页面，看到更多内容，也会触发页面加载更多商品。快照最后会写着上面和下面还有几屏。",
 			Args: scrollArgs{}, Run: s.Scroll},
 	}
-	specs := make(map[string]tool.Spec, len(list))
-	for _, spec := range list {
-		specs[spec.Name] = spec
-	}
-	return specs
+	return list
 }

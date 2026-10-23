@@ -21,6 +21,7 @@ package purchaseai
 
 import (
 	"context"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"testing"
 
 	"github.com/apache/answer/internal/schema"
@@ -68,9 +69,9 @@ func TestPageMessages(t *testing.T) {
 	assert.Equal(t, []string{"https://x/uploads/post/a.jpg"}, got[0].Images)
 }
 
-// replayRun 是重放用的 agentRun：只有打码和要不要显示思考
-func replayRun(showReasoning bool) *agentRun {
-	return &agentRun{showReasoning: showReasoning}
+// replayRun 是重放用的 presenter：只有打码和要不要显示思考
+func replayRun(showReasoning bool) *presenter {
+	return &presenter{opts: chatOptions{showReasoning: showReasoning}}
 }
 
 // toolCardTurn 是一轮：打开京东（同一步的 snapshot 因为页面变了被跳过），然后直接回答
@@ -79,7 +80,7 @@ func toolCardTurn() []Entry {
 	return []Entry{
 		msgEntry("a1", "u1", open, messageMeta{}),
 		msgEntry("t1", "a1", toolMessage("c1", "已打开京东"), messageMeta{ToolName: toolOpen, Details: &Details{Summary: "打开 www.jd.com", Display: "打开了「京东」"}}),
-		msgEntry("t2", "t1", toolMessage("c2", skippedText), messageMeta{ToolName: toolSnapshot}),
+		msgEntry("t2", "t1", toolMessage("c2", agent.SkippedText), messageMeta{ToolName: toolSnapshot}),
 		msgEntry("a2", "t2", llm.Text(llm.RoleAssistant, "买"), messageMeta{Details: &Details{Final: true}}),
 	}
 }
@@ -253,7 +254,7 @@ func TestReplayTurn_SameAsLive(t *testing.T) {
 		model := &fakeLLM{replies: []*llm.ChatResp{
 			first,
 			calls(toolCall("c3", toolProduct, `{"index":3,"title":"Apple iPhone 17 256G","price":"¥5999"}`), toolCall("c4", toolShot, `{}`)),
-			calls(toolCall("c5", toolDone, `{"text":"买，券后 5999\n[图1：券后价]","success":true,"followups":["那 Pro 呢"]}`)),
+			calls(toolCall("c5", toolDone, `{"text":"买，券后 5999\n[图1：券后价]\n<followups><q>那 Pro 呢</q></followups>","success":true}`)),
 		}}
 
 		// Act

@@ -23,8 +23,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/internal/service/purchase_ai/links"
@@ -52,7 +55,7 @@ func (f *fakeArtifactStore) SaveAgentFile(_ context.Context, ext string, data []
 var pngBytes = []byte("\x89PNG\r\n\x1a\n0000IHDR")
 
 // deliverRun 是一个有工作台、能存产物的任务。shot 命令照着样子在 /tmp/deliver/ 下写一张图
-func deliverRun() (*agentRun, *fakeWorkspace, *fakeArtifactStore, chan Event) {
+func deliverRun() (*toolRun, *fakeWorkspace, *fakeArtifactStore, chan Event) {
 	ws := newFakeWorkspace()
 	ws.run = func(cmd string) (sandbox.RunResult, error) {
 		if strings.Contains(cmd, "shot ") {
@@ -63,9 +66,9 @@ func deliverRun() (*agentRun, *fakeWorkspace, *fakeArtifactStore, chan Event) {
 	}
 	r, _ := sandboxRun(ws)
 	store := &fakeArtifactStore{}
-	r.artifactStore = store
+	r.arts.store = store
 	events := make(chan Event, 4)
-	r.events = events
+	r.pres.events = events
 	return r, ws, store, events
 }
 
@@ -92,7 +95,7 @@ func Test_deliver(t *testing.T) {
 
 		want := Artifact{ID: 1, Title: "成都 4 天行程", URL: "https://buy.example.com/uploads/agent-files/1.html",
 			Image: "https://buy.example.com/uploads/agent-files/2.png", Size: len(page)}
-		assert.Equal(t, &want, res.Artifact)
+		assert.Equal(t, &want, res.Extras[extraArtifact])
 		assert.Equal(t, "交付了「成都 4 天行程」", res.Display)
 		assert.Contains(t, res.Text, "文件1")
 		assert.Contains(t, res.Text, "外网的资源", "告诉模型外网的图加载不出来")
@@ -113,9 +116,9 @@ func Test_deliver(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Len(t, r.artifacts, 1)
-		assert.Equal(t, 1, res.Artifact.ID)
-		assert.Equal(t, "行程 v2", r.artifacts[0].Title)
+		require.Len(t, r.arts.list, 1)
+		assert.Equal(t, 1, res.Extras[extraArtifact].(*Artifact).ID)
+		assert.Equal(t, "行程 v2", r.arts.list[0].Title)
 		assert.Equal(t, "更新了「行程 v2」", res.Display)
 	})
 
@@ -162,7 +165,7 @@ func Test_deliver(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 		require.False(t, res.Failed, res.Text)
-		assert.Empty(t, res.Artifact.Image)
+		assert.Empty(t, res.Extras[extraArtifact].(*Artifact).Image)
 		assert.Len(t, store.saved, 1, "只存了网页")
 		assert.Contains(t, res.Text, "截图没截成")
 	})
@@ -170,7 +173,7 @@ func Test_deliver(t *testing.T) {
 	t.Run("没有地方存：失败，让模型在回答里说文件在哪", func(t *testing.T) {
 		// Arrange
 		r, ws, _, _ := deliverRun()
-		r.artifactStore = nil
+		r.arts.store = nil
 		ws.files["/home/user/trip.html"] = []byte("<p>行程</p>")
 
 		// Act
@@ -190,7 +193,7 @@ func Test_deliver(t *testing.T) {
 		cancel()
 
 		// Act
-		_, err := r.deliver(ctx, ws, `{"path":"nope.html","title":"行程"}`)
+		_, err := r.arts.deliver(ctx, ws, `{"path":"nope.html","title":"行程"}`)
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
@@ -201,8 +204,8 @@ func Test_deliver_links(t *testing.T) {
 	t.Run("链接洗掉追踪参数、在新标签页打开；没打开过的、没链上的商品都告诉模型", func(t *testing.T) {
 		// Arrange：打开过一篇笔记（xsec_token 和网页里的不一样也算同一篇），记过两个商品，一个链上了一个没有
 		r, ws, store, _ := deliverRun()
-		r.seeLink("https://www.xiaohongshu.com/explore/6ad5?xsec_token=OPENED&xsec_source=pc_search")
-		r.products = []ProductCard{
+		r.links.see("https://www.xiaohongshu.com/explore/6ad5?xsec_token=OPENED&xsec_source=pc_search")
+		r.cards.cards = []ProductCard{
 			{ID: 1, Title: "美的冰箱", URL: "https://item.jd.com/100.html"},
 			{ID: 2, Title: "海尔冰箱", URL: "https://item.jd.com/200.html"},
 		}
@@ -233,8 +236,8 @@ func Test_deliver_links(t *testing.T) {
 	t.Run("链接都是打开过的、商品都链上了：什么都不用说", func(t *testing.T) {
 		// Arrange：商品卡片来自搜索结果，商品页本身没打开过，也算见过
 		r, ws, _, _ := deliverRun()
-		r.products = []ProductCard{{ID: 1, Title: "美的冰箱", URL: "https://item.jd.com/100.html"}}
-		r.seeLink("https://www.midea.cn/fridge/")
+		r.cards.cards = []ProductCard{{ID: 1, Title: "美的冰箱", URL: "https://item.jd.com/100.html"}}
+		r.links.see("https://www.midea.cn/fridge/")
 		ws.files["/home/user/cmp.html"] = []byte(`<a href="http://item.jd.com/100.html">美的</a><a href="https://www.midea.cn/fridge">官网</a>`)
 
 		// Act
@@ -247,25 +250,33 @@ func Test_deliver_links(t *testing.T) {
 	})
 }
 
-func Test_runTool_seesOpenedPages(t *testing.T) {
-	// Arrange
-	r, _ := sandboxRun(newFakeWorkspace())
-	tools := map[string]agentTool{
-		"ok": {run: func(context.Context, string) (toolResult, error) {
-			return toolResult{URL: "https://a.test/1?spm=x"}, nil
-		}},
-		"fail": {run: func(context.Context, string) (toolResult, error) {
-			return toolResult{Failed: true, URL: "https://a.test/2"}, nil
-		}},
+func Test_linkBook_seesOpenedPages(t *testing.T) {
+	// Arrange：两个工具，一个打开了页面，一个失败了
+	opened := func(r *agent.Registry) {
+		r.Tool(tool.Spec{Name: "ok", Description: "x", Args: struct{}{}, Run: func(context.Context, string) (tool.Result, error) {
+			return tool.Result{URL: "https://a.test/1?spm=x"}, nil
+		}})
+		r.Tool(tool.Spec{Name: "fail", Description: "x", Args: struct{}{}, Run: func(context.Context, string) (tool.Result, error) {
+			return tool.Result{Failed: true, URL: "https://a.test/2"}, nil
+		}})
 	}
+	book := &linkBook{products: &productBook{}}
+	model := &fakeLLM{replies: []*llm.ChatResp{
+		{ToolCalls: []llm.ToolCall{{ID: "c1", Name: "ok", Arguments: "{}"}}},
+		{ToolCalls: []llm.ToolCall{{ID: "c2", Name: "fail", Arguments: "{}"}}},
+		{Content: "好"},
+	}}
+	a, err := agent.New(agent.Config{Model: model, MaxSteps: 5, Timeouts: agent.Timeouts{Run: time.Second, Model: time.Second},
+		Plugins: []agent.Plugin{opened, book.plugin()}})
+	require.NoError(t, err)
 
 	// Act
-	_, _ = r.runTool(context.Background(), tools, llm.ToolCall{Name: "ok"})
-	_, _ = r.runTool(context.Background(), tools, llm.ToolCall{Name: "fail"})
+	_, err = a.Run(context.Background(), startMessages())
 
 	// Assert：洗过以后再比；没打开成功的不算
-	assert.True(t, r.sawLink(links.Key("https://a.test/1")))
-	assert.False(t, r.sawLink(links.Key("https://a.test/2")))
+	require.NoError(t, err)
+	assert.True(t, book.saw(links.Key("https://a.test/1")))
+	assert.False(t, book.saw(links.Key("https://a.test/2")))
 }
 
 func Test_inlineImages(t *testing.T) {
@@ -303,7 +314,7 @@ func Test_decodeArgs_truncated(t *testing.T) {
 	var args struct{ Path, Content string }
 
 	// Act
-	res := decodeArgs(truncated, &args, `{"path": "a.html", "content": "..."}`)
+	res := tool.DecodeArgs(truncated, &args, `{"path": "a.html", "content": "..."}`)
 
 	// Assert：告诉模型是太长被截断了，要分几次写，而不是让它以为格式错了
 	require.NotNil(t, res)

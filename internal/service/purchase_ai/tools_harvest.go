@@ -32,6 +32,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/sandboxtool"
 	"github.com/apache/answer/internal/service/sandbox"
 	"github.com/disintegration/imaging"
 	"github.com/segmentfault/pacman/log"
@@ -52,6 +56,23 @@ const (
 	// harvestTimeout：100 张带缩略图实测 18 秒（Pinterest，2026-10-20），留足余量
 	harvestTimeout = 90 * time.Second
 )
+
+// harvester 是收割工具：从浏览器的页面上收，放进工作台
+type harvester struct {
+	state *browsertool.TaskState
+	bench *sandboxtool.Bench
+	pics  *pictures // 总览图编号
+	links *linkBook // 收到的每张卡片的出处，交付的网页可以链到
+}
+
+// plugin 装 harvest
+func (h *harvester) plugin() agent.Plugin {
+	return func(r *agent.Registry) {
+		r.Tool(tool.Spec{Name: toolHarvest, Description: "把当前页面（搜索结果、瀑布流）上的卡片一次收下来：边滚动边收，去掉广告和重复的，缩略图放进工作台的 /home/user/harvest/，" +
+			"返回一张编了号的总览图。要从很多图里挑参考、做拼图、做图墙时用它，不要一张张截图。收完看总览图挑，编号 = 文件名 = items.json 里的 n。",
+			Args: harvestArgs{}, Run: h.state.Track(h.bench.With(h.run))})
+	}
+}
 
 type harvestArgs struct {
 	Limit int `json:"limit,omitempty" description:"最多收多少张，默认 60，最多 100"`
@@ -87,12 +108,12 @@ func (d harvestData) thumbsAreMaterial() bool {
 	return d.Stats.ThumbWidth > harvestPickWidth
 }
 
-func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) (toolResult, error) {
+func (h *harvester) run(ctx context.Context, ws Workspace, arguments string) (tool.Result, error) {
 	var args harvestArgs
-	if res := decodeArgs(arguments, &args, `{} 或 {"limit": 60}`); res != nil {
+	if res := tool.DecodeArgs(arguments, &args, `{} 或 {"limit": 60}`); res != nil {
 		return *res, nil
 	}
-	if res := r.requireTab(); res != nil {
+	if res := h.state.RequireTab(); res != nil {
 		return *res, nil
 	}
 	limit := harvestDefaultLimit
@@ -102,7 +123,7 @@ func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) 
 
 	var data harvestData
 	req := map[string]any{"limit": limit, "maxScrolls": harvestMaxScrolls, "thumbs": true}
-	if res, err := r.callFor(ctx, harvestTimeout, r.TabID, "harvest", req, &data); res != nil {
+	if res, err := h.state.CallFor(ctx, harvestTimeout, h.state.TabID, "harvest", req, &data); res != nil {
 		return *res, err
 	}
 
@@ -110,7 +131,7 @@ func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) 
 	for _, it := range data.Items {
 		thumb, _ := base64.StdEncoding.DecodeString(it.ThumbData) // 解不开就当插件没拿到
 		item := sandbox.Item{
-			Title: oneLine(it.Title), URL: it.URL, Original: it.Original,
+			Title: tool.OneLine(it.Title), URL: it.URL, Original: it.Original,
 			Width: it.Width, Height: it.Height, Thumb: thumb,
 		}
 		if data.thumbsAreMaterial() {
@@ -118,30 +139,30 @@ func (r *agentRun) harvest(ctx context.Context, ws Workspace, arguments string) 
 			item.Original = ""
 		}
 		items = append(items, item)
-		r.seeLink(it.URL)
+		h.links.see(it.URL)
 	}
 	entries := sandbox.Number(items)
 	if len(entries) == 0 {
-		return toolResult{Failed: true, Text: "这一页没收到卡片：可能不是搜索结果、瀑布流这类列表页，或者内容还没加载出来。先 snapshot 看看页面。"}, nil
+		return tool.Result{Failed: true, Text: "这一页没收到卡片：可能不是搜索结果、瀑布流这类列表页，或者内容还没加载出来。先 snapshot 看看页面。"}, nil
 	}
 
 	if err := sandbox.Seed(ctx, ws, entries); err != nil {
 		if ctx.Err() != nil {
-			return toolResult{}, ctx.Err()
+			return tool.Result{}, ctx.Err()
 		}
 		log.Warnf("purchase ai: cannot put the harvest into the sandbox: %v", err)
-		return toolResult{Failed: true, Text: "收到了卡片，但没能放进工作台，可以再收一次。"}, nil
+		return tool.Result{Failed: true, Text: "收到了卡片，但没能放进工作台，可以再收一次。"}, nil
 	}
 
 	text := harvestText(entries, data)
-	res := toolResult{Text: text, Display: fmt.Sprintf("收了 %d 张图", len(entries))}
+	res := tool.Result{Text: text, Display: fmt.Sprintf("收了 %d 张图", len(entries))}
 	sheet, err := contactSheet(entries)
 	if err != nil {
 		log.Warnf("purchase ai: cannot draw the contact sheet: %v", err)
 		res.Text += "\n\n总览图没画出来，要看图就用 read_file 打开 harvest/ 下的文件。"
 		return res, nil
 	}
-	res.Text += "\n\n总览图在下一条消息里，格子左上角的数字就是编号。" + r.numberPicture(sheet)
+	res.Text += "\n\n总览图在下一条消息里，格子左上角的数字就是编号。" + h.pics.number(sheet)
 	res.Image = "data:" + sheet.Mime + ";base64," + sheet.Data
 	return res, nil
 }
@@ -180,7 +201,7 @@ const (
 )
 
 // contactSheet 把编了号的缩略图拼成一张总览图。没有缩略图的格子是灰的，编号照样写上
-func contactSheet(entries []sandbox.Entry) (screenshotData, error) {
+func contactSheet(entries []sandbox.Entry) (tool.Image, error) {
 	cols := min(len(entries), sheetCols)
 	rows := (len(entries) + cols - 1) / cols
 	width := cols*sheetCell + (cols+1)*sheetGap
@@ -205,9 +226,9 @@ func contactSheet(entries []sandbox.Entry) (screenshotData, error) {
 
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, canvas, &jpeg.Options{Quality: imageQuality}); err != nil {
-		return screenshotData{}, err
+		return tool.Image{}, err
 	}
-	return screenshotData{
+	return tool.Image{
 		Data:   base64.StdEncoding.EncodeToString(buf.Bytes()),
 		Mime:   "image/jpeg",
 		Width:  width,

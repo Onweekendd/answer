@@ -37,6 +37,7 @@ import (
 	"github.com/apache/answer/internal/service/config"
 	"github.com/apache/answer/internal/service/llm"
 	"github.com/apache/answer/internal/service/purchase"
+	"github.com/apache/answer/internal/service/purchase_ai/followups"
 	purchasevote "github.com/apache/answer/internal/service/purchase_vote"
 	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
@@ -97,6 +98,31 @@ func NewPurchaseAIService(
 	return service
 }
 
+// taskOptions is the base configuration for one agent run of this service:
+// model, browser and the image stores. Every entry point starts from here, so none of them
+// can forget one (a missing image store is no error: cards and answers just quietly have no pictures).
+func (pas *PurchaseAIService) taskOptions(browserOn bool) taskOptions {
+	return taskOptions{
+		llm:           pas.llmClient,
+		browser:       pas.browser,
+		browserOn:     browserOn,
+		limits:        defaultLimits,
+		images:        pas.uploaderService,
+		artifactStore: pas.uploaderService,
+	}
+}
+
+// runAgent lets the model drive the browser until it calls done, answers directly, or is wrapped up.
+// With browserOn false there are no tools and the model can only answer directly.
+func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
+	t, err := newTask(pas.taskOptions(browserOn))
+	if err != nil {
+		return nil, err
+	}
+	defer t.close()
+	return t.run(ctx, messages)
+}
+
 // Enqueue schedules an analysis and returns immediately. Analyze itself blocks
 // on the provider for tens of seconds, which is far too long to hold a request.
 func (pas *PurchaseAIService) Enqueue(ctx context.Context, questionID string) {
@@ -153,7 +179,7 @@ func (pas *PurchaseAIService) Analyze(ctx context.Context, questionID string) (e
 	}
 
 	// 帖子分析不要后续建议（它是一条评论，没人点按钮），模型万一写了也切掉
-	answer, _ := splitFollowups(result.Text)
+	answer, _ := followups.Split(result.Text)
 	originalText := fixNumberRanges(answer)
 
 	if strings.TrimSpace(originalText) == "" {

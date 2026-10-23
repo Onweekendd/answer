@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"github.com/apache/answer/internal/service/purchase_ai/tool/sandboxtool"
@@ -61,7 +62,12 @@ type Tool struct {
 
 // Spec 是告诉模型的说明。先拿到工作台再执行（bench.With）
 func (t *Tool) Spec(bench *sandboxtool.Bench) tool.Spec {
-	return tool.Spec{Name: Name, Description: description, Args: saveVideoArgs{}, Run: bench.With(t.Save)}
+	return tool.Spec{Name: Name, Description: description, Args: saveVideoArgs{}, Run: t.TaskState.Track(bench.With(t.Save))}
+}
+
+// Plugin 把 save_video 装进 Agent
+func Plugin(t *Tool, bench *sandboxtool.Bench) agent.Plugin {
+	return func(r *agent.Registry) { r.Tool(t.Spec(bench)) }
 }
 
 const description = "把一个抖音视频存进工作台，用来看懂视频里说了什么、画面上有什么（测评里的实测、参数、缺点）。" +

@@ -81,5 +81,5 @@ type Part struct {
 
 // RangeFunc 下载 link 的 [start, end] 这一段（含两端）。HTTP 错误不算 error，看 Part.Status；
 // error 是下载的通道（插件、连接）出了问题，或者 ctx 结束了。
-// 实际用的是 purchase_ai 里 agentRun.mediaRange：在用户浏览器的视频页里下载，带着页面的 Referer
+// 实际用的是 videotool.Tool 的 mediaRange：在用户浏览器的视频页里下载，带着页面的 Referer
 type RangeFunc func(ctx context.Context, link string, start, end int) (Part, error)

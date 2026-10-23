@@ -17,21 +17,21 @@
  * under the License.
  */
 
-package purchaseai
+package followups
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_splitFollowups(t *testing.T) {
+func TestSplit(t *testing.T) {
 	tests := []struct {
 		name      string
 		in        string
@@ -89,7 +89,7 @@ func Test_splitFollowups(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Act
-			answer, followups := splitFollowups(tt.in)
+			answer, followups := Split(tt.in)
 
 			// Assert
 			assert.Equal(t, tt.answer, answer)
@@ -99,47 +99,59 @@ func Test_splitFollowups(t *testing.T) {
 
 	t.Run("太长的一句截短", func(t *testing.T) {
 		// Act
-		_, followups := splitFollowups("<followups><q>" + strings.Repeat("长", 40) + "</q></followups>")
+		_, followups := Split("<followups><q>" + strings.Repeat("长", 40) + "</q></followups>")
 
 		// Assert
 		assert.Equal(t, []string{strings.Repeat("长", followupRunes) + "…"}, followups)
 	})
 }
 
-func Test_buildSystemPrompt_followups(t *testing.T) {
-	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
-
+func TestClean(t *testing.T) {
 	// Act
-	chat := buildSystemPrompt(now, true)
-	post := buildPostPrompt(now, true)
-
-	// Assert：对话里有后续建议，帖子分析（一条评论）没有
-	assert.Contains(t, chat, "<followups>")
-	assert.NotContains(t, post, "<followups>")
-}
-
-func Test_run_doneFollowups(t *testing.T) {
-	// Arrange：模型用 done 结束，后续建议放在 followups 参数里
-	args, _ := json.Marshal(map[string]any{
-		"text": "价格偏高", "success": true,
-		"followups": []string{"帮我发到社区，让大家投票", "2000 以内有什么推荐？"},
-	})
-	model := &fakeLLM{replies: []*llm.ChatResp{{ToolCalls: []llm.ToolCall{{ID: "c1", Name: toolDone, Arguments: string(args)}}}}}
-	r := newAgentRun(model, newFakeBrowser(), testLimits())
-
-	// Act
-	res, err := r.run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "值不值")}, true)
-
-	// Assert
-	require.NoError(t, err)
-	assert.Equal(t, "价格偏高", res.Text)
-	assert.Equal(t, []string{"帮我发到社区，让大家投票", "2000 以内有什么推荐？"}, res.Followups)
-}
-
-func Test_cleanFollowups(t *testing.T) {
-	// Act：done 参数里的和 <followups> 块里的合在一起
-	got := cleanFollowups([]string{"a", " ", "a", "1. b", "c", "d"})
+	got := Clean([]string{"a", " ", "a", "1. b", "c", "d"})
 
 	// Assert
 	assert.Equal(t, []string{"a", "b", "c"}, got)
+}
+
+type model struct{ reply string }
+
+func (m model) Chat(context.Context, *llm.ChatReq) (*llm.ChatResp, error) {
+	return &llm.ChatResp{Content: m.reply}, nil
+}
+
+func TestPlugin(t *testing.T) {
+	// Arrange
+	a, err := agent.New(agent.Config{
+		Model: model{reply: "价格偏高。\n<followups><q>帮我发到社区</q></followups>"}, MaxSteps: 3,
+		Timeouts: agent.Timeouts{Run: time.Second, Model: time.Second},
+		Plugins:  []agent.Plugin{Plugin()},
+	})
+	require.NoError(t, err)
+
+	// Act
+	res, err := a.Run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "值不值")})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "价格偏高。", res.Text, "块被切掉，用户看不到标签")
+	assert.Equal(t, []string{"帮我发到社区"}, res.Extras[Extra])
+}
+
+func TestPlugin_NoBlockNoExtra(t *testing.T) {
+	// Arrange：模型忘了写就算了
+	a, err := agent.New(agent.Config{
+		Model: model{reply: "就这样。"}, MaxSteps: 3,
+		Timeouts: agent.Timeouts{Run: time.Second, Model: time.Second},
+		Plugins:  []agent.Plugin{Plugin()},
+	})
+	require.NoError(t, err)
+
+	// Act
+	res, err := a.Run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "值不值")})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "就这样。", res.Text)
+	assert.NotContains(t, res.Extras, Extra)
 }

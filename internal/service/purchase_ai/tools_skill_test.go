@@ -20,55 +20,11 @@
 package purchaseai
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-func Test_skillRead(t *testing.T) {
-	t.Run("还没打开网页也能读，读到的是文件全文，不算改变页面", func(t *testing.T) {
-		// Arrange
-		r := newAgentRun(&fakeLLM{}, newFakeBrowser(), testLimits())
-
-		// Act
-		res, err := r.skillRead(context.Background(), `{"path":"site-guide/references/taobao.md"}`)
-
-		// Assert
-		require.NoError(t, err)
-		require.False(t, res.Failed)
-		require.False(t, res.PageChanged)
-		require.Contains(t, res.Text, "# 淘宝")
-	})
-
-	t.Run("路径写错时告诉模型这个 skill 里有哪些文件", func(t *testing.T) {
-		// Arrange
-		r := newAgentRun(&fakeLLM{}, newFakeBrowser(), testLimits())
-
-		// Act
-		res, err := r.skillRead(context.Background(), `{"path":"site-guide/references/pdd.md"}`)
-
-		// Assert
-		require.NoError(t, err)
-		require.True(t, res.Failed)
-		require.Contains(t, res.Text, "site-guide/references/taobao.md")
-		require.Contains(t, res.Text, "site-guide/SKILL.md")
-	})
-
-	t.Run("skill 名字也写错时，告诉模型路径的格式", func(t *testing.T) {
-		// Arrange
-		r := newAgentRun(&fakeLLM{}, newFakeBrowser(), testLimits())
-
-		// Act
-		res, err := r.skillRead(context.Background(), `{"path":"nope/SKILL.md"}`)
-
-		// Assert
-		require.NoError(t, err)
-		require.True(t, res.Failed)
-		require.Contains(t, res.Text, "site-guide/SKILL.md")
-	})
-}
 
 func Test_buildSystemPrompt_skills(t *testing.T) {
 	t.Run("能用浏览器时，系统提示词里列出每个 skill 的路径和描述，但不放正文", func(t *testing.T) {

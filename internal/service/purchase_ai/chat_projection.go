@@ -23,6 +23,7 @@ import (
 	"slices"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 )
 
 // unfinishedCallText 是补给半截工具调用的结果：上一轮在这一步之前断开了（用户关了页面、进程重启），
@@ -82,7 +83,7 @@ func project(path []Entry) []llm.Message {
 		m := e.Message.Message()
 		// 快照换成占位语：页面在那一轮结束时已经关了。整个换掉 Parts
 		if e.Message.ToolName == toolSnapshot {
-			m.Parts = []llm.Part{{Text: snapshotOmitted}}
+			m.Parts = []llm.Part{{Text: browsertool.SnapshotOmitted}}
 		}
 
 		if m.Role == llm.RoleAssistant {
@@ -116,4 +117,11 @@ func project(path []Entry) []llm.Message {
 	settle() // 最后一条是带调用的 assistant、结果一个都没有时，也要补
 
 	return res
+}
+
+// toolMessage 是一条工具回复
+func toolMessage(callID, text string) llm.Message {
+	msg := llm.Text(llm.RoleTool, text)
+	msg.ToolCallID = callID
+	return msg
 }

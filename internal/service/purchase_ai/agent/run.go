@@ -19,52 +19,333 @@
 
 package agent
 
-// 这个文件是循环，由你来写（先写完 plugin.go 的钩子签名）。
+import (
+	"context"
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
+	"github.com/segmentfault/pacman/log"
+)
+
+// TagScreenshot 标出 Agent 自己截的图所在的用户消息。BeforeModel 钩子按它认出旧截图
+const TagScreenshot = "screenshot"
+
+type callIDKey struct{}
+
+// WithCallID 给 ctx 带上一个调用的 id，核心执行每个工具之前做的就是这件事。测试单个工具时用它
+func WithCallID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, callIDKey{}, id)
+}
+
+// CallID 是正在执行的这个调用的 id（tool_start 事件里那个）。挂起的事件要带上它，页面才知道是哪张卡片
+func CallID(ctx context.Context) string {
+	id, _ := ctx.Value(callIDKey{}).(string)
+	return id
+}
+
+// state 是一次任务里循环自己的状态。每个任务一个，不共享
+type state struct {
+	messages  []llm.Message
+	step      int  // 现在是第几步，从 0 开始
+	reminded  bool // 已经提醒过一次「调用 done」
+	steps     []Step
+	reasoning string // 最后一次模型调用的思考
+}
+
+// Run 跑一次任务，直到模型调用 done、直接回答，或者走到收尾。
+// messages 是开头的对话（系统提示词、历史、用户的问题）。
 //
-// 目标：循环读下来就是「调模型 → 执行工具 → 反馈 → 继续或结束」，大约 60～80 行，
-// 里面只出现钩子的调用，不出现商品、图、产物、草稿、followups、浏览器。
+// 一步 = 调用一次模型，每一步按这个顺序走：
 //
-// 现在的循环是 ../agent.go 的 loop()（约 140 行，步骤已经标了 ①～⑨）。下面是每一步在新结构里的去处。
+//	BeforeModel 钩子 → 调模型 → 没要工具：reply（回答 / 提醒调用 done / 空回复）
+//	                         → 要了工具：runCalls（顺序执行，AfterTool 钩子）→ commit（回复和截图记进消息）
+//	                           → 工具说「不能继续」→ 收尾；有 Terminate → 结束；EndOfTurn 钩子 → 提醒或收尾
 //
-//	现在                                       新结构
-//	────────────────────────────────────────  ──────────────────────────────────────────────
-//	开始：tools(browserOn) 收集工具             遍历插件，调 Plugin(registry)，收集 Tool
-//	messages = slices.Clone(messages)         保留：循环只改自己的数组（原因看现在 agent.go 的注释）
-//	① compactSnapshots / compactScreenshots   BeforeModel 钩子（返回值只用于这次请求）
-//	② r.chat（超时、超时重试一次、发思考事件）   核心自己的 chat 方法：照搬 ../agent.go 的 chat()，Test_chat 一起搬
-//	③ 分类回答/空回复/工具调用                   核心。是最终回答 → OnAnswer 钩子，再记进日志
-//	④ runCalls：顺序执行、跳过规则、发事件       核心。每个工具执行完调 AfterTool 钩子
-//	⑤ 回复一一对应，截图放整批回复之后            核心（这是消息顺序的不变量，只在一处维护）
-//	⑥ 插件断开 → finish                        核心。见下面的问题 1
-//	done → 返回                               核心。见下面的问题 2
-//	⑦⑧⑨ 失败/重复/步数提醒                     EndOfTurn 钩子
-//	循环耗尽 → finish(finishSteps)             核心
-//	run() 里带上 products、shots                OnFinish 钩子
-//
-// 核心还要依赖两个接口（也由你来定它们的形状，名字随意）：
-//   - 记录器：现在是 agentRun.keep(ctx, messages, msg, meta)，调 chatRecorder.record。
-//     核心不认识对话日志，只认「每加一条消息就告诉它一下」的接口。chat_recorder.go 里的 chatRecorder 去实现它。
-//   - 观察者：现在是 agentRun.emit* 发的 tool_start、tool_end、reasoning。核心发出去，Chat 入口接着推给页面。
-//     注意 describeCall（agent_events.go，20 个 case，认识每一个工具）要变成每个工具自己的
-//     tool.Spec.Describe func(arguments string) string，这件事我来做，你只需要在观察者里留一个收「这次调用的一句话」的地方。
-//
-// 需要你拍板的问题：
-//
-//  1. 插件断开（tool.ErrBrowserGone）怎么表达？
-//     现在循环认识这个具体的错误：这一轮每个调用都先有回复，然后走 finishBrowserGone 收尾。
-//     核心不该认识「浏览器」。建议：tool 包里的这个错误换成通用的 tool.ErrAbort{Reason}，
-//     核心遇到它就「本轮收完、走收尾，原因是 Reason」。浏览器工具返回它，核心不用知道是浏览器。
-//
-//  2. done 怎么办？
-//     建议：done 是核心自己注册的工具（它的参数只有 text 和 success，followups 参数不要了）。
-//     它的结果带 Terminate 标记，这一批里全部带标记 → 返回（pi 的 terminate 就是这个）。
-//     根包现在三处特判 done：循环、runCalls（skippedAfterDoneText）、chat_projection.go。
-//
-//  3. 第 ③ 步要提前知道「这是不是最终回答」。
-//     原因：日志只追加，回答引用的图要在记进日志「之前」存好、一起记下。
-//     现在的写法是 answer := len(resp.ToolCalls)==0 && !empty && (!browserOn || reminded || 最后一步)。
-//     新结构里 browserOn（插件有没有装 browser）核心不知道，建议改成「没有任何工具时，直接回答就是最终回答」，
-//     「已经提醒过 done」仍然是核心自己的状态。
-//
-// 写完告诉我。我会：把 agent_test.go 里 Test_run、Test_chat 搬到这个包（或让根包的入口通过新核心跑），
-// 它们就是安全网——不变的行为都在那里面。
+// 每个工具调用都必须有一条工具消息回复，跳过的、done 也一样：
+// 否则服务商会拒绝这段对话，而对话后面还要接着发（追问、收尾）。
+func (a *Agent) Run(ctx context.Context, messages []llm.Message) (*Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.Timeouts.Run)
+	defer cancel()
+
+	// 先复制一份，循环只改自己的数组。不复制的话，调用方的切片还有空余容量时，append 会写进它的底层数组
+	st := &state{messages: slices.Clone(messages)}
+
+	for step := 0; step < a.cfg.MaxSteps; step++ {
+		st.step = step
+		resp, err := a.chat(ctx, &llm.ChatReq{Messages: a.forModel(st.messages), Tools: a.defs})
+		if err != nil {
+			return nil, err
+		}
+		st.reasoning = resp.Reasoning
+
+		if len(resp.ToolCalls) == 0 {
+			if res, err := a.reply(ctx, st, resp); res != nil || err != nil {
+				return res, err
+			}
+			continue
+		}
+
+		st.messages = a.keep(ctx, st.messages, assistantMessage(resp), Meta{PromptTokens: resp.Usage.PromptTokens})
+		outcomes, err := a.runCalls(ctx, st, resp.ToolCalls)
+		var abort *tool.AbortError
+		if err != nil && !errors.As(err, &abort) {
+			return nil, err
+		}
+		final := a.commit(ctx, st, resp.ToolCalls, outcomes)
+
+		// 工具说不能继续了（浏览器断开）：这一轮每个调用都已经有回复，对话是完整的，走收尾
+		if abort != nil {
+			return a.finish(ctx, st, Finish{Reason: Reason(abort.Reason), Prompt: abort.Prompt})
+		}
+		if final != nil {
+			return &Result{Text: final.Text, Success: final.Success, Steps: st.steps, Extras: final.Extras}, nil
+		}
+
+		if f := a.judge(ctx, st, Turn{Step: step, Left: a.cfg.MaxSteps - step - 1, Calls: resp.ToolCalls, Results: outcomes}); f != nil {
+			return a.finish(ctx, st, *f)
+		}
+	}
+
+	return a.finish(ctx, st, Finish{Reason: ReasonSteps, Prompt: StepsPrompt})
+}
+
+// reply 处理模型这一步没要工具的情况：是最终回答、该提醒它调用 done，还是空回复。
+// 返回的 *Result 非 nil 表示任务结束；两个都是 nil 表示接着下一步
+func (a *Agent) reply(ctx context.Context, st *state, resp *llm.ChatResp) (*Result, error) {
+	msg := assistantMessage(resp)
+	empty := strings.TrimSpace(AnswerText(resp)) == ""
+	if empty {
+		msg.Parts = []llm.Part{{Text: EmptyReply}}
+	}
+	// 只回了文字：已经提醒过一次、这是最后一步（提醒了也没有步数去调用 done），或者根本没有 done，
+	// 就当作答案；否则提醒它调用 done。空回复当不了答案：最后再问一次，不给工具，让它把回答写出来
+	last := st.step == a.cfg.MaxSteps-1
+	final := !empty && (!a.hasDone() || st.reminded || last)
+	meta := Meta{PromptTokens: resp.Usage.PromptTokens}
+	var ans *Answer
+	if final {
+		// 记进日志之前就要知道它是答案：答案引用的图要存好，和它一起记下（日志只追加，记了就改不了）
+		ans = a.answer(ctx, AnswerText(resp))
+		meta.Final, meta.Extras = true, ans.Extras
+	}
+	st.messages = a.keep(ctx, st.messages, msg, meta)
+
+	if final {
+		return &Result{Text: ans.Text, Success: true, Steps: st.steps, Reasoning: resp.Reasoning, Extras: ans.Extras}, nil
+	}
+	if !a.hasDone() || st.reminded || last {
+		return a.finish(ctx, st, Finish{Reason: ReasonEmpty, Prompt: EmptyPrompt})
+	}
+	reminder := DoneReminder
+	if empty {
+		reminder = EmptyReminder
+	}
+	st.messages = a.keep(ctx, st.messages, llm.Text(llm.RoleUser, reminder), Meta{Synthetic: true})
+	st.reminded = true
+	return nil, nil
+}
+
+// runCalls 按顺序执行这一轮的调用，返回和 calls 一样长、一一对应的结果。
+// 页面变了、失败了、done 了，或者工具说「不能继续」，后面的调用都跳过，但也有一条回复。
+// 返回的 error 是 *tool.AbortError 时，结果仍然是完整的；别的 error 让任务立刻结束。
+func (a *Agent) runCalls(ctx context.Context, st *state, calls []llm.ToolCall) ([]Outcome, error) {
+	// 长度直接给满，按下标填：跳过的调用也要占住自己的位置
+	out := make([]Outcome, len(calls))
+
+	// skip 就是那个标识：空字符串表示继续执行；不为空表示后面的都跳过，内容就是跳过时回复的话
+	skip := ""
+	// 工具说不能继续时记下这个错误，等每个调用都有了结果再一起返回
+	var abort error
+
+	for i, call := range calls {
+		if skip != "" {
+			out[i] = Outcome{Result: tool.Result{Text: skip}, Skipped: true}
+			continue
+		}
+
+		// 跳过的调用不发事件，用户只看到真的做了的事；done 不是一张工具卡片，它的回答走 text
+		id := fmt.Sprintf("%d-%d", st.step, i)
+		shown := call.Name != DoneName && a.cfg.Observer != nil
+		summary := ""
+		if shown {
+			summary = a.cfg.Observer.Describe(call)
+			a.cfg.Observer.ToolStart(ctx, id, call, summary)
+		}
+
+		res, err := a.runTool(WithCallID(ctx, id), st, call)
+		var stop *tool.AbortError
+		if errors.As(err, &stop) {
+			res = tool.Result{Failed: true, Text: stop.Text}
+			skip, abort = SkippedText, err
+		} else if err != nil {
+			return nil, err
+		}
+		out[i] = Outcome{Result: res, Summary: summary}
+		if shown {
+			a.cfg.Observer.ToolEnd(ctx, id, call, res)
+		}
+		if abort != nil {
+			continue
+		}
+		switch {
+		case res.Terminate:
+			skip = SkippedAfterDoneText
+		case res.Failed:
+			skip = SkippedAfterFailText
+		case res.PageChanged:
+			skip = SkippedText
+		}
+	}
+	return out, abort
+}
+
+// runTool 执行一次调用。模型编出来的工具名告诉它，不算出错，它可以自己改正。执行之后记下这一步
+func (a *Agent) runTool(ctx context.Context, st *state, call llm.ToolCall) (tool.Result, error) {
+	spec, ok := a.byName[call.Name]
+	if !ok {
+		log.Warnf("purchase ai: model called unknown tool %q", call.Name)
+		return tool.Result{Failed: true, Text: "没有这个工具：" + call.Name}, nil
+	}
+	started := time.Now()
+	res, err := spec.Run(ctx, call.Arguments)
+	if err == nil {
+		for _, fn := range a.reg.afterTool {
+			fn(ctx, call, &res)
+		}
+	}
+	st.steps = append(st.steps, Step{
+		Step:      st.step,
+		Tool:      call.Name,
+		Arguments: call.Arguments,
+		Failed:    res.Failed || err != nil,
+		URL:       res.URL,
+		Duration:  time.Since(started),
+	})
+	return res, err
+}
+
+// final 是这一轮里某个工具（done、draft_post）交出来的最终回答
+type final struct {
+	Text    string
+	Success bool
+	Extras  map[string]any
+}
+
+// commit 把这一轮的结果记进消息：先是每个调用的工具回复（按调用的顺序，一一对应），
+// 再是截图（整批回复之后的一条用户消息）。assistant 调用了几个工具，紧跟着的就必须是这几条回复，
+// 所以消息顺序的不变量只在这里维护。
+// 这一轮有工具交出最终回答（Terminate）时返回它：回答引用的图在这里存好、和那条回复一起记下
+func (a *Agent) commit(ctx context.Context, st *state, calls []llm.ToolCall, results []Outcome) *final {
+	var done *final
+	for i, call := range calls {
+		res := results[i]
+		meta := Meta{ToolName: call.Name, Summary: res.Summary, Failed: res.Failed, Display: res.Display, Extras: res.Extras}
+		if res.Terminate && !res.Skipped {
+			ans := a.answer(ctx, res.Answer)
+			meta.Final = true
+			meta.Extras = mergeExtras(res.Extras, ans.Extras)
+			done = &final{Text: ans.Text, Success: res.Success, Extras: ans.Extras}
+		}
+		st.messages = a.keep(ctx, st.messages, toolMessage(call.ID, res.Text), meta)
+	}
+	for _, res := range results {
+		if res.Image != "" {
+			msg := screenshotMessage(st.step, res.Image)
+			st.messages = a.keep(ctx, st.messages, msg, Meta{Synthetic: true})
+		}
+	}
+	return done
+}
+
+// judge 依次问各个插件的 EndOfTurn：它们要追加的提醒都追加，直到有人要求收尾。返回非 nil 就是走收尾
+func (a *Agent) judge(ctx context.Context, st *state, t Turn) *Finish {
+	for _, fn := range a.reg.endOfTurn {
+		v := fn(t)
+		for _, m := range v.Messages {
+			st.messages = a.keep(ctx, st.messages, m, Meta{Synthetic: true})
+		}
+		if v.Finish != nil {
+			return v.Finish
+		}
+	}
+	return nil
+}
+
+// finish 是被迫停下时的最后一步：追加 f.Prompt，不给工具再问一次模型，让它把回答写出来
+func (a *Agent) finish(ctx context.Context, st *state, f Finish) (*Result, error) {
+	st.messages = a.keep(ctx, st.messages, llm.Text(llm.RoleUser, f.Prompt), Meta{Synthetic: true})
+
+	// 不给工具：模型只能用文字作答
+	resp, err := a.chat(ctx, &llm.ChatReq{Messages: a.forModel(st.messages)})
+	if err != nil {
+		return nil, err
+	}
+	// 写成文字的不是 done、是别的工具调用（2026-10-21 成都案例写了一个 open）：那不是回答，AnswerText 也取不出来。
+	// 再问一次，明说不能再调用工具
+	if LeakedCall(resp) {
+		st.messages = a.keep(ctx, st.messages, assistantMessage(resp), Meta{PromptTokens: resp.Usage.PromptTokens})
+		st.messages = a.keep(ctx, st.messages, llm.Text(llm.RoleUser, LeakedCallText), Meta{Synthetic: true})
+		if resp, err = a.chat(ctx, &llm.ChatReq{Messages: a.forModel(st.messages)}); err != nil {
+			return nil, err
+		}
+	}
+	// 收尾的回答也记进日志：下一轮要知道这一轮是怎么结束的
+	ans := a.answer(ctx, AnswerText(resp))
+	a.keep(ctx, st.messages, assistantMessage(resp), Meta{PromptTokens: resp.Usage.PromptTokens, Final: true, Extras: ans.Extras})
+
+	return &Result{
+		Text:      ans.Text,
+		Success:   false, // 被迫停下的，要求的事没有做完
+		Finish:    f.Reason,
+		Steps:     st.steps,
+		Reasoning: resp.Reasoning,
+		Extras:    ans.Extras,
+	}, nil
+}
+
+// answer 把一段文字作为最终回答：交给所有 OnAnswer 钩子处理，返回处理后的回答
+func (a *Agent) answer(ctx context.Context, text string) *Answer {
+	ans := &Answer{Text: text, Extras: map[string]any{}}
+	for _, fn := range a.reg.onAnswer {
+		fn(ctx, ans)
+	}
+	return ans
+}
+
+// assistantMessage 把模型的回复放回对话：调用了哪些工具、思考过程都要原样带回去
+func assistantMessage(resp *llm.ChatResp) llm.Message {
+	msg := llm.Text(llm.RoleAssistant, resp.Content)
+	msg.ToolCalls = resp.ToolCalls
+	msg.Reasoning = resp.Reasoning
+	return msg
+}
+
+func toolMessage(callID, text string) llm.Message {
+	msg := llm.Text(llm.RoleTool, text)
+	msg.ToolCallID = callID
+	return msg
+}
+
+// screenshotMessage 是放截图的那条用户消息：先说明这是什么，再放图
+func screenshotMessage(step int, image string) llm.Message {
+	return llm.Message{Role: llm.RoleUser, Tag: TagScreenshot, Parts: []llm.Part{
+		{Text: fmt.Sprintf("这是第 %d 步截的图，是页面现在的样子：", step+1)},
+		{ImageURL: image},
+	}}
+}
+
+func mergeExtras(a, b map[string]any) map[string]any {
+	if len(a) == 0 {
+		return b
+	}
+	out := make(map[string]any, len(a)+len(b))
+	maps.Copy(out, a)
+	maps.Copy(out, b)
+	return out
+}

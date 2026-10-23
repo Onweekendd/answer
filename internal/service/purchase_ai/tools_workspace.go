@@ -20,8 +20,6 @@
 package purchaseai
 
 import (
-	"context"
-
 	"github.com/apache/answer/internal/service/purchase_ai/tool/sandboxtool"
 	"github.com/apache/answer/internal/service/sandbox"
 )
@@ -41,19 +39,4 @@ const (
 // NewWorkspaces 给依赖注入（wire）用，见 sandboxtool.NewWorkspaces
 func NewWorkspaces(store sandbox.Store) Workspaces {
 	return sandboxtool.NewWorkspaces(store)
-}
-
-// withWorkspace 是根包里那几个要用工作台的工具（收割、交付、存视频）的包装，见 sandboxtool.Bench.With
-func (r *agentRun) withWorkspace(run func(context.Context, Workspace, string) (toolResult, error)) func(context.Context, string) (toolResult, error) {
-	return func(ctx context.Context, arguments string) (toolResult, error) {
-		ws, failed, err := r.Bench.Acquire(ctx)
-		if failed != nil || err != nil {
-			return fromTool(*failed), err
-		}
-		res, err := run(ctx, ws, arguments)
-		if err == nil {
-			res.Text = r.Bench.NoteOnce(res.Text)
-		}
-		return res, err
-	}
 }

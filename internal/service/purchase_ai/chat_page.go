@@ -29,6 +29,9 @@ import (
 	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
+	"github.com/apache/answer/internal/service/purchase_ai/followups"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"github.com/segmentfault/pacman/errors"
 )
 
@@ -114,8 +117,7 @@ func pageMessages(entries []Entry, opts chatOptions) []PageMessage {
 		}
 	}
 
-	r := &agentRun{}
-	opts.apply(r)
+	p := &presenter{opts: opts}
 	out := make([]PageMessage, 0)
 	for _, e := range entries {
 		if !said(e) {
@@ -132,7 +134,7 @@ func pageMessages(entries []Entry, opts chatOptions) []PageMessage {
 				ID:        leaf.ID,
 				ParentID:  e.ID,
 				Role:      "assistant",
-				Events:    r.replayTurn(turn),
+				Events:    p.replayTurn(turn),
 				CreatedAt: leaf.CreatedAt.Unix(),
 			})
 		}
@@ -161,7 +163,7 @@ func userPage(e Entry, parent string) PageMessage {
 //   - 谁调用：打开一段历史对话时 GET /purchase/ai/chat/history → ChatHistory → pageMessages，
 //     每一轮调一次。返回的事件交给页面，页面用直播时同一套代码（frontend/web/src/core/chat/stream.ts 的
 //     replayEvents）折叠成那条回答
-//   - r：只有打码要用的 redact、要不要显示思考的 showReasoning，是一个「空的」agentRun：没有浏览器、
+//   - p：只有打码要用的 redact、要不要显示思考的 showReasoning，是一个「空的」presenter：没有浏览器、
 //     没有模型。用它是为了直接用直播时那几个方法（view、answerEvents），保证两边一样
 //   - turn：一轮里 Agent 记下的全部消息，按顺序，不含开头那条用户消息。一轮典型的样子（下标从 0 数）：
 //     0 assistant  Reasoning「先看京东」 ToolCalls[c1 open {"url":"https://www.jd.com"}]
@@ -173,17 +175,17 @@ func userPage(e Entry, parent string) PageMessage {
 //     6 assistant  ToolCalls[c4 done {"text":"买 [图1：券后价]","followups":["那 bose 呢"]}]
 //     7 tool       c4  Details{Final:true, Shots:[{ID:1, Image:"https://…/uploads/agent/1.jpg"}]}（done 没有 Summary）
 //
-// 直播时这一轮推出去的事件，就是要重放出来的（agent.go 的 loop、runCalls，chat.go 的 Chat）：
+// 直播时这一轮推出去的事件，就是要重放出来的（agent/run.go 的 Run、runCalls，presenter，chat.go 的 Chat）：
 //   - 每条 assistant 消息是一步，step 从 0 数。思考：showReasoning 开着、Reasoning 不空，发 reasoning，Delta 过 r.view
 //   - 这一步的每个调用 i：它的结果（ToolCallID 对得上的那条 tool 消息）Details.Summary 不空才有卡片
 //     （跳过的、done 没有），id 是 fmt.Sprintf("%d-%d", step, i)，依次发：
 //     tool_start（Name 是工具名，Args.Summary 是 r.view(Summary)）→ 有 Product 发 product → 有 Artifact 发 artifact → 有 Draft 发
 //     tool_suspend（ID、Name 和 tool_start 一样，Input 是 Draft）→ tool_end（Result.Summary 是
-//     r.view(resultSummary(toolResult{Failed, Display}))，Result.OK 是 !Failed 的指针）
-//   - 最后是回答：找 Details.Final 为 true 的那条，交给 r.answerEvents(&agentResult{Text, Followups, Shots})，
+//     p.view(resultSummary(tool.Result{Failed, Display}))，Result.OK 是 !Failed 的指针）
+//   - 最后是回答：找 Details.Final 为 true 的那条，交给 p.answerEvents(&agentResult{Text, Followups, Shots})，
 //     它发 text 和 followups。Shots 就是那条的 Details.Shots，Text 和 Followups 看它是哪种：
 //     ① assistant（直接回答、收尾）：Text 是 answerText(&llm.ChatResp{Content: 它的文字})
-//     ② done 的结果：按 ToolCallID 找回那个调用，Text、Followups 从它的参数里解出来（json.Unmarshal 到 doneArgs）
+//     ② done 的结果：按 ToolCallID 找回那个调用，Text 从它的参数里解出来（json.Unmarshal 到 agent.DoneArgs）
 //     ③ draft_post 的结果：Text 是 draftAnswer
 //     找不到 Final：这一轮没跑完（模型出错、用户关了页面），发一条 error，Message 是 chatFailedText
 //
@@ -191,7 +193,7 @@ func userPage(e Entry, parent string) PageMessage {
 //
 // 测试：chat_page_test.go。TestReplayTurn_* 一条规则一个；TestReplayTurn_SameAsLive 是总验收：
 // 真的跑一轮 Chat，收下推给页面的事件，再从日志里重放，两边必须一模一样
-func (r *agentRun) replayTurn(turn []Entry) []Event {
+func (p *presenter) replayTurn(turn []Entry) []Event {
 	// 先扫一遍：调用 ID → 它的结果，调用 ID → 调用本身（done 的回答在参数里），带着回答的那条
 	results := map[string]*StoredMessage{}
 	calls := map[string]StoredCall{}
@@ -212,7 +214,7 @@ func (r *agentRun) replayTurn(turn []Entry) []Event {
 		}
 	}
 
-	// 每条 assistant 是一步：先思考，再是这一步每个调用的卡片（runCalls 发卡片的顺序）
+	// 每条 assistant 是一步：先思考，再是这一步每个调用的卡片（核心 runCalls 发卡片的顺序）
 	var out []Event
 	step := 0
 	for _, e := range turn {
@@ -220,8 +222,8 @@ func (r *agentRun) replayTurn(turn []Entry) []Event {
 		if m == nil || m.Role != llm.RoleAssistant {
 			continue
 		}
-		if text := strings.TrimSpace(m.Reasoning); r.showReasoning && text != "" {
-			out = append(out, Event{Type: EventReasoning, Delta: r.view(text)})
+		if text := strings.TrimSpace(m.Reasoning); p.opts.showReasoning && text != "" {
+			out = append(out, Event{Type: EventReasoning, Delta: p.view(text)})
 		}
 		for i, c := range m.ToolCalls {
 			res := results[c.ID]
@@ -230,7 +232,7 @@ func (r *agentRun) replayTurn(turn []Entry) []Event {
 			}
 			d := res.Details
 			id := fmt.Sprintf("%d-%d", step, i)
-			out = append(out, Event{Type: EventToolStart, ID: id, Name: c.Name, Args: &ToolView{Summary: r.view(d.Summary)}})
+			out = append(out, Event{Type: EventToolStart, ID: id, Name: c.Name, Args: &ToolView{Summary: p.view(d.Summary)}})
 			if d.Product != nil {
 				out = append(out, Event{Type: EventProduct, Product: d.Product})
 			}
@@ -241,7 +243,7 @@ func (r *agentRun) replayTurn(turn []Entry) []Event {
 				out = append(out, Event{Type: EventToolSuspend, ID: id, Name: c.Name, Input: d.Draft})
 			}
 			ok := !d.Failed
-			out = append(out, Event{Type: EventToolEnd, ID: id, Result: &ToolView{Summary: r.view(resultSummary(toolResult{Failed: d.Failed, Display: d.Display})), OK: &ok}})
+			out = append(out, Event{Type: EventToolEnd, ID: id, Result: &ToolView{Summary: p.view(resultSummary(tool.Result{Failed: d.Failed, Display: d.Display})), OK: &ok}})
 		}
 		step++
 	}
@@ -257,13 +259,23 @@ func (r *agentRun) replayTurn(turn []Entry) []Event {
 		if len(final.Parts) > 0 {
 			text = final.Parts[0].Text
 		}
-		res.Text = answerText(&llm.ChatResp{Content: text})
+		res.Text = agent.AnswerText(&llm.ChatResp{Content: text})
 	case final.ToolName == toolDraft:
 		res.Text = draftAnswer
 	default: // done：回答在调用的参数里
-		var args doneArgs
+		// 老对话的 done 有 followups 参数，现在没有了，读出来照样显示
+		var args struct {
+			Text      string   `json:"text"`
+			Followups []string `json:"followups"`
+		}
 		_ = json.Unmarshal([]byte(calls[final.ToolCallID].Arguments), &args)
 		res.Text, res.Followups = args.Text, args.Followups
 	}
-	return append(out, r.answerEvents(res)...)
+	// 直播时 followups 插件在回答出来的那一刻切掉 <followups> 块，重放时做同样的事
+	answer, items := followups.Split(res.Text)
+	res.Text = answer
+	if len(items) > 0 || len(res.Followups) > 0 {
+		res.Followups = followups.Clean(append(res.Followups, items...))
+	}
+	return append(out, p.answerEvents(res)...)
 }

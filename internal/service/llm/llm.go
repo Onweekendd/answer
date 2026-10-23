@@ -83,6 +83,9 @@ type Message struct {
 	Reasoning string
 	// ToolCallID is set on a RoleTool message only: the ToolCall.ID it answers.
 	ToolCallID string
+	// Tag is for the caller's own bookkeeping (which message is a screenshot the
+	// agent took, say). It is never sent to a provider.
+	Tag string
 }
 
 // Text builds a text-only message, which is most of them.

@@ -17,17 +17,41 @@
  * under the License.
  */
 
-package purchaseai
+// Package followups 是回答后面的「后续建议」：用户多半还会接着问的几句话，页面上显示成按钮。
+// 它是一个插件（Plugin）：回答出来时把 <followups> 块切掉、整理好，放进 Extras 交给页面。
+// 帖子分析是一条评论，没有人点按钮，不装这个插件，也不告诉模型这套规则
+package followups
 
 import (
+	"context"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 )
+
+// Extra 是 Answer.Extras 里放建议的 key，值是 []string
+const Extra = "followups"
+
+// Plugin 在最终回答出来时切掉 <followups> 块，建议放进 Extras
+func Plugin() agent.Plugin {
+	return func(r *agent.Registry) {
+		r.OnAnswer(func(_ context.Context, a *agent.Answer) {
+			text, items := Split(a.Text)
+			a.Text = text
+			if len(items) > 0 {
+				a.Extras[Extra] = items
+			}
+		})
+	}
+}
 
 // 后续建议：回答写完，模型觉得用户多半还会接着问，就在最后用 <followups> 包几句用户可能会说的话，
 // 页面上显示成按钮，点一下直接发出去。拿不准、要听大家意见时，「帮我发到社区」就是其中一句。
-// 回答是整段发给页面的，所以建议块在服务端切掉，用户看不到标签
+// 回答是整段发给页面的，所以建议块在服务端切掉，用户看不到标签。
+// 模型忘了写就算了：这只是辅助功能，不强加
 
 const (
 	maxFollowups   = 3
@@ -43,9 +67,9 @@ var followupItem = regexp.MustCompile(`(?s)<q>(.*?)</q>`)
 // 只认符号本身，不能把开头的数字都去掉：「27 寸 4K 和 2K 怎么选」的 27 是内容（2026-10-20 线上实测）
 var listMarker = regexp.MustCompile(`^\s*(?:[-*•·]\s*|\d+\s*[.、)）]\s*)`)
 
-// splitFollowups 把回答里的 <followups> 块切出来，返回去掉块的回答和里面的建议（最多 maxFollowups 句）。
+// Split 把回答里的 <followups> 块切出来，返回去掉块的回答和里面的建议（最多 maxFollowups 句）。
 // 写得不规矩也认：没有 <q> 就一行一句；结束标签丢了（回答被截断）就切到结尾
-func splitFollowups(text string) (string, []string) {
+func Split(text string) (string, []string) {
 	start := strings.Index(text, followupsOpen)
 	if start < 0 {
 		return text, nil
@@ -66,20 +90,19 @@ func splitFollowups(text string) (string, []string) {
 	} else {
 		lines = strings.Split(body, "\n")
 	}
-	return answer, cleanFollowups(lines)
+	return answer, Clean(lines)
 }
 
-// cleanFollowups 整理建议：去掉列表符号和空的、重复的，太长的截短，最多 maxFollowups 句。
-// done 参数里的和 <followups> 块里的都走这里
-func cleanFollowups(lines []string) []string {
+// Clean 整理建议：去掉列表符号和空的、重复的，太长的截短，最多 maxFollowups 句。
+func Clean(lines []string) []string {
 	var followups []string
 	for _, line := range lines {
 		// 模型偶尔还是写成列表：去掉开头的列表符号
-		line = oneLine(listMarker.ReplaceAllString(line, ""))
+		line = tool.OneLine(listMarker.ReplaceAllString(line, ""))
 		if line == "" || slices.Contains(followups, line) {
 			continue
 		}
-		if clipped := clipRunes(line, followupRunes); clipped != line {
+		if clipped := tool.ClipRunes(line, followupRunes); clipped != line {
 			line = clipped + "…"
 		}
 		followups = append(followups, line)
@@ -90,8 +113,8 @@ func cleanFollowups(lines []string) []string {
 	return followups
 }
 
-// followupRules 只在对话里有：帖子分析是一条评论，没有人点按钮
-const followupRules = `后续建议：
+// Rules 是系统提示词里的后续建议规则。只在对话里有：帖子分析是一条评论，没有人点按钮
+const Rules = `后续建议：
 - 回答写完以后，如果用户多半还会接着问，在回答的最后写一个 <followups> 块，里面每句用 <q></q> 包起来，最多 3 句，是用户接下来可能会对你说的话，站在用户的角度写，每句不超过 20 个字。例如：
 <followups>
 <q>帮我发到社区，让大家投票</q>
@@ -99,6 +122,3 @@ const followupRules = `后续建议：
 </followups>
 - 拿不准该不该买、需要听听别人意见时，把「帮我发到社区，让大家投票」放进去。
 - 没有值得接着问的就不写；用户已经说要发帖、你已经整理了帖子草稿时也不写。`
-
-// followupsInDone 只在有浏览器工具时加上：这时回答走 done，建议放在它的 followups 参数里
-const followupsInDone = "\n- 用 done 结束时，后续建议填在 done 的 followups 参数里，不用写 <followups> 块；只想在思考里，用户看不到。"

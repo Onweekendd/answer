@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"image"
 	"image/color"
 	"image/png"
@@ -85,44 +86,46 @@ func (f *fakeWorkspaces) Acquire(context.Context, int64, string) (Workspace, boo
 }
 
 // sandboxRun 是一个有工作台、没有插件的任务
-func sandboxRun(ws *fakeWorkspace) (*agentRun, *fakeWorkspaces) {
-	r := newAgentRun(nil, noBrowser{}, testLimits())
+func sandboxRun(ws *fakeWorkspace) (*toolRun, *fakeWorkspaces) {
 	f := &fakeWorkspaces{ws: ws}
-	r.Workspaces = f
-	return r, f
+	return newToolRun(noBrowser{}, func(o *taskOptions) {
+		o.browserOn = false
+		o.workspaces = f
+	}), f
 }
 
-// call 按名字调一个工具，和循环里一样
-func callTool(t *testing.T, r *agentRun, name, arguments string) (toolResult, error) {
+// callTool 按名字调一个工具，和循环里一样
+func callTool(t *testing.T, r *toolRun, name, arguments string) (tool.Result, error) {
 	t.Helper()
-	tools, _, err := r.tools(false)
-	require.NoError(t, err)
-	tool, ok := tools[name]
-	require.True(t, ok, "没有工具 %s", name)
-	return tool.run(context.Background(), arguments)
+	for _, spec := range r.agent.Tools() {
+		if spec.Name == name {
+			return spec.Run(context.Background(), arguments)
+		}
+	}
+	require.FailNow(t, "没有工具 "+name)
+	return tool.Result{}, nil
 }
 
 // ---------- 什么时候有哪些工具 ----------
 
 func TestTools_SandboxToolsOnlyWithAWorkspace(t *testing.T) {
-	names := func(r *agentRun, browserOn bool) []string {
-		_, defs, err := r.tools(browserOn)
-		require.NoError(t, err)
-		out := make([]string, len(defs))
-		for i, d := range defs {
-			out[i] = d.Name
+	names := func(r *toolRun) []string {
+		var out []string
+		for _, d := range r.agent.Defs() {
+			out = append(out, d.Name)
 		}
 		return out
 	}
 
 	// Arrange
-	without := newAgentRun(nil, noBrowser{}, testLimits())
+	without := newToolRun(newFakeBrowser())
 	with, _ := sandboxRun(newFakeWorkspace())
+	withBoth := newToolRun(newFakeBrowser(), func(o *taskOptions) { o.workspaces = &fakeWorkspaces{ws: newFakeWorkspace()} })
 
 	// Act + Assert：插件没连着，有沙箱也能读写文件，但收割要从页面上收
-	assert.NotContains(t, names(without, true), toolBash)
-	assert.Equal(t, []string{toolBash, toolReadFile, toolWriteFile, toolEditFile, toolDeliver}, names(with, false))
-	assert.Contains(t, names(with, true), toolHarvest)
+	assert.NotContains(t, names(without), toolBash)
+	assert.Equal(t, []string{toolBash, toolReadFile, toolWriteFile, toolEditFile, toolDeliver}, names(with))
+	assert.Contains(t, names(withBoth), toolHarvest)
 }
 
 // ---------- 懒创建 ----------
@@ -328,7 +331,7 @@ func TestReadFile_ImageIsShownAndNumbered(t *testing.T) {
 	assert.False(t, res.Failed)
 	assert.True(t, strings.HasPrefix(res.Image, "data:image/jpeg;base64,"), "模型要看得见")
 	assert.Contains(t, res.Text, "图1")
-	assert.Len(t, r.pictures, 1)
+	assert.Len(t, r.pics.list, 1)
 }
 
 func TestReadFile_TextHasLineNumbers(t *testing.T) {

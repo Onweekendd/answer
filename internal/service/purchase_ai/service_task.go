@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/followups"
 )
 
 // TaskResult 是 RunTask 的结果，字段和 agentResult 一样，只是导出给包外的脚本用
@@ -49,45 +50,47 @@ type TaskStep struct {
 }
 
 // TaskOption 调整 RunTask 的一次运行
-type TaskOption func(*agentRun)
+type TaskOption func(*taskOptions)
 
 // WithWorkspaces 让 Agent 有工作台（沙箱），ws 为 nil 时不给。RunTask 没有对话，
 // 用的是临时沙箱（chatID 0）：不记进数据库，闲置以后 Cube 自己销毁
 func WithWorkspaces(ws Workspaces) TaskOption {
-	return func(r *agentRun) { r.Workspaces = ws }
+	return func(o *taskOptions) { o.workspaces = ws }
 }
 
 // WithArtifactStore 让 deliver 能把网页存下来。不给的话 deliver 会告诉模型存不了
 func WithArtifactStore(store ArtifactStore) TaskOption {
-	return func(r *agentRun) { r.artifactStore = store }
+	return func(o *taskOptions) { o.artifactStore = store }
 }
 
 // RunTask 不经过帖子，直接让 Agent 做一个任务：系统提示词和 Analyze 用的一样，用户消息就是 task。
 // 给 case 运行器和手动试跑用，它们在 answer run 外面，自己带模型和浏览器。
 func RunTask(ctx context.Context, client llm.Client, b Browser, task string, opts ...TaskOption) (*TaskResult, error) {
 	browserOn := b.Connected()
-	messages := []llm.Message{
-		llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn)),
-		llm.Text(llm.RoleUser, task),
-	}
-
-	r := newAgentRun(client, b, defaultLimits)
+	o := taskOptions{llm: client, browser: b, browserOn: browserOn, limits: defaultLimits}
 	for _, opt := range opts {
-		opt(r)
+		opt(&o)
 	}
+	prompt := buildSystemPrompt(time.Now(), browserOn)
 	// 和对话一样：有工作台才告诉模型工作台的规矩（chatPrompt）
-	if r.Workspaces != nil {
-		messages[0] = llm.Text(llm.RoleSystem, buildSystemPrompt(time.Now(), browserOn)+"\n\n"+workspaceRules)
+	if o.workspaces != nil {
+		prompt += "\n\n" + workspaceRules
 	}
-	defer r.CloseTabs()
-	res, err := r.run(ctx, messages, browserOn)
+	messages := []llm.Message{llm.Text(llm.RoleSystem, prompt), llm.Text(llm.RoleUser, task)}
+
+	t, err := newTask(o)
+	if err != nil {
+		return nil, err
+	}
+	defer t.close()
+	res, err := t.run(ctx, messages)
 	if err != nil {
 		return nil, err
 	}
 
 	// 判卷看的是回答本身，后续建议是给页面的按钮
-	answer, _ := splitFollowups(res.Text)
-	out := &TaskResult{Text: answer, Success: res.Success, Finish: string(res.Finish), Products: res.Products, Artifacts: r.artifacts}
+	answer, _ := followups.Split(res.Text)
+	out := &TaskResult{Text: answer, Success: res.Success, Finish: string(res.Finish), Products: res.Products, Artifacts: t.arts.list}
 	for _, s := range res.Steps {
 		out.Steps = append(out.Steps, TaskStep(s))
 	}

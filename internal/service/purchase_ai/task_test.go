@@ -25,6 +25,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
+	"github.com/apache/answer/internal/service/purchase_ai/guard"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"strings"
 	"testing"
 	"time"
@@ -338,8 +342,21 @@ func testLimits() agentLimits {
 	return limits
 }
 
+// newTestTask 是一次任务：插件连没连着看 b.Connected()，和 Chat 一样
+func newTestTask(model llm.Client, b Browser, limits agentLimits, mods ...func(*taskOptions)) *task {
+	o := taskOptions{llm: model, browser: b, browserOn: b.Connected(), limits: limits}
+	for _, mod := range mods {
+		mod(&o)
+	}
+	tk, err := newTask(o)
+	if err != nil {
+		panic(err)
+	}
+	return tk
+}
+
 func runAgentWith(model *fakeLLM, b Browser, limits agentLimits) (*agentResult, error) {
-	return newAgentRun(model, b, limits).run(context.Background(), startMessages(), true)
+	return newTestTask(model, b, limits).run(context.Background(), startMessages())
 }
 
 // toolReplies 找出第 i 次请求里所有的工具消息，按顺序
@@ -431,18 +448,18 @@ func Test_run(t *testing.T) {
 		b := newFakeBrowser()
 
 		// Act
-		_, err := newAgentRun(model, b, testLimits()).run(context.Background(), start, true)
+		_, err := newTestTask(model, b, testLimits()).run(context.Background(), start)
 
 		// Assert：第四次请求里，第一张截图已经换成占位语，第二张还在，用户上传的那张没动
 		require.NoError(t, err)
 		var shots []llm.Message
 		for _, msg := range model.reqs[3].Messages[2:] {
-			if msg.Role == llm.RoleUser && strings.HasPrefix(msg.Parts[0].Text, "这是第") || msg.Role == llm.RoleUser && msg.Parts[0].Text == screenshotOmitted {
+			if msg.Role == llm.RoleUser && strings.HasPrefix(msg.Parts[0].Text, "这是第") || msg.Role == llm.RoleUser && msg.Parts[0].Text == browsertool.ScreenshotOmitted {
 				shots = append(shots, msg)
 			}
 		}
 		require.Len(t, shots, 2)
-		require.Equal(t, []llm.Part{{Text: screenshotOmitted}}, shots[0].Parts)
+		require.Equal(t, []llm.Part{{Text: browsertool.ScreenshotOmitted}}, shots[0].Parts)
 		require.NotEmpty(t, shots[1].Parts[1].ImageURL)
 		require.Equal(t, uploaded, model.reqs[3].Messages[1].Parts[1].ImageURL)
 		require.Equal(t, []string{"open " + jdHome, "screenshot", "screenshot 3"}, b.calls)
@@ -481,7 +498,7 @@ func Test_run(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, finishSteps, res.Finish)
+		require.Equal(t, agent.ReasonSteps, res.Finish)
 		require.Equal(t, "**再等等** 双 11 前别买", res.Text)
 	})
 
@@ -505,11 +522,11 @@ func Test_run(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, finishSteps, res.Finish)
+		require.Equal(t, agent.ReasonSteps, res.Finish)
 		require.Equal(t, "**再等等** 双 11 前别买", res.Text)
 		require.Len(t, model.reqs, 3)
 		require.Empty(t, model.reqs[2].Tools)
-		require.Equal(t, leakedCallText, model.lastMessage(2))
+		require.Equal(t, agent.LeakedCallText, model.lastMessage(2))
 	})
 
 	t.Run("同一轮里的调用按顺序执行：先填字，再点搜索", func(t *testing.T) {
@@ -530,7 +547,7 @@ func Test_run(t *testing.T) {
 		replies := toolReplies(model, 2)
 		require.Equal(t, "c2", replies[1].ToolCallID)
 		require.Equal(t, "c3", replies[2].ToolCallID)
-		require.NotEqual(t, skippedText, replies[2].Parts[0].Text)
+		require.NotEqual(t, agent.SkippedText, replies[2].Parts[0].Text)
 	})
 
 	t.Run("点击改变了页面，同一轮后面的调用不执行，但每个都有回复", func(t *testing.T) {
@@ -551,7 +568,7 @@ func Test_run(t *testing.T) {
 		replies := toolReplies(model, 2)
 		require.Len(t, replies, 3)
 		require.Equal(t, "c3", replies[2].ToolCallID)
-		require.Equal(t, skippedText, replies[2].Parts[0].Text)
+		require.Equal(t, agent.SkippedText, replies[2].Parts[0].Text)
 	})
 
 	t.Run("搜索结果在新标签页里打开：切换过去，接下来在新标签页里看页面", func(t *testing.T) {
@@ -591,7 +608,7 @@ func Test_run(t *testing.T) {
 		replies := toolReplies(model, 2)
 		require.Contains(t, replies[1].Parts[0].Text, "text 不能为空")
 		require.Equal(t, "c3", replies[2].ToolCallID)
-		require.Equal(t, skippedAfterFailText, replies[2].Parts[0].Text)
+		require.Equal(t, agent.SkippedAfterFailText, replies[2].Parts[0].Text)
 	})
 
 	t.Run("done 后面的调用不执行", func(t *testing.T) {
@@ -615,7 +632,7 @@ func Test_run(t *testing.T) {
 		model := &fakeLLM{replies: []*llm.ChatResp{{Content: "**再等等**"}}}
 
 		// Act
-		res, err := newAgentRun(model, noBrowser{}, testLimits()).run(context.Background(), startMessages(), false)
+		res, err := newTestTask(model, noBrowser{}, testLimits()).run(context.Background(), startMessages())
 
 		// Assert
 		require.NoError(t, err)
@@ -639,7 +656,7 @@ func Test_run(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "**买**", res.Text)
 		require.Len(t, model.reqs, 3)
-		require.Equal(t, doneReminder, model.lastMessage(2))
+		require.Equal(t, agent.DoneReminder, model.lastMessage(2))
 	})
 
 	t.Run("空回复不原样放回对话：换成占位语，提醒它是空的", func(t *testing.T) {
@@ -657,8 +674,8 @@ func Test_run(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "**买**", res.Text)
 		msgs := model.reqs[2].Messages
-		require.Equal(t, emptyReply, msgs[len(msgs)-2].Parts[0].Text)
-		require.Equal(t, emptyReminder, model.lastMessage(2))
+		require.Equal(t, agent.EmptyReply, msgs[len(msgs)-2].Parts[0].Text)
+		require.Equal(t, agent.EmptyReminder, model.lastMessage(2))
 	})
 
 	t.Run("提醒过还是空回复：收尾，不给工具让它写出回答", func(t *testing.T) {
@@ -675,10 +692,10 @@ func Test_run(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, finishEmpty, res.Finish)
+		require.Equal(t, agent.ReasonEmpty, res.Finish)
 		require.Equal(t, "**再等等**", res.Text)
 		require.Empty(t, model.reqs[3].Tools)
-		require.Equal(t, finishPrompts[finishEmpty], model.lastMessage(3))
+		require.Equal(t, agent.EmptyPrompt, model.lastMessage(3))
 	})
 
 	t.Run("给了工具，第一步就只回文字：也要先提醒调用 done", func(t *testing.T) {
@@ -696,7 +713,7 @@ func Test_run(t *testing.T) {
 		// Assert：第一句没有被当成答案，提醒以后模型真的去打开了京东
 		require.NoError(t, err)
 		require.Equal(t, "**买**", res.Text)
-		require.Equal(t, doneReminder, model.lastMessage(1))
+		require.Equal(t, agent.DoneReminder, model.lastMessage(1))
 		require.Equal(t, []string{"open " + jdHome}, b.calls)
 	})
 
@@ -715,17 +732,17 @@ func Test_run(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, finishBrowserGone, res.Finish)
+		require.Equal(t, agent.Reason(tool.ErrBrowserGone.Reason), res.Finish)
 		require.False(t, res.Success)
 		require.Equal(t, "根据已有信息：再等等", res.Text)
 
 		last := model.reqs[2]
 		require.Empty(t, last.Tools)
-		require.Equal(t, finishPrompts[finishBrowserGone], model.lastMessage(2))
+		require.Equal(t, tool.ErrBrowserGone.Prompt, model.lastMessage(2))
 		replies := toolReplies(model, 2)
 		require.Len(t, replies, 3)
-		require.Equal(t, browserGoneText, replies[1].Parts[0].Text)
-		require.Equal(t, skippedText, replies[2].Parts[0].Text)
+		require.Equal(t, tool.ErrBrowserGone.Text, replies[1].Parts[0].Text)
+		require.Equal(t, agent.SkippedText, replies[2].Parts[0].Text)
 	})
 
 	t.Run("连续失败 3 次走收尾", func(t *testing.T) {
@@ -743,10 +760,10 @@ func Test_run(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, finishFailures, res.Finish)
+		require.Equal(t, guard.ReasonFailures, res.Finish)
 		require.Len(t, model.reqs, 5)
 		require.Empty(t, model.reqs[4].Tools)
-		require.Equal(t, finishPrompts[finishFailures], model.lastMessage(4))
+		require.Equal(t, guard.FailuresPrompt, model.lastMessage(4))
 		// 每次失败模型都能看到原因
 		require.Contains(t, toolReplies(model, 2)[1].Parts[0].Text, "没有这个编号的元素")
 	})
@@ -787,10 +804,10 @@ func Test_run(t *testing.T) {
 		// Assert：指纹用的是滚动之前的位置。前 3 次是从 0、1、2 屏往下滚，各不相同；
 		// 从第 4 次起，每次都是"已经在第 3 屏（底部）还往下滚"：第 6 次是这个状态的第 3 次，提醒；第 8 次是第 5 次，收尾
 		require.NoError(t, err)
-		require.Equal(t, finishLoop, res.Finish)
+		require.Equal(t, guard.ReasonLoop, res.Finish)
 		require.Len(t, model.reqs, 10)
 		require.Contains(t, model.lastMessage(7), "第 3 次执行 scroll")
-		require.Equal(t, finishPrompts[finishLoop], model.lastMessage(9))
+		require.Equal(t, guard.LoopPrompt, model.lastMessage(9))
 	})
 
 	t.Run("正常往下滚、页面一直在加载更多：不会被当成打转", func(t *testing.T) {
@@ -831,13 +848,14 @@ func Test_run(t *testing.T) {
 				calls(toolCall("c4", toolScroll, `{"direction":"up"}`)),
 				{Content: "好"},
 			}}
-			r := newAgentRun(model, newFakeBrowser(), limits)
+			var mods []func(*taskOptions)
 			if sandbox {
-				r.Workspaces = &fakeWorkspaces{ws: &fakeWorkspace{}}
+				mods = append(mods, func(o *taskOptions) { o.workspaces = &fakeWorkspaces{ws: &fakeWorkspace{}} })
 			}
+			r := newTestTask(model, newFakeBrowser(), limits, mods...)
 
 			// Act
-			_, err := r.run(context.Background(), startMessages(), true)
+			_, err := r.run(context.Background(), startMessages())
 
 			// Assert：第 2 步之后剩 2 步
 			require.NoError(t, err)
@@ -867,12 +885,12 @@ func Test_run(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, finishSteps, res.Finish)
+		require.Equal(t, agent.ReasonSteps, res.Finish)
 		require.Equal(t, "根据已有信息：买", res.Text)
 		require.Len(t, model.reqs, 5)
-		require.Equal(t, stepWarningText(2), model.lastMessage(2))
+		require.Equal(t, guard.WarnText(2), model.lastMessage(2))
 		require.Empty(t, model.reqs[4].Tools)
-		require.Equal(t, finishPrompts[finishSteps], model.lastMessage(4))
+		require.Equal(t, agent.StepsPrompt, model.lastMessage(4))
 
 		warnings := 0
 		for _, msg := range model.reqs[4].Messages {
@@ -899,7 +917,7 @@ func Test_run(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 		latest := toolReplies(model, 4)
-		require.Equal(t, snapshotOmitted, latest[1].Parts[0].Text)
+		require.Equal(t, browsertool.SnapshotOmitted, latest[1].Parts[0].Text)
 		require.Equal(t, "c2", latest[1].ToolCallID)
 		require.Contains(t, latest[3].Parts[0].Text, "iPhone 17 256GB")
 		// 之前发出去的那次请求没有被改掉
@@ -913,7 +931,7 @@ func Test_run(t *testing.T) {
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "好"))}}
 
 		// Act
-		_, err := newAgentRun(model, newFakeBrowser(), testLimits()).run(context.Background(), input, true)
+		_, err := newTestTask(model, newFakeBrowser(), testLimits()).run(context.Background(), input)
 
 		// Assert：长度以外、容量以内的空位还是空的
 		require.NoError(t, err)
@@ -942,7 +960,7 @@ func Test_run(t *testing.T) {
 		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "不该走到这里"))}}
 
 		// Act
-		_, err := newAgentRun(model, newFakeBrowser(), testLimits()).run(ctx, startMessages(), true)
+		_, err := newTestTask(model, newFakeBrowser(), testLimits()).run(ctx, startMessages())
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)

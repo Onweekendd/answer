@@ -31,8 +31,8 @@ const (
 	NameEditFile  = "edit_file"
 )
 
-// Specs 是工作台工具，按名字查。每个都先拿到工作台再执行（With）
-func (b *Bench) Specs() map[string]tool.Spec {
+// Specs 是工作台工具，按固定的顺序。每个都先拿到工作台再执行（With）
+func (b *Bench) Specs() []tool.Spec {
 	list := []tool.Spec{
 		{Name: NameBash, Description: "在工作台（一台独立的 Linux 电脑，装了 python3、node、Chromium）里执行一条 bash 命令，在 /home/user 下执行，返回退出码和输出。" +
 			"跑脚本、截图（shot 页面.html 输出.png）、装包都用它；脚本先用 write_file 写进文件再执行，不要把长代码塞进一条命令。",
@@ -45,9 +45,5 @@ func (b *Bench) Specs() map[string]tool.Spec {
 		{Name: NameEditFile, Description: "修改工作台里的一个文件：把一段原文换成新文字。原文要和文件里一字不差、只出现一次，拿不准就先 read_file。",
 			Args: editFileArgs{}, Run: b.With(b.EditFile)},
 	}
-	specs := make(map[string]tool.Spec, len(list))
-	for _, spec := range list {
-		specs[spec.Name] = spec
-	}
-	return specs
+	return list
 }

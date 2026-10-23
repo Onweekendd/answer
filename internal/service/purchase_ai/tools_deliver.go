@@ -29,7 +29,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/purchase_ai/links"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"github.com/apache/answer/internal/service/purchase_ai/tool/sandboxtool"
 	"github.com/segmentfault/pacman/log"
 )
@@ -67,6 +70,45 @@ const (
 	inlineMaxBytes  = 12 << 20
 )
 
+// deliverer 是交付网页的工具，和这一轮交付了哪些
+type deliverer struct {
+	bench    *sandboxtool.Bench
+	store    ArtifactStore // nil 就交付不了，deliver 会告诉模型存不了
+	pres     *presenter
+	links    *linkBook    // 网页里的链接核对
+	products *productBook // 网页里要链上商品卡片
+	list     []Artifact
+	at       map[string]int // 工作台里的路径 → list 的下标：再交付同一个文件就是更新它
+}
+
+// plugin 装 deliver
+func (d *deliverer) plugin() agent.Plugin {
+	return func(r *agent.Registry) {
+		r.Tool(tool.Spec{Name: toolDeliver, Description: "把工作台里做好的网页交给用户：用户会在回答下方看到一张卡片，点开是网页预览，还能保存成图片发给家人朋友。" +
+			"用户要的对比表、清单、行程卡这类东西，做成网页、用 shot 截图看过没问题以后，一定要用它交付；中间稿、脚本、素材不要交付。" +
+			"只能交付 .html。网页里引用的工作台里的图会自动内嵌；商品、结论要带上你打开过的商品页和原文链接（<a href>），会自动在新标签页打开；改了以后再交付同一个 path 就是更新它。",
+			Args: deliverArgs{}, Run: d.bench.With(d.deliver)})
+	}
+}
+
+// reminder 在还剩 at 步时提醒一次：用户要的图、表、网页留够步数做。只在有工作台时装
+func (d *deliverer) reminder(at int) agent.Plugin {
+	return func(r *agent.Registry) {
+		r.EndOfTurn(func(t agent.Turn) agent.Verdict {
+			if t.Left != at {
+				return agent.Verdict{}
+			}
+			return agent.Verdict{Messages: []llm.Message{llm.Text(llm.RoleUser, deliverWarningText(t.Left))}}
+		})
+	}
+}
+
+// deliverWarningText 在有工作台、剩 deliverAt 步时追加一次：用户要的图、表、网页留够步数做
+func deliverWarningText(remaining int) string {
+	return fmt.Sprintf("还剩 %d 步。用户要你做图、表格、网页这类东西的话，现在就开始在工作台里做（写网页、shot 截图、看一眼），"+
+		"做完还有步数再补查；用户没要就不用管这条。", remaining)
+}
+
 type deliverArgs struct {
 	Path  string `json:"path" description:"工作台里那个网页的路径，比如 trip.html、out/compare.html。只能是 .html"`
 	Title string `json:"title" description:"给用户看的名字，写短一点，比如「成都 4 天行程」「扫地机器人对比」"`
@@ -75,29 +117,29 @@ type deliverArgs struct {
 // deliver 把工作台里做好的网页交给用户。
 // 一次调用做完全部的事：沙箱随时可能被回收，模型调用 deliver 的那一刻文件一定还在，拷出来就不怕了。
 // 返回的 error 只在整次任务结束了（用户关了页面、超时）时不为 nil；别的问题都是 Failed，模型可以改了再交
-func (r *agentRun) deliver(ctx context.Context, ws Workspace, arguments string) (toolResult, error) {
+func (d *deliverer) deliver(ctx context.Context, ws Workspace, arguments string) (tool.Result, error) {
 	var args deliverArgs
-	if res := decodeArgs(arguments, &args, `{"path": "trip.html", "title": "成都 4 天行程"}`); res != nil {
+	if res := tool.DecodeArgs(arguments, &args, `{"path": "trip.html", "title": "成都 4 天行程"}`); res != nil {
 		return *res, nil
 	}
 	p := sandboxtool.Path(args.Path)
 	if p == "" {
-		return toolResult{Failed: true, Text: "参数无效：path 不能为空。"}, nil
+		return tool.Result{Failed: true, Text: "参数无效：path 不能为空。"}, nil
 	}
 	if strings.ToLower(path.Ext(p)) != ".html" {
-		return toolResult{Failed: true, Text: "只能交付网页（.html）：对比表、清单、行程卡都写成一个网页再交付。" +
+		return tool.Result{Failed: true, Text: "只能交付网页（.html）：对比表、清单、行程卡都写成一个网页再交付。" +
 			"图片不用单独交付，交付网页时会自动截一张图，用户可以保存下来发给别人。"}, nil
 	}
-	title := r.cardText(args.Title)
+	title := d.pres.cardText(args.Title)
 	if title == "" {
-		return toolResult{Failed: true, Text: "参数无效：title 不能为空，写给用户看的名字，比如「成都 4 天行程」。"}, nil
+		return tool.Result{Failed: true, Text: "参数无效：title 不能为空，写给用户看的名字，比如「成都 4 天行程」。"}, nil
 	}
-	if r.artifactStore == nil {
-		return toolResult{Failed: true, Text: "这里存不了交付的文件。在回答里告诉用户网页做好了、在工作台的哪个位置。"}, nil
+	if d.store == nil {
+		return tool.Result{Failed: true, Text: "这里存不了交付的文件。在回答里告诉用户网页做好了、在工作台的哪个位置。"}, nil
 	}
-	at, again := r.artifactAt[p]
-	if !again && len(r.artifacts) >= maxArtifacts {
-		return toolResult{Failed: true, Text: fmt.Sprintf("这一轮已经交付了 %d 个文件，不能再交付了。"+
+	at, again := d.at[p]
+	if !again && len(d.list) >= maxArtifacts {
+		return tool.Result{Failed: true, Text: fmt.Sprintf("这一轮已经交付了 %d 个文件，不能再交付了。"+
 			"把要给用户的内容合进已经交付的网页里，改完再交付同一个 path。", maxArtifacts)}, nil
 	}
 
@@ -105,34 +147,34 @@ func (r *agentRun) deliver(ctx context.Context, ws Workspace, arguments string) 
 	page, err := ws.Download(ctx, p)
 	if err != nil {
 		if ctx.Err() != nil {
-			return toolResult{}, ctx.Err()
+			return tool.Result{}, ctx.Err()
 		}
-		return toolResult{Failed: true, Text: fmt.Sprintf("读不到 %s：%v。文件可能不存在，用 bash 的 ls 看看。", p, err)}, nil
+		return tool.Result{Failed: true, Text: fmt.Sprintf("读不到 %s：%v。文件可能不存在，用 bash 的 ls 看看。", p, err)}, nil
 	}
 
 	// ② 网页要自包含：引用的工作台里的图换成 data URI，不然存到我们这边以后全是裂图
 	page, report, err := inlineImages(ctx, ws, path.Dir(p), page)
 	if err != nil {
-		return toolResult{}, err
+		return tool.Result{}, err
 	}
 	// 链接洗干净、在新标签页打开，核对这次见没见过（tools_deliver_links.go）
-	page, linked := links.Fix(page, r.sawLink)
-	report += r.linkText(linked)
+	page, linked := links.Fix(page, d.links.saw)
+	report += d.links.text(linked)
 
 	// ③ 存网页。存不了多半是太大了，或者根本不是文本
-	pageURL, err := r.artifactStore.SaveAgentFile(ctx, ".html", page)
+	pageURL, err := d.store.SaveAgentFile(ctx, ".html", page)
 	if err != nil {
 		if ctx.Err() != nil {
-			return toolResult{}, ctx.Err()
+			return tool.Result{}, ctx.Err()
 		}
 		log.Warnf("purchase ai: cannot save artifact %s: %v", p, err)
-		return toolResult{Failed: true, Text: fmt.Sprintf("这个网页存不下来：%v。网页连同内嵌的图不能超过 20 MB，图太多就先缩小再放进网页。", err)}, nil
+		return tool.Result{Failed: true, Text: fmt.Sprintf("这个网页存不下来：%v。网页连同内嵌的图不能超过 20 MB，图太多就先缩小再放进网页。", err)}, nil
 	}
 
 	// ④ 截一张图。截不成不算交付失败：卡片上没有缩略图，网页照样能看
-	image, shotErr := r.artifactShot(ctx, ws, p)
+	image, shotErr := d.shot(ctx, ws, p)
 	if ctx.Err() != nil {
-		return toolResult{}, ctx.Err()
+		return tool.Result{}, ctx.Err()
 	}
 	if shotErr != nil {
 		log.Warnf("purchase ai: cannot screenshot artifact %s: %v", p, shotErr)
@@ -141,17 +183,17 @@ func (r *agentRun) deliver(ctx context.Context, ws Workspace, arguments string) 
 	// ⑤ 记下来、推给页面。再交付同一个文件就是更新它，编号不变
 	a := Artifact{Title: title, URL: pageURL, Image: image, Size: len(page)}
 	if again {
-		a.ID = r.artifacts[at].ID
-		r.artifacts[at] = a
+		a.ID = d.list[at].ID
+		d.list[at] = a
 	} else {
-		a.ID = len(r.artifacts) + 1
-		r.artifacts = append(r.artifacts, a)
-		if r.artifactAt == nil {
-			r.artifactAt = map[string]int{}
+		a.ID = len(d.list) + 1
+		d.list = append(d.list, a)
+		if d.at == nil {
+			d.at = map[string]int{}
 		}
-		r.artifactAt[p] = len(r.artifacts) - 1
+		d.at[p] = len(d.list) - 1
 	}
-	r.emit(ctx, Event{Type: EventArtifact, Artifact: &a})
+	d.pres.emit(ctx, Event{Type: EventArtifact, Artifact: &a})
 
 	verb := "交付"
 	if again {
@@ -166,12 +208,12 @@ func (r *agentRun) deliver(ctx context.Context, ws Workspace, arguments string) 
 	if shotErr != nil {
 		fmt.Fprintf(&text, "\n截图没截成（%v），卡片上没有缩略图，网页照样能看。", shotErr)
 	}
-	return toolResult{Text: text.String(), Display: verb + "了「" + a.Title + "」", Artifact: &a}, nil
+	return tool.Result{Text: text.String(), Display: verb + "了「" + a.Title + "」", Extras: map[string]any{extraArtifact: &a}}, nil
 }
 
-// artifactShot 在工作台里用 shot 把网页截成图，存起来返回网址。截的是沙箱里的原文件：相对路径的图都在
-func (r *agentRun) artifactShot(ctx context.Context, ws Workspace, page string) (string, error) {
-	out := fmt.Sprintf("/tmp/deliver/%d.png", len(r.artifacts)+1)
+// shot 在工作台里用 shot 把网页截成图，存起来返回网址。截的是沙箱里的原文件：相对路径的图都在
+func (d *deliverer) shot(ctx context.Context, ws Workspace, page string) (string, error) {
+	out := fmt.Sprintf("/tmp/deliver/%d.png", len(d.list)+1)
 	res, err := ws.Run(ctx, "mkdir -p /tmp/deliver && shot "+shellQuote(page)+" "+out, artifactShotTimeout)
 	switch {
 	case err != nil:
@@ -179,13 +221,13 @@ func (r *agentRun) artifactShot(ctx context.Context, ws Workspace, page string) 
 	case res.TimedOut:
 		return "", fmt.Errorf("截了 %d 秒没截完", int(artifactShotTimeout.Seconds()))
 	case res.ExitCode != 0:
-		return "", fmt.Errorf("shot 退出码 %d：%s", res.ExitCode, clipRunes(oneLine(res.Stderr), 200))
+		return "", fmt.Errorf("shot 退出码 %d：%s", res.ExitCode, tool.ClipRunes(tool.OneLine(res.Stderr), 200))
 	}
 	png, err := ws.Download(ctx, out)
 	if err != nil {
 		return "", err
 	}
-	return r.artifactStore.SaveAgentFile(ctx, ".png", png)
+	return d.store.SaveAgentFile(ctx, ".png", png)
 }
 
 // shellQuote 把一个参数包成 shell 里的单引号字符串：路径里可能有空格、中文、引号

@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"testing"
 
 	"github.com/apache/answer/internal/entity"
@@ -61,12 +62,15 @@ const (
 	shot1   = "http://site/uploads/agent/b.jpg"
 )
 
-func draftRun(store DraftStore) (*agentRun, chan Event) {
-	r := newToolRun(newFakeBrowser())
-	r.draft = &draftContext{userID: "7", candidates: []string{upload1, shot1}, store: store}
-	r.callID = "3-0"
+// draftCtx 是核心执行第 3 步的第 0 个调用时给工具的 ctx
+var draftCtx = agent.WithCallID(context.Background(), "3-0")
+
+func draftRun(store DraftStore) (*toolRun, chan Event) {
 	events := make(chan Event, 4)
-	r.events = events
+	r := newToolRun(newFakeBrowser(), func(o *taskOptions) {
+		o.events = events
+		o.draft = &draftContext{userID: "7", candidates: []string{upload1, shot1}, store: store}
+	})
 	return r, events
 }
 
@@ -77,14 +81,14 @@ func Test_draftPost(t *testing.T) {
 		r, events := draftRun(store)
 
 		// Act
-		res, err := r.draftPost(context.Background(), `{"title":"iPad Air M3 现在买还是等双 11？",
+		res, err := r.draft.post(draftCtx, `{"title":"iPad Air M3 现在买还是等双 11？",
 			"content":"预算 4000，主要记笔记。京东自营 4299。","images":["`+shot1+`","http://evil/x.jpg"],
 			"price":4299,"link":"https://item.jd.com/100.html?spm=x","category":"数码","vote":"wait"}`)
 
 		// Assert
 		require.NoError(t, err)
 		require.False(t, res.Failed, res.Text)
-		assert.True(t, res.Done)
+		assert.True(t, res.Terminate)
 		assert.Equal(t, draftAnswer, res.Answer)
 		ev := <-events
 		assert.Equal(t, EventToolSuspend, ev.Type)
@@ -104,7 +108,7 @@ func Test_draftPost(t *testing.T) {
 		r, events := draftRun(&fakeDrafts{saved: map[string]*Draft{}})
 
 		// Act
-		_, _ = r.draftPost(context.Background(), `{"title":"这个显示器值不值","content":"x","images":["nope"],"vote":"buy"}`)
+		_, _ = r.draft.post(draftCtx, `{"title":"这个显示器值不值","content":"x","images":["nope"],"vote":"buy"}`)
 
 		// Assert
 		assert.Equal(t, []string{upload1, shot1}, (<-events).Input.Images)
@@ -120,7 +124,7 @@ func Test_draftPost(t *testing.T) {
 			r, _ := draftRun(store)
 
 			// Act
-			res, _ := r.draftPost(context.Background(), args)
+			res, _ := r.draft.post(draftCtx, args)
 
 			// Assert
 			assert.True(t, res.Failed, args)
@@ -133,11 +137,11 @@ func Test_draftPost(t *testing.T) {
 		r, events := draftRun(&fakeDrafts{err: errors.New("cache down")})
 
 		// Act
-		res, _ := r.draftPost(context.Background(), `{"title":"这个显示器值不值","content":"x","vote":"buy"}`)
+		res, _ := r.draft.post(draftCtx, `{"title":"这个显示器值不值","content":"x","vote":"buy"}`)
 
 		// Assert
 		assert.True(t, res.Failed)
-		assert.False(t, res.Done)
+		assert.False(t, res.Terminate)
 		assert.Empty(t, events)
 	})
 }
@@ -158,24 +162,27 @@ func Test_draftCandidates(t *testing.T) {
 func Test_tools_draft(t *testing.T) {
 	t.Run("插件没连着时只有 draft_post", func(t *testing.T) {
 		// Arrange
-		r, _ := draftRun(&fakeDrafts{saved: map[string]*Draft{}})
+		r := newToolRun(noBrowser{}, func(o *taskOptions) {
+			o.browserOn = false
+			o.draft = &draftContext{userID: "7", store: &fakeDrafts{saved: map[string]*Draft{}}}
+		})
 
 		// Act
-		_, defs, err := r.tools(false)
+		defs := r.agent.Defs()
 
 		// Assert
-		require.NoError(t, err)
 		require.Len(t, defs, 1)
 		assert.Equal(t, toolDraft, defs[0].Name)
 	})
 
 	t.Run("帖子分析没有 draft_post", func(t *testing.T) {
 		// Act
-		tools, _, err := newToolRun(newFakeBrowser()).tools(true)
+		defs := newToolRun(newFakeBrowser()).agent.Defs()
 
 		// Assert
-		require.NoError(t, err)
-		assert.NotContains(t, tools, toolDraft)
+		for _, def := range defs {
+			assert.NotEqual(t, toolDraft, def.Name)
+		}
 	})
 }
 
@@ -184,11 +191,12 @@ func Test_run_draftOffline(t *testing.T) {
 		// Arrange
 		args, _ := json.Marshal(map[string]any{"title": "这个显示器值不值", "content": "x", "vote": "skip"})
 		model := &fakeLLM{replies: []*llm.ChatResp{{ToolCalls: []llm.ToolCall{{ID: "c1", Name: toolDraft, Arguments: string(args)}}}}}
-		r := newAgentRun(model, newFakeBrowser(), testLimits())
-		r.draft = &draftContext{userID: "7", store: &fakeDrafts{saved: map[string]*Draft{}}}
+		r := newTestTask(model, noBrowser{}, testLimits(), func(o *taskOptions) {
+			o.draft = &draftContext{userID: "7", store: &fakeDrafts{saved: map[string]*Draft{}}}
+		})
 
 		// Act
-		res, err := r.run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "帮我发到社区")}, false)
+		res, err := r.run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "帮我发到社区")})
 
 		// Assert
 		require.NoError(t, err)
@@ -199,11 +207,12 @@ func Test_run_draftOffline(t *testing.T) {
 	t.Run("插件没连着、普通提问：直接回答就是答案，不催它调用 done", func(t *testing.T) {
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{{Content: "价格偏高"}}}
-		r := newAgentRun(model, newFakeBrowser(), testLimits())
-		r.draft = &draftContext{userID: "7", store: &fakeDrafts{saved: map[string]*Draft{}}}
+		r := newTestTask(model, noBrowser{}, testLimits(), func(o *taskOptions) {
+			o.draft = &draftContext{userID: "7", store: &fakeDrafts{saved: map[string]*Draft{}}}
+		})
 
 		// Act
-		res, err := r.run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "值不值")}, false)
+		res, err := r.run(context.Background(), []llm.Message{llm.Text(llm.RoleUser, "值不值")})
 
 		// Assert
 		require.NoError(t, err)
@@ -215,10 +224,10 @@ func Test_run_draftOffline(t *testing.T) {
 func Test_draftPost_noPictures(t *testing.T) {
 	// Arrange：对话里一张图都没有
 	r, events := draftRun(&fakeDrafts{saved: map[string]*Draft{}})
-	r.draft.candidates = draftCandidates(nil, nil)
+	r.draft.ctx.candidates = draftCandidates(nil, nil)
 
 	// Act
-	_, _ = r.draftPost(context.Background(), `{"title":"这个显示器值不值","content":"x","vote":"buy"}`)
+	_, _ = r.draft.post(draftCtx, `{"title":"这个显示器值不值","content":"x","vote":"buy"}`)
 
 	// Assert：编成 JSON 是 []，不是 null，页面才认得这份草稿
 	raw, err := json.Marshal((<-events).Input)

@@ -30,27 +30,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newToolRun(b Browser) *agentRun {
-	return newAgentRun(&fakeLLM{}, b, testLimits())
+// toolRun 是工具测试用的一次任务：浏览器工具的方法和状态直接可用（嵌入 TaskState），别的从 task 里取
+type toolRun struct {
+	*task
+	*browsertool.TaskState
+}
+
+// newToolRun 是插件连着（假浏览器）的一次任务，mods 可以改配置
+func newToolRun(b Browser, mods ...func(*taskOptions)) *toolRun {
+	o := taskOptions{llm: &fakeLLM{}, browser: b, browserOn: true, limits: testLimits()}
+	for _, mod := range mods {
+		mod(&o)
+	}
+	tk, err := newTask(o)
+	if err != nil {
+		panic(err)
+	}
+	return &toolRun{task: tk, TaskState: tk.state}
 }
 
 // openedRun 已经用 open 打开了京东首页
-func openedRun(t *testing.T, b *fakeBrowser) *agentRun {
+func openedRun(t *testing.T, b *fakeBrowser, mods ...func(*taskOptions)) *toolRun {
 	t.Helper()
-	r := newToolRun(b)
+	r := newToolRun(b, mods...)
 	_, err := r.Open(context.Background(), `{"url":"`+jdHome+`"}`)
 	require.NoError(t, err)
 	return r
 }
 
 func Test_tools(t *testing.T) {
+	// full 是什么都装上的一次任务：插件连着、有沙箱、是对话
+	full := func() *task {
+		return newToolRun(newFakeBrowser(), func(o *taskOptions) {
+			o.workspaces = &fakeWorkspaces{ws: &fakeWorkspace{}}
+			o.draft = &draftContext{userID: "7", store: &fakeDrafts{saved: map[string]*Draft{}}}
+			o.followups = true
+		}).task
+	}
+
 	t.Run("每个工具的参数说明都是合法的 JSON Schema", func(t *testing.T) {
 		// Act
-		tools, defs, err := newToolRun(newFakeBrowser()).tools(true)
+		defs := full().agent.Defs()
 
 		// Assert
-		require.NoError(t, err)
-		require.Len(t, tools, len(defs))
+		require.NotEmpty(t, defs)
 		for _, def := range defs {
 			var schema map[string]any
 			require.NoError(t, json.Unmarshal(def.Parameters, &schema), def.Name)
@@ -59,22 +82,31 @@ func Test_tools(t *testing.T) {
 		}
 	})
 
-	t.Run("每次的工具顺序都一样（前缀缓存靠它）", func(t *testing.T) {
+	t.Run("工具的顺序是固定的（前缀缓存靠它），done 在最后", func(t *testing.T) {
 		// Act
-		_, first, _ := newToolRun(newFakeBrowser()).tools(true)
-		_, second, _ := newToolRun(newFakeBrowser()).tools(true)
+		var names []string
+		for _, def := range full().agent.Defs() {
+			names = append(names, def.Name)
+		}
 
 		// Assert
-		require.Equal(t, first, second)
+		require.Equal(t, []string{
+			toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll,
+			toolProduct, toolImage, toolHarvest, toolVideo,
+			toolBash, toolReadFile, toolWriteFile, toolEditFile, toolDeliver,
+			toolDraft, toolDone,
+		}, names)
+	})
+
+	t.Run("每次的工具定义都一样", func(t *testing.T) {
+		require.Equal(t, full().agent.Defs(), full().agent.Defs())
 	})
 }
 
 func Test_hover(t *testing.T) {
 	b := newFakeBrowser()
 	r := openedRun(t, b)
-	tools, _, err := r.tools(true)
-	require.NoError(t, err)
-	res, err := tools[toolHover].run(context.Background(), `{"index":3}`)
+	res, err := r.Hover(context.Background(), `{"index":3}`)
 	require.NoError(t, err)
 	require.False(t, res.Failed)
 	require.True(t, res.PageChanged, "hover 后可能展开菜单，必须让模型重新 snapshot")
@@ -82,7 +114,7 @@ func Test_hover(t *testing.T) {
 	require.Equal(t, []string{"open " + jdHome, "hover 3"}, b.calls)
 
 	b.fail["hover"] = &browser.CommandError{Code: "ELEMENT_NOT_FOUND", Message: "stale"}
-	res, err = tools[toolHover].run(context.Background(), `{"index":3}`)
+	res, err = r.Hover(context.Background(), `{"index":3}`)
 	require.NoError(t, err)
 	require.True(t, res.Failed)
 }
@@ -122,7 +154,7 @@ func Test_screenshot(t *testing.T) {
 	t.Run("还没打开网页时不截图，告诉模型先 open", func(t *testing.T) {
 		// Arrange
 		b := newFakeBrowser()
-		r := newAgentRun(&fakeLLM{}, b, testLimits())
+		r := newToolRun(b)
 
 		// Act
 		res, err := r.Screenshot(context.Background(), `{}`)
@@ -550,75 +582,5 @@ func Test_scroll(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.Failed)
 		require.Len(t, b.calls, 1)
-	})
-}
-
-func Test_done(t *testing.T) {
-	t.Run("带上回答和是否成功", func(t *testing.T) {
-		// Act
-		res, err := newToolRun(newFakeBrowser()).done(context.Background(), `{"text":"**买**","success":false}`)
-
-		// Assert
-		require.NoError(t, err)
-		require.True(t, res.Done)
-		require.Equal(t, "**买**", res.Answer)
-		require.False(t, res.Success)
-	})
-
-	t.Run("回答为空时不结束，让模型补上", func(t *testing.T) {
-		// Act
-		res, err := newToolRun(newFakeBrowser()).done(context.Background(), `{"text":"","success":true}`)
-
-		// Assert
-		require.NoError(t, err)
-		require.False(t, res.Done)
-		require.True(t, res.Failed)
-	})
-}
-
-func Test_runTool(t *testing.T) {
-	t.Run("不存在的工具告诉模型，不算出错", func(t *testing.T) {
-		// Arrange
-		r := newToolRun(newFakeBrowser())
-		tools, _, _ := r.tools(true)
-
-		// Act
-		res, err := r.runTool(context.Background(), tools, toolCall("c1", "buy_now", `{}`))
-
-		// Assert
-		require.NoError(t, err)
-		require.True(t, res.Failed)
-		require.Contains(t, res.Text, "buy_now")
-	})
-
-	t.Run("记下执行之前的快照哈希，并记下这一步", func(t *testing.T) {
-		// Arrange
-		r := openedRun(t, newFakeBrowser())
-		tools, _, _ := r.tools(true)
-		r.PageHash = "before"
-		r.step = 4
-
-		// Act
-		res, err := r.runTool(context.Background(), tools, toolCall("c1", toolSnapshot, `{}`))
-
-		// Assert：快照执行以后哈希变了，但这次动作的指纹要用执行之前的
-		require.NoError(t, err)
-		require.Equal(t, "before", res.PageHash)
-		require.NotEqual(t, "before", r.PageHash)
-		last := r.steps[len(r.steps)-1]
-		require.Equal(t, 4, last.Step)
-		require.Equal(t, toolSnapshot, last.Tool)
-		require.Equal(t, jdHome, last.URL)
-	})
-
-}
-
-func Test_canonicalArgs(t *testing.T) {
-	t.Run("空格和键的顺序不影响", func(t *testing.T) {
-		require.Equal(t, canonicalArgs(`{"b":1,"a":"x"}`), canonicalArgs(`{ "a": "x", "b": 1 }`))
-	})
-
-	t.Run("不是 JSON 就原样返回", func(t *testing.T) {
-		require.Equal(t, "oops", canonicalArgs("oops"))
 	})
 }

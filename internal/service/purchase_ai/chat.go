@@ -46,13 +46,6 @@ type chatOptions struct {
 	redact        []string
 }
 
-// apply 把推给用户之前的处理（打码、思考开关）配到 r 上。直播（newChatRun）和重放（pageMessages）都用它，
-// 两边才一样
-func (o chatOptions) apply(r *agentRun) {
-	r.showReasoning = o.showReasoning
-	r.redact = o.redact
-}
-
 func chatOptionsFromEnv() chatOptions {
 	opts := chatOptions{showReasoning: os.Getenv("PURCHASE_AI_SHOW_REASONING") != "false"}
 	if path := os.Getenv("PURCHASE_AI_REDACT_FILE"); path != "" {
@@ -103,21 +96,26 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 		}
 
 		browserOn := pas.browser.Connected()
-		r := pas.newChatRun(out, chatID, req, path)
-		defer r.CloseTabs()
+		t, err := pas.newChatTask(out, chatID, req, path, browserOn)
+		if err != nil {
+			log.Errorf("purchase ai: cannot set up the chat task: %v", err)
+			send(Event{Type: EventError, Message: chatFailedText})
+			return
+		}
+		defer t.close()
 
 		messages := []llm.Message{llm.Text(llm.RoleSystem, pas.chatPrompt(browserOn))}
 		messages = append(messages, project(path)...)
 		userEntry := ""
 		if req.Message != nil {
 			user := userMessage(req.Message)
-			userEntry = r.rec.record(ctx, Entry{Kind: EntryMessage, Message: storeMessage(user, messageMeta{})})
+			userEntry = t.rec.record(ctx, Entry{Kind: EntryMessage, Message: storeMessage(user, messageMeta{})})
 			messages = append(messages, user)
 		}
 		// 日志和页面里的图都是网址，模型服务商访问不到我们的服务器，发之前换成 data URI
 		messages = pas.loadImages(ctx, messages)
 
-		res, err := r.run(ctx, messages, browserOn)
+		res, err := t.run(ctx, messages)
 		var finals []Event
 		if err != nil {
 			if ctx.Err() == nil {
@@ -128,15 +126,15 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 			if res.Finish != "" {
 				log.Infof("purchase ai: chat finished early (%s) after %d tool calls", res.Finish, len(res.Steps))
 			}
-			finals = r.answerEvents(res)
+			finals = t.pres.answerEvents(res)
 		}
 
 		// 先把这一轮记完，再告诉页面条目的 id，页面下一条消息拿 leaf 当 parent_id。
 		// 顺序不能反：页面拿到 id 马上就可能发下一条。页面上的这条回答不另存：打开历史对话时从这一轮的消息重放
-		if err := r.rec.close(ctx); err != nil {
+		if err := t.rec.close(ctx); err != nil {
 			log.Errorf("purchase ai: cannot save chat %d: %v", chatID, err)
 		} else {
-			send(Event{Type: EventSaved, Saved: &SavedIDs{User: userEntry, Leaf: r.rec.leaf()}})
+			send(Event{Type: EventSaved, Saved: &SavedIDs{User: userEntry, Leaf: t.rec.leaf()}})
 		}
 		for _, ev := range finals {
 			send(ev)
@@ -148,18 +146,19 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 	return out
 }
 
-// newChatRun 是对话里的一轮用的 agentRun：在 newRun 的基础上，事件推给页面（out），
-// 加上打码、整理草稿、工作台，这一轮记进日志、接在 parent_id 后面
-func (pas *PurchaseAIService) newChatRun(out chan<- Event, chatID int64, req *schema.PurchaseAIChatReq, path []Entry) *agentRun {
-	r := pas.newRun()
-	r.events = out
-	pas.chatOptions.apply(r)
-	r.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(path, req.Message), store: pas.drafts}
-	r.Workspaces = pas.workspaces
-	r.ChatID = chatID
-	r.UserID = req.UserID
-	r.rec = newChatRecorder(pas.chatLog, chatID, req.ParentID)
-	return r
+// newChatTask 是对话里的一轮用的任务：在 taskOptions 的基础上，事件推给页面（out），
+// 加上打码、整理草稿、工作台、后续建议，这一轮记进日志、接在 parent_id 后面
+func (pas *PurchaseAIService) newChatTask(out chan<- Event, chatID int64, req *schema.PurchaseAIChatReq, path []Entry, browserOn bool) (*task, error) {
+	o := pas.taskOptions(browserOn)
+	o.events = out
+	o.present = pas.chatOptions
+	o.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(path, req.Message), store: pas.drafts}
+	o.workspaces = pas.workspaces
+	o.chatID = chatID
+	o.userID = req.UserID
+	o.followups = true
+	o.rec = newChatRecorder(pas.chatLog, chatID, req.ParentID)
+	return newTask(o)
 }
 
 // chatPath 取出这个对话、按 parent_id 走出这一轮接着的那条分支。
@@ -246,18 +245,15 @@ func hasURLImage(parts []llm.Part) bool {
 // answerEvents 是一轮最后推给页面的回答和后续建议。
 // 回答是模型写的，也可能复述页面内容，和思考一样过一遍打码和屏蔽词；
 // 图片在打码之后放进去：网址里的数字不能被当成手机号；
-// 后续建议先切出来单独发：页面上是按钮，不是回答的一部分
-func (r *agentRun) answerEvents(res *agentResult) []Event {
-	answer, followups := splitFollowups(res.Text)
+// 后续建议单独发：页面上是按钮，不是回答的一部分（followups 插件已经把它从回答里切出来了）
+func (p *presenter) answerEvents(res *agentResult) []Event {
+	events := []Event{{Type: EventText, Delta: withShots(p.view(fixNumberRanges(res.Text)), res.Shots)}}
 	if len(res.Followups) > 0 {
-		followups = cleanFollowups(append(res.Followups, followups...))
-	}
-	events := []Event{{Type: EventText, Delta: withShots(r.view(fixNumberRanges(answer)), res.Shots)}}
-	if len(followups) > 0 {
-		for i, f := range followups {
-			followups[i] = r.view(f)
+		viewed := make([]string, len(res.Followups))
+		for i, f := range res.Followups {
+			viewed[i] = p.view(f)
 		}
-		events = append(events, Event{Type: EventFollowups, Followups: followups})
+		events = append(events, Event{Type: EventFollowups, Followups: viewed})
 	}
 	return events
 }

@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -40,7 +41,7 @@ func Test_pictures(t *testing.T) {
 		b := newFakeBrowser()
 		r := openedRun(t, b)
 		store := &fakeImageStore{}
-		r.images = store
+		r.pics.images = store
 
 		// Act
 		res, err := r.Screenshot(context.Background(), `{"index":3}`)
@@ -51,7 +52,7 @@ func Test_pictures(t *testing.T) {
 		assert.Contains(t, res.Text, "「图1」")
 		assert.Contains(t, res.Text, "[图1：")
 		assert.True(t, strings.HasPrefix(res.Image, "data:image/jpeg;base64,"))
-		require.Len(t, r.pictures, 1)
+		require.Len(t, r.pics.list, 1)
 		assert.Empty(t, store.saved)
 	})
 
@@ -62,7 +63,7 @@ func Test_pictures(t *testing.T) {
 		_, _ = r.Screenshot(context.Background(), `{}`)
 
 		// Act
-		res, err := r.viewImage(context.Background(), `{"index":5}`)
+		res, err := r.pics.viewImage(context.Background(), `{"index":5}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -79,19 +80,19 @@ func Test_pictures(t *testing.T) {
 		white := color.RGBA{255, 255, 255, 255}
 
 		// Act
-		text := r.numberPicture(screenshotData{Data: jpegOf(t, 400, 200, white, white), Mime: "image/jpeg"})
+		text := r.pics.number(tool.Image{Data: jpegOf(t, 400, 200, white, white), Mime: "image/jpeg"})
 
 		// Assert
 		assert.Contains(t, text, "空白")
-		assert.Empty(t, r.pictures)
+		assert.Empty(t, r.pics.list)
 	})
 }
 
 func Test_citedShots(t *testing.T) {
 	// openedRun6 截好 6 张图
-	openedRun6 := func(t *testing.T, store *fakeImageStore) *agentRun {
+	openedRun6 := func(t *testing.T, store *fakeImageStore) *toolRun {
 		r := openedRun(t, newFakeBrowser())
-		r.images = store
+		r.pics.images = store
 		for range 6 {
 			_, _ = r.Screenshot(context.Background(), `{}`)
 		}
@@ -104,7 +105,7 @@ func Test_citedShots(t *testing.T) {
 		r := openedRun6(t, store)
 
 		// Act
-		shots := r.citedShots(context.Background(), "[图3：价格] 再看 [图1]、[图3]、[图9]、[图2]、【图 5】、[图4]")
+		shots := r.pics.cited(context.Background(), "[图3：价格] 再看 [图1]、[图3]、[图9]、[图2]、【图 5】、[图4]")
 
 		// Assert
 		ids := []int{}
@@ -123,7 +124,7 @@ func Test_citedShots(t *testing.T) {
 		r := openedRun6(t, store)
 
 		// Act
-		shots := r.citedShots(context.Background(), "就这样。")
+		shots := r.pics.cited(context.Background(), "就这样。")
 
 		// Assert
 		assert.Empty(t, shots)
@@ -133,10 +134,10 @@ func Test_citedShots(t *testing.T) {
 	t.Run("存不成的图没有，回答照常", func(t *testing.T) {
 		// Arrange
 		r := openedRun6(t, &fakeImageStore{})
-		r.images = &fakeImageStore{err: errors.New("disk full")}
+		r.pics.images = &fakeImageStore{err: errors.New("disk full")}
 
 		// Act
-		shots := r.citedShots(context.Background(), "[图1]")
+		shots := r.pics.cited(context.Background(), "[图1]")
 
 		// Assert
 		assert.Empty(t, shots)

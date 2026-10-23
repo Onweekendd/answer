@@ -21,12 +21,13 @@ package purchaseai
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strings"
 
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/purchase_ai/links"
-	"github.com/segmentfault/pacman/log"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 )
 
 // 商品卡片（阶段 3）：Agent 看中的商品做成一张卡片推给用户，用户点一下就能打开，自己核实价格。
@@ -52,6 +53,22 @@ type ImageStore interface {
 	SaveAgentImage(ctx context.Context, data []byte) (string, error)
 }
 
+// productBook 是这次任务记下的商品卡片
+type productBook struct {
+	state *browsertool.TaskState
+	pres  *presenter
+	pics  *pictures // 存卡片上的图
+	cards []ProductCard
+}
+
+// plugin 装 pick_product
+func (b *productBook) plugin() agent.Plugin {
+	return func(r *agent.Registry) {
+		r.Tool(tool.Spec{Name: toolProduct, Description: "记下一个值得推荐给用户的商品：用户会在回答下方看到它的商品图、价格，点一下就打开商品页。链接和图由系统从页面上取，你只写标题、价格这些看到的东西。" +
+			"在商品详情页上不填 index；在搜索结果里填那张商品卡片的编号。只记看过价格的商品，最多 6 个。", Args: productArgs{}, Run: b.state.Track(b.pick)})
+	}
+}
+
 type productArgs struct {
 	Index     *int   `json:"index,omitempty" description:"在搜索结果里挑时，填那张商品卡片在最新快照里的编号；在商品详情页上不填，用的是当前页面"`
 	Title     string `json:"title" description:"商品名，写短一点：品牌、型号、关键规格"`
@@ -71,21 +88,21 @@ const (
 
 // productData 是插件 product 命令的结果
 type productData struct {
-	URL   string          `json:"url"`
-	Title string          `json:"title"`
-	Image *screenshotData `json:"image"` // 没找到够大的图时为 null
+	URL   string      `json:"url"`
+	Title string      `json:"title"`
+	Image *tool.Image `json:"image"` // 没找到够大的图时为 null
 }
 
-// pickProduct 把一个商品做成卡片。不改变页面，同一轮后面的调用照常执行
-func (r *agentRun) pickProduct(ctx context.Context, arguments string) (toolResult, error) {
+// pick 把一个商品做成卡片。不改变页面，同一轮后面的调用照常执行
+func (b *productBook) pick(ctx context.Context, arguments string) (tool.Result, error) {
 	var args productArgs
-	if res := decodeArgs(arguments, &args, `{"title": "...", "price": "¥588"} 或 {"index": 3, "title": "...", "price": "¥588"}`); res != nil {
+	if res := tool.DecodeArgs(arguments, &args, `{"title": "...", "price": "¥588"} 或 {"index": 3, "title": "...", "price": "¥588"}`); res != nil {
 		return *res, nil
 	}
-	if oneLine(args.Title) == "" {
-		return toolResult{Failed: true, Text: "参数无效：title 不能为空。"}, nil
+	if tool.OneLine(args.Title) == "" {
+		return tool.Result{Failed: true, Text: "参数无效：title 不能为空。"}, nil
 	}
-	if res := r.requireTab(); res != nil {
+	if res := b.state.RequireTab(); res != nil {
 		return *res, nil
 	}
 	req := map[string]any{"maxWidth": productImageWidth, "quality": productImageQuality}
@@ -93,81 +110,54 @@ func (r *agentRun) pickProduct(ctx context.Context, arguments string) (toolResul
 		req["index"] = *args.Index
 	}
 	var data productData
-	if res, err := r.call(ctx, r.TabID, "product", req, &data); res != nil {
+	if res, err := b.state.Call(ctx, b.state.TabID, "product", req, &data); res != nil {
 		return *res, err
 	}
 	link, ok := links.Clean(data.URL)
 	if !ok {
-		return toolResult{Failed: true, Text: "这张卡片的链接是广告跳转或者不是网页地址，用户点了打不开对的商品。点进商品详情页，再不填 index 调用 pick_product。"}, nil
+		return tool.Result{Failed: true, Text: "这张卡片的链接是广告跳转或者不是网页地址，用户点了打不开对的商品。点进商品详情页，再不填 index 调用 pick_product。"}, nil
 	}
 	if !links.IsProductPage(link) {
-		return toolResult{Failed: true, Text: fmt.Sprintf("这个链接（%s）不是商品页，是搜索结果、店铺或者客服页面，用户点了看不到这个商品。"+
+		return tool.Result{Failed: true, Text: fmt.Sprintf("这个链接（%s）不是商品页，是搜索结果、店铺或者客服页面，用户点了看不到这个商品。"+
 			"在搜索结果里填那张商品卡片的编号，或者点进商品详情页以后不填 index 再记。", link)}, nil
 	}
 
 	// 同一个商品再做一次，就更新原来那张，不重复
 	at := -1
-	for i, p := range r.products {
+	for i, p := range b.cards {
 		if p.URL == link {
 			at = i
 		}
 	}
-	if at < 0 && len(r.products) >= maxProducts {
-		return toolResult{Failed: true, Text: fmt.Sprintf("已经有 %d 张卡片了，不能再加。挑最值得看的写进回答就行。", maxProducts)}, nil
+	if at < 0 && len(b.cards) >= maxProducts {
+		return tool.Result{Failed: true, Text: fmt.Sprintf("已经有 %d 张卡片了，不能再加。挑最值得看的写进回答就行。", maxProducts)}, nil
 	}
 
 	card := ProductCard{
-		Title:     r.cardText(args.Title),
-		Shop:      r.cardText(args.Shop),
-		Spec:      r.cardText(args.Spec),
-		Price:     r.cardText(args.Price),
-		PriceNote: r.cardText(args.PriceNote),
-		Note:      r.cardText(args.Note),
+		Title:     b.pres.cardText(args.Title),
+		Shop:      b.pres.cardText(args.Shop),
+		Spec:      b.pres.cardText(args.Spec),
+		Price:     b.pres.cardText(args.Price),
+		PriceNote: b.pres.cardText(args.PriceNote),
+		Note:      b.pres.cardText(args.Note),
 		URL:       link, // 不过 view：打码会把 11 位的商品 id 当成手机号
-		Image:     r.saveImage(ctx, data.Image),
+		Image:     b.pics.save(ctx, data.Image),
 	}
 	if at >= 0 {
-		card.ID = r.products[at].ID
-		r.products[at] = card
+		card.ID = b.cards[at].ID
+		b.cards[at] = card
 	} else {
-		card.ID = len(r.products) + 1
-		r.products = append(r.products, card)
+		card.ID = len(b.cards) + 1
+		b.cards = append(b.cards, card)
 	}
-	r.emit(ctx, Event{Type: EventProduct, Product: &card})
+	b.pres.emit(ctx, Event{Type: EventProduct, Product: &card})
 
 	text := fmt.Sprintf("已记下「%s」（%s）。用户会在回答下方看到它的商品图和价格，点一下就打开商品页。回答里提到它直接写商品名，不要自己写链接。",
 		card.Title, link)
 	if card.Image == "" {
 		text += "没有截到商品图。"
 	}
-	return toolResult{Text: text, Display: "记下了「" + card.Title + "」", Product: &card}, nil
-}
-
-// cardText 是卡片上的一个字段：压成一行、截短，再过打码和屏蔽词（模型写的，可能复述页面内容）
-func (r *agentRun) cardText(s string) string {
-	s = oneLine(s)
-	if clipped := clipRunes(s, productTextRunes); clipped != s {
-		s = clipped + "…"
-	}
-	return r.view(s)
-}
-
-// saveImage 存下商品图，返回网址。存不了就没有图：卡片照样有用，不算这次调用失败
-func (r *agentRun) saveImage(ctx context.Context, shot *screenshotData) string {
-	if r.images == nil || shot == nil || shot.Data == "" {
-		return ""
-	}
-	data, err := base64.StdEncoding.DecodeString(shot.Data)
-	if err != nil {
-		log.Warnf("purchase ai: bad product image from the extension: %v", err)
-		return ""
-	}
-	link, err := r.images.SaveAgentImage(ctx, data)
-	if err != nil {
-		log.Warnf("purchase ai: cannot save product image: %v", err)
-		return ""
-	}
-	return link
+	return tool.Result{Text: text, Display: "记下了「" + card.Title + "」", Extras: map[string]any{extraProduct: &card}}, nil
 }
 
 // markdownEscaper 转义标题里会被 Markdown 当成链接、强调的字符

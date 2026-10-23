@@ -20,10 +20,14 @@
 package purchaseai
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/purchase_ai/links"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 )
 
 // 交付的网页里的链接。网页是模型写的，链接可能：
@@ -34,24 +38,41 @@ import (
 // 所以交付时每个 <a href> 都洗一遍、补上 target 和 rel；再核对这次是不是真的见过它
 // （打开过的页面、商品卡片、收割清单），没见过的列给模型，由它去核实或者删掉，不替它删
 
-// seeLink 记下这次任务真的见过的一个网址
-func (r *agentRun) seeLink(raw string) {
+// linkBook 记着这次任务真的见过哪些网址
+type linkBook struct {
+	seen     map[string]bool // links.Key
+	products *productBook    // 商品卡片的链接也算见过
+}
+
+// plugin 装「每个工具执行完，它打开的页面记下来」：不用每个工具自己想着记
+func (l *linkBook) plugin() agent.Plugin {
+	return func(r *agent.Registry) {
+		r.AfterTool(func(_ context.Context, _ llm.ToolCall, res *tool.Result) {
+			if res.URL != "" && !res.Failed {
+				l.see(res.URL)
+			}
+		})
+	}
+}
+
+// see 记下这次任务真的见过的一个网址
+func (l *linkBook) see(raw string) {
 	key := links.Key(raw)
 	if key == "" {
 		return
 	}
-	if r.seenLinks == nil {
-		r.seenLinks = map[string]bool{}
+	if l.seen == nil {
+		l.seen = map[string]bool{}
 	}
-	r.seenLinks[key] = true
+	l.seen[key] = true
 }
 
-// sawLink 说这次任务见没见过这个网址：打开过的页面、收割清单（seeLink 记下的），还有商品卡片
-func (r *agentRun) sawLink(key string) bool {
-	if r.seenLinks[key] {
+// saw 说这次任务见没见过这个网址：打开过的页面、收割清单（see 记下的），还有商品卡片
+func (l *linkBook) saw(key string) bool {
+	if l.seen[key] {
 		return true
 	}
-	for _, p := range r.products {
+	for _, p := range l.products.cards {
 		if links.Key(p.URL) == key {
 			return true
 		}
@@ -59,8 +80,8 @@ func (r *agentRun) sawLink(key string) bool {
 	return false
 }
 
-// linkText 是交付结果里关于链接的几句话：没见过的、去掉了的、哪些商品没链上。都没有就是空的
-func (r *agentRun) linkText(report links.Report) string {
+// text 是交付结果里关于链接的几句话：没见过的、去掉了的、哪些商品没链上。都没有就是空的
+func (l *linkBook) text(report links.Report) string {
 	var b strings.Builder
 	if len(report.Unseen) > 0 {
 		fmt.Fprintf(&b, "\n这些链接这次没打开过：%s。网页里的链接要是你真的打开过的页面、商品卡片或者收割清单里的："+
@@ -71,7 +92,7 @@ func (r *agentRun) linkText(report links.Report) string {
 			strings.Join(firstN(report.Dropped, 3), "、"))
 	}
 	var missing []string
-	for _, p := range r.products {
+	for _, p := range l.products.cards {
 		if !report.Keys[links.Key(p.URL)] {
 			missing = append(missing, fmt.Sprintf("%d. %s %s", p.ID, p.Title, p.URL))
 		}

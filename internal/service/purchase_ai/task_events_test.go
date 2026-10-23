@@ -65,7 +65,7 @@ func Test_describeCall(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			require.Equal(t, c.want, r.describeCall(c.tool, c.args))
+			require.Equal(t, c.want, r.pres.describeCall(c.tool, c.args))
 		})
 	}
 }
@@ -74,10 +74,10 @@ func Test_view(t *testing.T) {
 	t.Run("打码以后再换屏蔽词", func(t *testing.T) {
 		// Arrange
 		r := newToolRun(newFakeBrowser())
-		r.redact = []string{"小明的号", ""}
+		r.pres.opts.redact = []string{"小明的号", ""}
 
 		// Act
-		got := r.view("右上角是小明的号，电话 13812345678，邮箱 a@b.com，订单 138123456789012")
+		got := r.pres.view("右上角是小明的号，电话 13812345678，邮箱 a@b.com，订单 138123456789012")
 
 		// Assert
 		require.Equal(t, "右上角是[已屏蔽]，电话 [手机号]，邮箱 [邮箱]，订单 138123456789012", got)
@@ -92,10 +92,11 @@ func Test_view(t *testing.T) {
 func collectEvents(t *testing.T, model *fakeLLM, showReasoning bool) []Event {
 	t.Helper()
 	events := make(chan Event, 100)
-	r := newAgentRun(model, newFakeBrowser(), testLimits())
-	r.events = events
-	r.showReasoning = showReasoning
-	_, err := r.run(context.Background(), startMessages(), true)
+	r := newTestTask(model, newFakeBrowser(), testLimits(), func(o *taskOptions) {
+		o.events = events
+		o.present = chatOptions{showReasoning: showReasoning}
+	})
+	_, err := r.run(context.Background(), startMessages())
 	require.NoError(t, err)
 	close(events)
 	var out []Event

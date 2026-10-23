@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 )
 
 // chatRecorder 把一轮里产生的条目写进对话日志（上下文管理第一批的精华 ③）。
@@ -32,8 +33,8 @@ import (
 // 上下文：
 //   - 谁调用：
 //     ① Chat 开始一轮时 newChatRecorder，先 record 这一轮的用户消息（重新生成时没有这一条）；
-//     ② Agent 循环每往对话里加一条消息（assistant 的调用、工具结果、提醒、截图那条）都经过
-//     agentRun.keep，它调 record；
+//     ② Agent 核心每往对话里加一条消息（assistant 的调用、工具结果、提醒、截图那条）都经过
+//     agent.Recorder，也就是下面的 Keep，它调 record；
 //     ③ Agent 跑完，Chat 调 close
 //   - 一轮会记多少：典型的一轮二三十条，快照那几条各有 8000 字
 //   - 会出什么事：用户关了页面（请求的 ctx 被取消，Agent 停下）；进程在跑到一半时重启；写库失败（数据库抖了一下）
@@ -75,7 +76,7 @@ func (c *chatRecorder) leaf() string {
 
 // record 记下一条，返回它的 ID（页面和下一轮靠这个 ID 接上）。
 //
-//   - 谁调用：Chat 记用户消息；Agent 循环里的 agentRun.keep 记每一条模型消息。
+//   - 谁调用：Chat 记用户消息；核心通过 Keep 记每一条模型消息。
 //     都在同一个 goroutine 里一条接一条地调，不会并发，不用加锁
 //   - ctx：请求的 ctx。用户关了页面它就被取消了，这时写库会失败，没关系：条目留在 pending 里，close 会换个 ctx 写
 //   - 返回值不带 error：写不进去不该打断这一轮（用户正在等回答），失败的留给 close 兜底并报告
@@ -117,11 +118,29 @@ func (c *chatRecorder) close(ctx context.Context) error {
 	return c.flush(dbCtx)
 }
 
-// keep 把一条消息接到这一轮的对话后面，有 recorder 时同时记进日志。
-// 循环里所有往 messages 里加消息的地方都走这里，日志才和模型实际看到的一致
-func (r *agentRun) keep(ctx context.Context, messages []llm.Message, m llm.Message, meta messageMeta) []llm.Message {
-	if r.rec != nil {
-		r.rec.record(ctx, Entry{Kind: EntryMessage, Message: storeMessage(m, meta)})
+// Keep 实现 agent.Recorder：核心每往对话里加一条消息，就告诉它一下，记进日志。
+// 循环里所有往对话里加消息的地方都经过核心的 keep，日志才和模型实际看到的一致
+func (c *chatRecorder) Keep(ctx context.Context, m llm.Message, meta agent.Meta) {
+	c.record(ctx, Entry{Kind: EntryMessage, Message: storeMessage(m, messageMeta{
+		ToolName:     meta.ToolName,
+		Synthetic:    meta.Synthetic,
+		PromptTokens: meta.PromptTokens,
+		Details:      detailsOf(meta),
+	})})
+}
+
+// detailsOf 把核心交来的附加信息变成只给页面看的 Details。页面上没有东西可显示的（没有卡片、不是回答）是 nil
+func detailsOf(meta agent.Meta) *Details {
+	d := &Details{Final: meta.Final}
+	if meta.Summary != "" {
+		d.Summary, d.Failed, d.Display = meta.Summary, meta.Failed, meta.Display
 	}
-	return append(messages, m)
+	d.Product, _ = meta.Extras[extraProduct].(*ProductCard)
+	d.Draft, _ = meta.Extras[extraDraft].(*DraftInput)
+	d.Artifact, _ = meta.Extras[extraArtifact].(*Artifact)
+	d.Shots, _ = meta.Extras[extraShots].([]Shot)
+	if d.Summary == "" && d.Product == nil && d.Draft == nil && d.Artifact == nil && !d.Final {
+		return nil
+	}
+	return d
 }

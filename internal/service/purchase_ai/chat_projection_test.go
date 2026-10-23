@@ -21,6 +21,7 @@ package purchaseai
 
 import (
 	"encoding/json"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"testing"
 
 	"github.com/apache/answer/internal/service/llm"
@@ -62,8 +63,8 @@ func TestProject_SnapshotsAreOmitted(t *testing.T) {
 	got := project(twoTurns())
 
 	// Assert：历史里的页面都已经关了，最后一份也不留全文
-	assert.Equal(t, snapshotOmitted, got[2].Parts[0].Text)
-	assert.Equal(t, snapshotOmitted, got[6].Parts[0].Text)
+	assert.Equal(t, browsertool.SnapshotOmitted, got[2].Parts[0].Text)
+	assert.Equal(t, browsertool.SnapshotOmitted, got[6].Parts[0].Text)
 	assert.Equal(t, "c2", got[6].ToolCallID, "结果还在，只是换了内容：调用要有回答")
 }
 

@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 )
 
@@ -43,7 +44,7 @@ const (
 	EventArtifact  = "artifact" // 一个交给用户的产物，见 tools_deliver.go
 	// EventToolSuspend 是一个要用户拍板的调用：Agent 停在这里，把 input 交给页面，见 tools_draft.go
 	EventToolSuspend = "tool_suspend"
-	// EventFollowups 是回答后面的几句后续建议，页面上点一下就发出去，见 agent_followups.go
+	// EventFollowups 是回答后面的几句后续建议，页面上点一下就发出去，见 followups 包
 	EventFollowups = "followups"
 	EventError     = "error"
 	// EventSaved 告诉页面这一轮记进日志的条目 id（上下文管理概念 5）：页面下一条消息的 parent_id 是 leaf，
@@ -82,13 +83,22 @@ type ToolView struct {
 	OK      *bool  `json:"ok,omitempty"` // 只在 tool_end 里有
 }
 
-// emit 把事件交给另一头（SSE）。没人在听（帖子的后台分析、case 运行器）就什么都不做。
+// presenter 把一次任务的过程推给页面，所有推给用户的文字都过它的 view。
+// 它是核心（agent）的观察者（agent.Observer），也是挂起、商品卡片、产物这几种事件的出口
+type presenter struct {
+	events chan<- Event // nil 表示没人在听（帖子的后台分析、case 运行器）
+	opts   chatOptions  // 打码、思考要不要给
+	// state 取元素的名字，把「点击 44 号元素」写成「点击「Phone17」」。回放历史对话时是 nil：用不到
+	state *browsertool.TaskState
+}
+
+// emit 把事件交给另一头（SSE）。没人在听就什么都不做。
 // 发送一定要和 ctx.Done() 一起等：用户走了，handler 不再收，不这样写这个 goroutine 就永远卡在这里（概念 2）
-func (r *agentRun) emit(ctx context.Context, ev Event) {
-	if r.events == nil {
+func (p *presenter) emit(ctx context.Context, ev Event) {
+	if p.events == nil {
 		return
 	}
-	sendEvent(ctx, r.events, ev)
+	sendEvent(ctx, p.events, ev)
 }
 
 // sendEvent 把一条事件放进 channel，或者等到 ctx 取消就放弃。直接写 ch <- ev 的话，用户关了页面、
@@ -100,33 +110,46 @@ func sendEvent(ctx context.Context, ch chan<- Event, ev Event) {
 	}
 }
 
-// emitReasoning 发这一步的思考。思考是模型自己写的，可能复述页面内容，没法用白名单，
+// Describe 见 agent.Observer
+func (p *presenter) Describe(call llm.ToolCall) string {
+	return p.describeCall(call.Name, call.Arguments)
+}
+
+// Reasoning 发这一步的思考。思考是模型自己写的，可能复述页面内容，没法用白名单，
 // 只能打码、过屏蔽词兜底（概念 3 补充），所以有开关
-func (r *agentRun) emitReasoning(ctx context.Context, resp *llm.ChatResp) {
-	if !r.showReasoning {
-		return
-	}
-	if text := strings.TrimSpace(resp.Reasoning); text != "" {
-		r.emit(ctx, Event{Type: EventReasoning, Delta: r.view(text)})
+func (p *presenter) Reasoning(ctx context.Context, text string) {
+	if p.opts.showReasoning {
+		p.emit(ctx, Event{Type: EventReasoning, Delta: p.view(text)})
 	}
 }
 
-func (r *agentRun) emitToolStart(ctx context.Context, id, name, summary string) {
-	r.emit(ctx, Event{Type: EventToolStart, ID: id, Name: name, Args: &ToolView{Summary: r.view(summary)}})
+// ToolStart 发一个调用开始了
+func (p *presenter) ToolStart(ctx context.Context, id string, call llm.ToolCall, summary string) {
+	p.emit(ctx, Event{Type: EventToolStart, ID: id, Name: call.Name, Args: &ToolView{Summary: p.view(summary)}})
 }
 
-func (r *agentRun) emitToolEnd(ctx context.Context, id string, res toolResult) {
+// ToolEnd 发一个调用做完了
+func (p *presenter) ToolEnd(ctx context.Context, id string, _ llm.ToolCall, res tool.Result) {
 	ok := !res.Failed
-	r.emit(ctx, Event{Type: EventToolEnd, ID: id, Result: &ToolView{Summary: r.view(resultSummary(res)), OK: &ok}})
+	p.emit(ctx, Event{Type: EventToolEnd, ID: id, Result: &ToolView{Summary: p.view(resultSummary(res)), OK: &ok}})
 }
 
 // view 是所有推给用户的文字的唯一出口：打码，再过屏蔽词
-func (r *agentRun) view(s string) string {
-	return redactWords(maskPrivate(s), r.redact)
+func (p *presenter) view(s string) string {
+	return redactWords(maskPrivate(s), p.opts.redact)
+}
+
+// cardText 是卡片上的一个字段：压成一行、截短，再过打码和屏蔽词（模型写的，可能复述页面内容）
+func (p *presenter) cardText(s string) string {
+	s = tool.OneLine(s)
+	if clipped := tool.ClipRunes(s, productTextRunes); clipped != s {
+		s = clipped + "…"
+	}
+	return p.view(s)
 }
 
 // resultSummary 是 tool_end 里的一句话。失败的不说具体原因：报错里有"盖在上面的是 …"这类页面内容
-func resultSummary(res toolResult) string {
+func resultSummary(res tool.Result) string {
 	switch {
 	case res.Failed:
 		return "没做成，换个办法"
@@ -144,7 +167,7 @@ const labelMaxRunes = 24
 
 // describeCall 把一个调用写成人话（tool_start 的 summary）。参数是模型写的 JSON，格式由工具定义固定，
 // 解析它不会因为改提示词而坏掉；解析失败就只说工具名
-func (r *agentRun) describeCall(name, arguments string) string {
+func (p *presenter) describeCall(name, arguments string) string {
 	var a struct {
 		Path      string `json:"path"`
 		URL       string `json:"url"`
@@ -166,18 +189,18 @@ func (r *agentRun) describeCall(name, arguments string) string {
 		return "查看页面"
 	case toolRead:
 		if a.Index != nil {
-			return "读「" + r.label(*a.Index) + "」的全部文字"
+			return "读「" + p.label(*a.Index) + "」的全部文字"
 		}
 		return "读页面上的文字"
 	case toolShot:
 		if a.Index != nil {
-			return "截图看「" + r.label(*a.Index) + "」"
+			return "截图看「" + p.label(*a.Index) + "」"
 		}
 		return "截图看页面"
 	case toolClick:
-		return "点击「" + r.labelOf(a.Index) + "」"
+		return "点击「" + p.labelOf(a.Index) + "」"
 	case toolHover:
-		return "把鼠标移到「" + r.labelOf(a.Index) + "」上"
+		return "把鼠标移到「" + p.labelOf(a.Index) + "」上"
 	case toolType:
 		if a.Submit {
 			return "输入「" + a.Text + "」并回车"
@@ -193,11 +216,11 @@ func (r *agentRun) describeCall(name, arguments string) string {
 	case toolImage:
 		return "查看原图"
 	case toolProduct:
-		var p struct {
+		var t struct {
 			Title string `json:"title"`
 		}
-		_ = json.Unmarshal([]byte(arguments), &p)
-		return "把「" + clipRunes(oneLine(p.Title), labelMaxRunes) + "」记下来"
+		_ = json.Unmarshal([]byte(arguments), &t)
+		return "把「" + clipRunes(oneLine(t.Title), labelMaxRunes) + "」记下来"
 	case toolHarvest:
 		return "把这一页的图收进工作台"
 	case toolVideo:
@@ -240,17 +263,19 @@ func hostOf(raw string) string {
 	return u.Host
 }
 
-func (r *agentRun) labelOf(index *int) string {
+func (p *presenter) labelOf(index *int) string {
 	if index == nil {
 		return "元素"
 	}
-	return r.label(*index)
+	return p.label(*index)
 }
 
 // label 是最新快照里 index 号元素的名字，找不到就说编号
-func (r *agentRun) label(index int) string {
-	if name := r.Labels[index]; name != "" {
-		return name
+func (p *presenter) label(index int) string {
+	if p.state != nil {
+		if name := p.state.Labels[index]; name != "" {
+			return name
+		}
 	}
 	return fmt.Sprintf("%d 号元素", index)
 }

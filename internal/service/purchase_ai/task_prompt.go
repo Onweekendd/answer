@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/apache/answer/internal/schema"
+	"github.com/apache/answer/internal/service/purchase_ai/followups"
 	"github.com/apache/answer/internal/service/purchase_ai/skills"
 )
 
@@ -45,11 +46,7 @@ const maxContentRunes = 2000
 // The chat answers without a buy / wait / skip verdict: on the chat page the
 // community decides, by voting on the post the chat can turn into.
 func buildSystemPrompt(now time.Time, browserOn bool) string {
-	rules := followupRules
-	if browserOn {
-		rules += followupsInDone
-	}
-	return systemPrompt(now, browserOn, chatOpening) + "\n\n" + draftRules + "\n\n" + rules
+	return systemPrompt(now, browserOn, chatOpening) + "\n\n" + draftRules + "\n\n" + followups.Rules
 }
 
 // workspaceRules 只在有沙箱时加在对话的系统提示词后面（概念 4）

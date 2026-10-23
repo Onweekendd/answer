@@ -48,20 +48,20 @@ func Test_pickProduct(t *testing.T) {
 		b := newFakeBrowser()
 		r := openedRun(t, b)
 		store := &fakeImageStore{}
-		r.images = store
+		r.pics.images = store
 		events := make(chan Event, 4)
-		r.events = events
+		r.pres.events = events
 
 		// Act
-		res, err := r.pickProduct(context.Background(), `{"index":3,"title":"Apple iPhone 17 256G","shop":"京东自营","price":"¥5999","note":"自营，发货快"}`)
+		res, err := r.cards.pick(context.Background(), `{"index":3,"title":"Apple iPhone 17 256G","shop":"京东自营","price":"¥5999","note":"自营，发货快"}`)
 
 		// Assert
 		require.NoError(t, err)
 		require.False(t, res.Failed, res.Text)
 		assert.Contains(t, res.Text, "已记下「Apple iPhone 17 256G」")
 		assert.Equal(t, [][]byte{[]byte("jpeg")}, store.saved)
-		require.Len(t, r.products, 1)
-		card := r.products[0]
+		require.Len(t, r.cards.cards, 1)
+		card := r.cards.cards[0]
 		assert.Equal(t, "https://item.jd.com/103.html", card.URL)
 		assert.Equal(t, "https://buy.example.com/uploads/agent/1.jpg", card.Image)
 		assert.Equal(t, 1, card.ID)
@@ -73,29 +73,29 @@ func Test_pickProduct(t *testing.T) {
 	t.Run("同一个商品再做一次，更新原来那张，不重复", func(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())
-		_, _ = r.pickProduct(context.Background(), `{"index":3,"title":"旧标题","price":"¥5999"}`)
+		_, _ = r.cards.pick(context.Background(), `{"index":3,"title":"旧标题","price":"¥5999"}`)
 
 		// Act
-		res, _ := r.pickProduct(context.Background(), `{"index":3,"title":"新标题","price":"¥5899","priceNote":"券后"}`)
+		res, _ := r.cards.pick(context.Background(), `{"index":3,"title":"新标题","price":"¥5899","priceNote":"券后"}`)
 
 		// Assert
 		require.False(t, res.Failed)
-		require.Len(t, r.products, 1)
-		assert.Equal(t, "新标题", r.products[0].Title)
-		assert.Equal(t, 1, r.products[0].ID)
+		require.Len(t, r.cards.cards, 1)
+		assert.Equal(t, "新标题", r.cards.cards[0].Title)
+		assert.Equal(t, 1, r.cards.cards[0].ID)
 	})
 
 	t.Run("存图失败也照样做成卡片，只是没有图", func(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())
-		r.images = &fakeImageStore{err: errors.New("disk full")}
+		r.pics.images = &fakeImageStore{err: errors.New("disk full")}
 
 		// Act
-		res, _ := r.pickProduct(context.Background(), `{"index":3,"title":"商品","price":"¥1"}`)
+		res, _ := r.cards.pick(context.Background(), `{"index":3,"title":"商品","price":"¥1"}`)
 
 		// Assert
 		require.False(t, res.Failed)
-		assert.Empty(t, r.products[0].Image)
+		assert.Empty(t, r.cards.cards[0].Image)
 		assert.Contains(t, res.Text, "没有截到商品图")
 	})
 
@@ -103,15 +103,15 @@ func Test_pickProduct(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())
 		for i := range maxProducts {
-			_, _ = r.pickProduct(context.Background(), `{"index":`+string(rune('0'+i))+`,"title":"商品","price":"¥1"}`)
+			_, _ = r.cards.pick(context.Background(), `{"index":`+string(rune('0'+i))+`,"title":"商品","price":"¥1"}`)
 		}
 
 		// Act
-		res, _ := r.pickProduct(context.Background(), `{"index":9,"title":"第七个","price":"¥1"}`)
+		res, _ := r.cards.pick(context.Background(), `{"index":9,"title":"第七个","price":"¥1"}`)
 
 		// Assert
 		assert.True(t, res.Failed)
-		assert.Len(t, r.products, maxProducts)
+		assert.Len(t, r.cards.cards, maxProducts)
 	})
 
 	t.Run("在京东搜索页上不填 index：记下的是搜索页，不要", func(t *testing.T) {
@@ -119,12 +119,12 @@ func Test_pickProduct(t *testing.T) {
 		r := openedRun(t, newFakeBrowser())
 
 		// Act
-		res, _ := r.pickProduct(context.Background(), `{"title":"商品","price":"¥1"}`)
+		res, _ := r.cards.pick(context.Background(), `{"title":"商品","price":"¥1"}`)
 
 		// Assert
 		assert.True(t, res.Failed)
 		assert.Contains(t, res.Text, "不是商品页")
-		assert.Empty(t, r.products)
+		assert.Empty(t, r.cards.cards)
 	})
 
 	t.Run("没写标题不调插件", func(t *testing.T) {
@@ -134,7 +134,7 @@ func Test_pickProduct(t *testing.T) {
 		before := len(b.calls)
 
 		// Act
-		res, _ := r.pickProduct(context.Background(), `{"title":"  ","price":"¥1"}`)
+		res, _ := r.cards.pick(context.Background(), `{"title":"  ","price":"¥1"}`)
 
 		// Assert
 		assert.True(t, res.Failed)
@@ -150,11 +150,11 @@ func Test_pickProduct(t *testing.T) {
 		require.NoError(t, err)
 
 		// Act
-		_, _ = r.pickProduct(context.Background(), `{"title":"客服 13800138000","price":"¥1"}`)
+		_, _ = r.cards.pick(context.Background(), `{"title":"客服 13800138000","price":"¥1"}`)
 
 		// Assert
-		assert.Equal(t, "客服 [手机号]", r.products[0].Title)
-		assert.Equal(t, "https://item.jd.com/13800138000.html", r.products[0].URL)
+		assert.Equal(t, "客服 [手机号]", r.cards.cards[0].Title)
+		assert.Equal(t, "https://item.jd.com/13800138000.html", r.cards.cards[0].URL)
 	})
 }
 

@@ -27,13 +27,12 @@ package tool
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 )
 
 // Result 是一次工具调用的结果里，各类工具都会用到的部分。
-// purchase_ai 的 toolResult 在它之外还有商品卡片、产物、done 的回答这些只有个别工具才有的东西
+// 只有个别工具才有的东西（商品卡片、产物、草稿）放在 Extras 里，由注册这个工具的插件写、同一个插件读
 type Result struct {
 	Text string // 给模型看的
 	// Display 是给用户看的一句话（tool_end 的 summary）。由每个工具自己写，只放白名单里的东西：
@@ -48,6 +47,20 @@ type Result struct {
 	Image string
 
 	URL string // 执行完以后所在的网址（知道的话），给每一步的记录用
+
+	// 下面几个是给 agent 核心用的（agent/ 包），工具按需要填：
+
+	// Terminate 表示这个工具的结果让任务结束（done、draft_post）。同一轮里排在它后面的调用不再执行。
+	// Answer 是这时给用户的回答，Success 是要求的事有没有做成
+	Terminate bool
+	Answer    string
+	Success   bool
+	// State 是执行这个动作之后外部世界的状态摘要（浏览器工具填页面的哈希加上滚动位置）。
+	// 核心不解释它，只交给重复检测：同一个动作 + 同一个 State 反复出现才算打转
+	State string
+	// Extras 是只有个别工具才有的产出：商品卡片、产物、草稿……由注册这个工具的插件写，再由同一个插件读，
+	// 核心原样记进日志，不认识里面的东西
+	Extras map[string]any
 }
 
 // Spec 是一个工具：告诉模型的名字、说明、参数，和执行它的函数
@@ -67,9 +80,22 @@ type Image struct {
 	URL    string `json:"url"` // 截图时所在的页面
 }
 
-// ErrBrowserGone 表示插件断开了或者没连上。模型写不了回答的错误才让循环立刻停，
-// 浏览器没了模型还能根据已经查到的写回答，所以循环收到它走收尾
-var ErrBrowserGone = errors.New("purchase ai: browser is gone")
+// AbortError 是工具说「不能再继续了」：这一轮剩下的调用不再执行，核心走收尾，让模型根据已经查到的写回答。
+// 和别的错误不同：别的错误让任务立刻结束（模型写不了回答），这个不会
+type AbortError struct {
+	Reason string // 收尾的原因，记进结果（agent.Result.Finish）
+	Text   string // 回复正在执行的这个调用的话
+	Prompt string // 收尾时追加给模型的话
+}
+
+func (e *AbortError) Error() string { return "purchase ai: " + e.Reason }
+
+// ErrBrowserGone 表示插件断开了或者没连上。浏览器没了模型还能根据已经查到的写回答，所以走收尾
+var ErrBrowserGone = &AbortError{
+	Reason: "browser_gone",
+	Text:   "浏览器断开了，这个动作没有做成。",
+	Prompt: "浏览器断开了，不能再操作。请根据已经看到的信息作答，并说明价格等信息没能实时核实。",
+}
 
 // DecodeArgs 解析模型写的参数。它不保证是合法的 JSON，所以失败时告诉模型正确的格式
 func DecodeArgs(arguments string, v any, example string) *Result {

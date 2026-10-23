@@ -29,7 +29,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/purchase_ai/links"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
+	"github.com/segmentfault/pacman/log"
 )
 
 // 图：Agent 截的图（screenshot）和下载的原图（view_image）都编成「图N」，模型自己看；
@@ -48,8 +52,31 @@ type Shot struct {
 
 // picture 是这次任务里看过的一张图，还没存
 type picture struct {
-	shot   screenshotData
+	shot   tool.Image
 	source string
+}
+
+// pictures 是这次任务里看过的图。编号是整次任务共用的（截图、看原图、工作台里的图），所以浏览器工具和工作台工具
+// 编号时都问它（TaskState.NumberPicture、Bench.NumberPicture）
+type pictures struct {
+	state  *browsertool.TaskState
+	images ImageStore // 存回答引用的图；nil 就不存，引用的图都没有
+	list   []picture  // 编号是下标加 1
+}
+
+// plugin 装 view_image 和「回答出来时存它引用的图」。viewing 为 false（没有浏览器）时只有后者：
+// 工作台里的图也编号，回答一样能引用
+func (p *pictures) plugin(viewing bool) agent.Plugin {
+	return func(r *agent.Registry) {
+		if viewing {
+			r.Tool(tool.Spec{Name: toolImage, Description: "下载页面上一张图片的原图来看，比截图清楚得多：商品主图、详情页里的参数图和说明图、买家秀、价格走势图。" +
+				"填 index 取那个元素里最大的图，不填取屏幕上最大的图。和 screenshot 共用编号「图N」，也能在回答里引用给用户看。" +
+				"价格区、表格这类不是图片的，或者下载失败了，用 screenshot。", Args: viewImageArgs{}, Run: p.state.Track(p.viewImage)})
+		}
+		r.OnAnswer(func(ctx context.Context, a *agent.Answer) {
+			a.Extras[extraShots] = p.cited(ctx, a.Text)
+		})
+	}
 }
 
 type viewImageArgs struct {
@@ -58,7 +85,7 @@ type viewImageArgs struct {
 
 // imageData 是插件 image 命令的结果：下载下来、转成 jpeg 的原图
 type imageData struct {
-	screenshotData
+	tool.Image
 	Src string `json:"src"` // 图片原来的地址，只记日志用
 }
 
@@ -76,26 +103,26 @@ func citeHint(id int) string {
 		"没用的、截错了的不要引用。", id, id)
 }
 
-// numberPicture 给看过的图编号，返回告诉模型的那句话。空白的图和编满了的不编号
-func (r *agentRun) numberPicture(shot screenshotData) string {
+// number 给看过的图编号，返回告诉模型的那句话。空白的图和编满了的不编号
+func (p *pictures) number(shot tool.Image) string {
 	if blank, err := looksBlank(shot.Data); err == nil && blank {
 		return "这张几乎是一片空白：图可能还没加载出来，或者轮播已经切走了，没有编号。"
 	}
-	if len(r.pictures) >= maxPictures {
+	if len(p.list) >= maxPictures {
 		return fmt.Sprintf("这次已经看了 %d 张图，这张不编号了。", maxPictures)
 	}
 	source, _ := links.Clean(shot.URL)
-	r.pictures = append(r.pictures, picture{shot: shot, source: source})
-	return citeHint(len(r.pictures))
+	p.list = append(p.list, picture{shot: shot, source: source})
+	return citeHint(len(p.list))
 }
 
 // viewImage 下载页面上的原图给模型看，和截图一起编号
-func (r *agentRun) viewImage(ctx context.Context, arguments string) (toolResult, error) {
+func (p *pictures) viewImage(ctx context.Context, arguments string) (tool.Result, error) {
 	var args viewImageArgs
-	if res := decodeArgs(arguments, &args, `{} 或 {"index": 3}`); res != nil {
+	if res := tool.DecodeArgs(arguments, &args, `{} 或 {"index": 3}`); res != nil {
 		return *res, nil
 	}
-	if res := r.requireTab(); res != nil {
+	if res := p.state.RequireTab(); res != nil {
 		return *res, nil
 	}
 	req := map[string]any{"maxWidth": imageMaxWidth, "quality": imageQuality}
@@ -103,37 +130,55 @@ func (r *agentRun) viewImage(ctx context.Context, arguments string) (toolResult,
 		req["index"] = *args.Index
 	}
 	var img imageData
-	if res, err := r.call(ctx, r.TabID, "image", req, &img); res != nil {
+	if res, err := p.state.Call(ctx, p.state.TabID, "image", req, &img); res != nil {
 		return *res, err
 	}
 	if img.Data == "" || img.Mime == "" {
-		return toolResult{Failed: true, Text: "插件没有返回图片。"}, nil
+		return tool.Result{Failed: true, Text: "插件没有返回图片。"}, nil
 	}
-	return toolResult{
-		Text:    fmt.Sprintf("已下载原图（%d×%d），图片在下一条消息里。", img.Width, img.Height) + r.numberPicture(img.screenshotData),
+	return tool.Result{
+		Text:    fmt.Sprintf("已下载原图（%d×%d），图片在下一条消息里。", img.Width, img.Height) + p.number(img.Image),
 		Display: fmt.Sprintf("查看原图（%d×%d）", img.Width, img.Height),
 		Image:   "data:" + img.Mime + ";base64," + img.Data,
 		URL:     img.URL,
 	}, nil
 }
 
-// citedShots 把回答引用了的图存到服务器，按引用的顺序，最多 maxShots 张。
+// cited 把回答引用了的图存到服务器，按引用的顺序，最多 maxShots 张。
 // 存不成的就没有：withShots 会把它的引用去掉，回答照常是文字
-func (r *agentRun) citedShots(ctx context.Context, text string) []Shot {
+func (p *pictures) cited(ctx context.Context, text string) []Shot {
 	var shots []Shot
 	seen := map[int]bool{}
 	for _, m := range shotRef.FindAllStringSubmatch(text, -1) {
 		id, _ := strconv.Atoi(m[1])
-		if id < 1 || id > len(r.pictures) || seen[id] || len(shots) == maxShots {
+		if id < 1 || id > len(p.list) || seen[id] || len(shots) == maxShots {
 			continue
 		}
 		seen[id] = true
-		pic := r.pictures[id-1]
-		if image := r.saveImage(ctx, &pic.shot); image != "" {
+		pic := p.list[id-1]
+		if image := p.save(ctx, &pic.shot); image != "" {
 			shots = append(shots, Shot{ID: id, Image: image, Source: pic.source})
 		}
 	}
 	return shots
+}
+
+// save 存下一张图，返回网址。存不了就没有图：商品卡片照样有用，回答里的引用会去掉
+func (p *pictures) save(ctx context.Context, shot *tool.Image) string {
+	if p.images == nil || shot == nil || shot.Data == "" {
+		return ""
+	}
+	data, err := base64.StdEncoding.DecodeString(shot.Data)
+	if err != nil {
+		log.Warnf("purchase ai: bad image from the extension: %v", err)
+		return ""
+	}
+	link, err := p.images.SaveAgentImage(ctx, data)
+	if err != nil {
+		log.Warnf("purchase ai: cannot save image: %v", err)
+		return ""
+	}
+	return link
 }
 
 // blankShare 是一张图里同一种颜色占多少才算空白。真的截图里，大片留白的价格区也就七八成
@@ -187,7 +232,7 @@ func plainShotRefs(s string) string {
 
 var blankLines = regexp.MustCompile(`\n{3,}`)
 
-// withShots 把回答里的 [图N] 换成图片和说明，shots 是存下来的那几张（citedShots）。
+// withShots 把回答里的 [图N] 换成图片和说明，shots 是存下来的那几张（pictures.cited）。
 // 没存下来的编号去掉：没引用的图本来就不给用户看。text 要先过打码再传进来：说明在 text 里，
 // 图片网址里的数字也不能被当成手机号
 func withShots(text string, shots []Shot) string {
@@ -217,8 +262,8 @@ func withShots(text string, shots []Shot) string {
 
 // shotMarkdown 是一张图：图片，下面一行说明和来源
 func shotMarkdown(s Shot, caption string) string {
-	caption = oneLine(caption)
-	if clipped := clipRunes(caption, shotCaptionRune); clipped != caption {
+	caption = tool.OneLine(caption)
+	if clipped := tool.ClipRunes(caption, shotCaptionRune); clipped != caption {
 		caption = clipped + "…"
 	}
 	label := fmt.Sprintf("图%d", s.ID)

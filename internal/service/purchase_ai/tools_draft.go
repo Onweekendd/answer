@@ -31,7 +31,9 @@ import (
 	"github.com/apache/answer/internal/entity"
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/purchase_ai/links"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
 	"github.com/apache/answer/pkg/uid"
 	"github.com/segmentfault/pacman/errors"
 	"github.com/segmentfault/pacman/log"
@@ -69,6 +71,21 @@ type DraftInput struct {
 	Link       string   `json:"link,omitempty"`
 	Category   string   `json:"category,omitempty"`
 	Vote       int      `json:"vote"` // 只给页面显示「AI 会投：再等等」
+}
+
+// drafter 是整理帖子草稿的工具。只有对话页有
+type drafter struct {
+	ctx      *draftContext
+	pres     *presenter
+	products *productBook // 商品卡片的图也能当配图
+}
+
+// plugin 装 draft_post
+func (d *drafter) plugin() agent.Plugin {
+	return func(r *agent.Registry) {
+		r.Tool(tool.Spec{Name: toolDraft, Description: "把这段对话整理成一篇发到社区请大家投票的帖子草稿，交给用户确认。只在用户要求发帖时调用（比如「帮我发到社区」）。" +
+			"调用以后这次回答就结束了：用户会在页面上修改、发布或者放弃，不用你再说什么。", Args: draftArgs{}, Run: d.post})
+	}
 }
 
 type draftArgs struct {
@@ -131,66 +148,66 @@ func draftCandidates(path []Entry, latest *schema.PurchaseAIChatMessage) []strin
 	return out
 }
 
-// draftPost 把模型写的草稿整理好、存下 AI 的那一票，再挂起：交给页面，这次回答结束
-func (r *agentRun) draftPost(ctx context.Context, arguments string) (toolResult, error) {
+// post 把模型写的草稿整理好、存下 AI 的那一票，再挂起：交给页面，这次回答结束
+func (d *drafter) post(ctx context.Context, arguments string) (tool.Result, error) {
 	var args draftArgs
-	if res := decodeArgs(arguments, &args, `{"title": "...", "content": "...", "images": ["..."], "vote": "wait"}`); res != nil {
+	if res := tool.DecodeArgs(arguments, &args, `{"title": "...", "content": "...", "images": ["..."], "vote": "wait"}`); res != nil {
 		return *res, nil
 	}
-	title := oneLine(args.Title)
+	title := tool.OneLine(args.Title)
 	if n := utf8.RuneCountInString(title); n < draftTitleMinRunes || n > draftTitleMaxRunes {
-		return toolResult{Failed: true, Text: fmt.Sprintf("参数无效：title 要 %d 到 %d 个字。", draftTitleMinRunes, draftTitleMaxRunes)}, nil
+		return tool.Result{Failed: true, Text: fmt.Sprintf("参数无效：title 要 %d 到 %d 个字。", draftTitleMinRunes, draftTitleMaxRunes)}, nil
 	}
 	vote, ok := draftVotes[args.Vote]
 	if !ok {
-		return toolResult{Failed: true, Text: "参数无效：vote 只能是 buy、wait、skip。"}, nil
+		return tool.Result{Failed: true, Text: "参数无效：vote 只能是 buy、wait、skip。"}, nil
 	}
 	content := strings.TrimSpace(args.Content)
-	if clipped := clipRunes(content, draftContentMaxRunes); clipped != content {
+	if clipped := tool.ClipRunes(content, draftContentMaxRunes); clipped != content {
 		content = clipped + "…"
 	}
-	candidates := r.draftCandidates()
+	candidates := d.candidates()
 	input := DraftInput{
 		DraftID:    uid.IDStr12(),
-		Title:      r.view(title),
-		Content:    r.view(content),
+		Title:      d.pres.view(title),
+		Content:    d.pres.view(content),
 		Images:     pickImages(args.Images, candidates),
 		Candidates: candidates,
 		Price:      max(args.Price, 0),
-		Category:   r.view(clipRunes(oneLine(args.Category), draftCategoryRunes)),
+		Category:   d.pres.view(tool.ClipRunes(tool.OneLine(args.Category), draftCategoryRunes)),
 		Vote:       vote,
 	}
 	if link, ok := links.Clean(args.Link); ok && links.IsProductPage(link) {
 		input.Link = link
 	}
 
-	if err := r.draft.store.SaveDraft(ctx, input.DraftID, &Draft{UserID: r.draft.userID, Vote: vote}); err != nil {
+	if err := d.ctx.store.SaveDraft(ctx, input.DraftID, &Draft{UserID: d.ctx.userID, Vote: vote}); err != nil {
 		log.Errorf("purchase ai: cannot keep the draft: %v", err)
-		return toolResult{Failed: true, Text: "草稿没存成，告诉用户稍后再试。"}, nil
+		return tool.Result{Failed: true, Text: "草稿没存成，告诉用户稍后再试。"}, nil
 	}
-	r.emit(ctx, Event{Type: EventToolSuspend, ID: r.callID, Name: toolDraft, Input: &input})
-	return toolResult{
-		Text:    "草稿已经交给用户确认。",
-		Display: "草稿交给你确认",
-		Done:    true,
-		Answer:  draftAnswer,
-		Success: true,
-		Draft:   &input,
+	d.pres.emit(ctx, Event{Type: EventToolSuspend, ID: agent.CallID(ctx), Name: toolDraft, Input: &input})
+	return tool.Result{
+		Text:      "草稿已经交给用户确认。",
+		Display:   "草稿交给你确认",
+		Terminate: true,
+		Answer:    draftAnswer,
+		Success:   true,
+		Extras:    map[string]any{extraDraft: &input},
 	}, nil
 }
 
 // draftAnswer 是挂起以后这次的回答：草稿就在它下面
 const draftAnswer = "我把这次的讨论整理成了一篇帖子草稿，就在下面。改好以后点「发布」，帖子会发到社区请大家投票，我会先投一票。"
 
-// draftCandidates 是对话里的图加上这一次的商品图。这一次截的图还没存（回答引用了才存），不算
-func (r *agentRun) draftCandidates() []string {
-	out := append([]string{}, r.draft.candidates...)
+// candidates 是对话里的图加上这一次的商品图。这一次截的图还没存（回答引用了才存），不算
+func (d *drafter) candidates() []string {
+	out := append([]string{}, d.ctx.candidates...)
 	add := func(url string) {
 		if url != "" && len(out) < draftMaxCandidates && !slices.Contains(out, url) {
 			out = append(out, url)
 		}
 	}
-	for _, p := range r.products {
+	for _, p := range d.products.cards {
 		add(p.Image)
 	}
 	return out

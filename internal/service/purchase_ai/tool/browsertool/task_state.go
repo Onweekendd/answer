@@ -38,9 +38,6 @@ import (
 	"github.com/segmentfault/pacman/log"
 )
 
-// Package browsertool 是浏览器工具：在用户的浏览器里开标签页、看页面、点击输入、滚动。
-// 浏览器是用户自己的（插件经 Hub 连过来），Agent 只操作它自己开的标签页，结束时关掉。
-// 状态都在 TaskState 里：开着哪个标签页、最新一份快照、快照里每个编号叫什么
 // Browser 是 Agent 眼里的浏览器：按标签页发一条命令，拿回结果。
 // browser.Hub（同一个进程）和 browser.HubClient（case 运行器经 HTTP API 连 Hub）都实现了它
 type Browser interface {
