@@ -81,7 +81,7 @@ const mockPictures = () => {
   return [`${origin}/uploads/agent/5UmNQvVAoeW.jpg`, `${origin}/uploads/agent/5UmNVkmM1XA.jpg`];
 };
 
-/** "帮我发到社区": the agent drafts a post and hands it over (tool_suspend), as drafts.go does. */
+/** "帮我发到社区": the agent drafts a post and hands it over (tool_suspend), as purchase_ai/tools_draft.go does. */
 async function* mockDraft(sleep: (ms: number) => Promise<void>, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const pictures = mockPictures();
   const script: [number, ChatEvent][] = [

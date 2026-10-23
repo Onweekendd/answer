@@ -43,7 +43,7 @@ func (PurchaseChat) TableName() string {
 // its tool calls and results. Entries are only ever appended; ParentID chains them
 // into a tree, so editing or retrying a message grows a new branch. Body is the
 // JSON of purchaseai.StoredMessage, chosen by Kind. The page's view of a turn is
-// replayed from its messages. See internal/service/purchase_ai/chatlog.go.
+// replayed from its messages. See internal/service/purchase_ai/chat_log.go.
 type PurchaseChatEntry struct {
 	ID        int64     `xorm:"not null pk autoincr BIGINT(20) id"`
 	ChatID    int64     `xorm:"not null UNIQUE(chat_entry) BIGINT(20) chat_id"`

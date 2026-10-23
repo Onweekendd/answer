@@ -104,7 +104,7 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 
 		browserOn := pas.browser.Connected()
 		r := pas.newChatRun(out, chatID, req, path)
-		defer r.closeTabs()
+		defer r.CloseTabs()
 
 		messages := []llm.Message{llm.Text(llm.RoleSystem, pas.chatPrompt(browserOn))}
 		messages = append(messages, project(path)...)
@@ -155,9 +155,9 @@ func (pas *PurchaseAIService) newChatRun(out chan<- Event, chatID int64, req *sc
 	r.events = out
 	pas.chatOptions.apply(r)
 	r.draft = &draftContext{userID: req.UserID, candidates: draftCandidates(path, req.Message), store: pas.drafts}
-	r.workspaces = pas.workspaces
-	r.chatID = chatID
-	r.userID = req.UserID
+	r.Workspaces = pas.workspaces
+	r.ChatID = chatID
+	r.UserID = req.UserID
 	r.rec = newChatRecorder(pas.chatLog, chatID, req.ParentID)
 	return r
 }

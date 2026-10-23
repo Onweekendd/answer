@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 )
 
 // 循环在对话里追加或替换的话。都是固定的文字：追加以后不再改，前缀缓存才能命中（概念 2）。
@@ -47,7 +48,7 @@ const (
 	browserGoneText = "浏览器断开了，这个动作没有做成。"
 
 	// toolTimeoutText 回复单次调用插件超时（概念 6）
-	toolTimeoutText = "页面太久没有响应，这个动作可能没有做成。可以先 snapshot 看看现在的页面，或者换一个网址。"
+	toolTimeoutText = browsertool.TimeoutText
 
 	// doneReminder 模型操作过浏览器以后只回了文字（概念 7）
 	doneReminder = "如果已经查完了，请调用 done，把完整的回答写在 text 里；如果还没查完，请接着操作浏览器。"

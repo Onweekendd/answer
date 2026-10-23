@@ -20,17 +20,13 @@
 package purchaseai
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"image"
-	"image/jpeg"
 	"strings"
 	"testing"
 
 	"github.com/apache/answer/internal/service/browser"
-	"github.com/stretchr/testify/assert"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,7 +38,7 @@ func newToolRun(b Browser) *agentRun {
 func openedRun(t *testing.T, b *fakeBrowser) *agentRun {
 	t.Helper()
 	r := newToolRun(b)
-	_, err := r.open(context.Background(), `{"url":"`+jdHome+`"}`)
+	_, err := r.Open(context.Background(), `{"url":"`+jdHome+`"}`)
 	require.NoError(t, err)
 	return r
 }
@@ -86,61 +82,9 @@ func Test_hover(t *testing.T) {
 	require.Equal(t, []string{"open " + jdHome, "hover 3"}, b.calls)
 
 	b.fail["hover"] = &browser.CommandError{Code: "ELEMENT_NOT_FOUND", Message: "stale"}
-	res, err = r.hover(context.Background(), `{"index":3}`)
+	res, err = tools[toolHover].run(context.Background(), `{"index":3}`)
 	require.NoError(t, err)
 	require.True(t, res.Failed)
-}
-
-func Test_shotForModel(t *testing.T) {
-	jpegShot := func(t *testing.T, w, h int) screenshotData {
-		t.Helper()
-		var buf bytes.Buffer
-		require.NoError(t, jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, w, h)), &jpeg.Options{Quality: shotKeepQuality}))
-		return screenshotData{Data: base64.StdEncoding.EncodeToString(buf.Bytes()), Mime: "image/jpeg", Width: w, Height: h}
-	}
-
-	t.Run("整屏截图按屏幕原样截，发给模型的缩到 1600 宽", func(t *testing.T) {
-		// Arrange
-		shot := jpegShot(t, 2560, 888)
-
-		// Act
-		uri, w, h := shotForModel(shot)
-
-		// Assert：模型那份变小了，原图（存给用户看的）不动
-		assert.Equal(t, screenshotMaxWidth, w)
-		assert.Equal(t, 555, h)
-		raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(uri, "data:image/jpeg;base64,"))
-		require.NoError(t, err)
-		img, err := jpeg.Decode(bytes.NewReader(raw))
-		require.NoError(t, err)
-		assert.Equal(t, screenshotMaxWidth, img.Bounds().Dx())
-		assert.Equal(t, 2560, shot.Width)
-	})
-
-	t.Run("只截一个元素的小图原样发", func(t *testing.T) {
-		// Arrange
-		shot := jpegShot(t, 496, 504)
-
-		// Act
-		uri, w, h := shotForModel(shot)
-
-		// Assert
-		assert.Equal(t, "data:image/jpeg;base64,"+shot.Data, uri)
-		assert.Equal(t, 496, w)
-		assert.Equal(t, 504, h)
-	})
-
-	t.Run("解不开的图原样发", func(t *testing.T) {
-		// Arrange
-		shot := screenshotData{Data: base64.StdEncoding.EncodeToString([]byte("shot1")), Mime: "image/jpeg", Width: 1024, Height: 576}
-
-		// Act
-		uri, w, _ := shotForModel(shot)
-
-		// Assert
-		assert.Equal(t, "data:image/jpeg;base64,"+shot.Data, uri)
-		assert.Equal(t, 1024, w)
-	})
 }
 
 func Test_screenshot(t *testing.T) {
@@ -150,7 +94,7 @@ func Test_screenshot(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.screenshot(context.Background(), `{}`)
+		res, err := r.Screenshot(context.Background(), `{}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -167,7 +111,7 @@ func Test_screenshot(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.screenshot(context.Background(), `{"index":3}`)
+		res, err := r.Screenshot(context.Background(), `{"index":3}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -181,7 +125,7 @@ func Test_screenshot(t *testing.T) {
 		r := newAgentRun(&fakeLLM{}, b, testLimits())
 
 		// Act
-		res, err := r.screenshot(context.Background(), `{}`)
+		res, err := r.Screenshot(context.Background(), `{}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -196,7 +140,7 @@ func Test_screenshot(t *testing.T) {
 		b.fail["screenshot"] = &browser.CommandError{Code: "EXEC_FAILED", Message: "页面不可见"}
 
 		// Act
-		res, err := r.screenshot(context.Background(), `{}`)
+		res, err := r.Screenshot(context.Background(), `{}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -210,11 +154,11 @@ func Test_read(t *testing.T) {
 		// Arrange
 		b := newFakeBrowser()
 		r := openedRun(t, b)
-		_, err := r.navigate(context.Background(), `{"url":"`+jdItem+`"}`)
+		_, err := r.Navigate(context.Background(), `{"url":"`+jdItem+`"}`)
 		require.NoError(t, err)
 
 		// Act
-		res, err := r.read(context.Background(), `{}`)
+		res, err := r.Read(context.Background(), `{}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -233,7 +177,7 @@ func Test_read(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.read(context.Background(), `{"index":2}`)
+		res, err := r.Read(context.Background(), `{"index":2}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -247,43 +191,12 @@ func Test_read(t *testing.T) {
 		r := newToolRun(b)
 
 		// Act
-		res, err := r.read(context.Background(), `{}`)
+		res, err := r.Read(context.Background(), `{}`)
 
 		// Assert
 		require.NoError(t, err)
 		require.True(t, res.Failed)
 		require.Empty(t, b.calls)
-	})
-}
-
-func Test_formatRead(t *testing.T) {
-	t.Run("截断了就说一共多少字、读了多少", func(t *testing.T) {
-		// Arrange
-		data := readData{Title: "笔记", URL: "xiaohongshu.com/explore/1", Scope: "overlay", Text: "正文", Truncated: true, TotalChars: 5000}
-
-		// Act
-		got := formatRead(data, nil)
-
-		// Assert
-		require.Contains(t, got, "读的是页面上的浮层")
-		require.Contains(t, got, "一共 5000 字，只读了前 3000 字")
-	})
-
-	t.Run("有大图时提醒截图：图里的字读不到", func(t *testing.T) {
-		// Act
-		got := formatRead(readData{Scope: "overlay", Text: "#富冈义勇", Images: 1}, nil)
-
-		// Assert
-		require.Contains(t, got, "这里有大图")
-		require.Contains(t, got, "screenshot")
-	})
-
-	t.Run("没读到文字时建议截图", func(t *testing.T) {
-		// Act
-		got := formatRead(readData{Scope: "page", Text: "  "}, nil)
-
-		// Assert
-		require.Contains(t, got, "screenshot")
 	})
 }
 
@@ -294,7 +207,7 @@ func Test_press(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.press(context.Background(), `{"key":"Escape"}`)
+		res, err := r.Press(context.Background(), `{"key":"Escape"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -310,7 +223,7 @@ func Test_press(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.press(context.Background(), `{"key":"ArrowRight"}`)
+		res, err := r.Press(context.Background(), `{"key":"ArrowRight"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -327,7 +240,7 @@ func Test_press(t *testing.T) {
 		before := len(b.calls)
 
 		// Act
-		res, err := r.press(context.Background(), `{"key":"Delete"}`)
+		res, err := r.Press(context.Background(), `{"key":"Delete"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -343,11 +256,11 @@ func Test_open(t *testing.T) {
 		r := newToolRun(b)
 
 		// Act
-		res, err := r.open(context.Background(), `{"url":"`+jdHome+`"}`)
+		res, err := r.Open(context.Background(), `{"url":"`+jdHome+`"}`)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, 1, r.tabID)
+		require.Equal(t, 1, r.TabID)
 		require.True(t, res.PageChanged)
 		require.Equal(t, jdHome, res.URL)
 		require.Contains(t, res.Text, "「京东」")
@@ -360,7 +273,7 @@ func Test_open(t *testing.T) {
 			b := newFakeBrowser()
 
 			// Act
-			res, err := newToolRun(b).open(context.Background(), `{"url":"`+raw+`"}`)
+			res, err := newToolRun(b).Open(context.Background(), `{"url":"`+raw+`"}`)
 
 			// Assert
 			require.NoError(t, err)
@@ -371,20 +284,12 @@ func Test_open(t *testing.T) {
 
 	t.Run("参数不是 JSON 时告诉模型格式", func(t *testing.T) {
 		// Act
-		res, err := newToolRun(newFakeBrowser()).open(context.Background(), `{url: jd}`)
+		res, err := newToolRun(newFakeBrowser()).Open(context.Background(), `{url: jd}`)
 
 		// Assert
 		require.NoError(t, err)
 		require.True(t, res.Failed)
 		require.Contains(t, res.Text, `{"url": "https://..."}`)
-	})
-
-	t.Run("页面没加载完时提一句", func(t *testing.T) {
-		// Act
-		res := pageResult(pageInfo{URL: jdHome, Title: "京东", Loaded: false})
-
-		// Assert
-		require.Contains(t, res.Text, "还没有完全加载完")
 	})
 }
 
@@ -395,12 +300,12 @@ func Test_navigate(t *testing.T) {
 		r := newToolRun(b)
 
 		// Act
-		_, err := r.navigate(context.Background(), `{"url":"`+jdHome+`"}`)
+		_, err := r.Navigate(context.Background(), `{"url":"`+jdHome+`"}`)
 
 		// Assert
 		require.NoError(t, err)
 		require.Equal(t, []string{"open " + jdHome}, b.calls)
-		require.Equal(t, 1, r.tabID)
+		require.Equal(t, 1, r.TabID)
 	})
 
 	t.Run("已经开了就在同一个标签页里跳转", func(t *testing.T) {
@@ -409,7 +314,7 @@ func Test_navigate(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.navigate(context.Background(), `{"url":"`+jdSearch+`"}`)
+		res, err := r.Navigate(context.Background(), `{"url":"`+jdSearch+`"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -425,10 +330,10 @@ func Test_navigate(t *testing.T) {
 		b.tabs = map[int]string{}
 
 		// Act
-		_, _ = r.navigate(context.Background(), `{"url":"`+jdSearch+`"}`)
+		_, _ = r.Navigate(context.Background(), `{"url":"`+jdSearch+`"}`)
 
 		// Assert
-		require.Equal(t, 0, r.tabID)
+		require.Equal(t, 0, r.TabID)
 	})
 }
 
@@ -438,7 +343,7 @@ func Test_snapshot(t *testing.T) {
 		b := newFakeBrowser()
 
 		// Act
-		res, err := newToolRun(b).snapshot(context.Background(), `{}`)
+		res, err := newToolRun(b).Snapshot(context.Background(), `{}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -452,53 +357,19 @@ func Test_snapshot(t *testing.T) {
 		r := openedRun(t, newFakeBrowser())
 
 		// Act
-		res, err := r.snapshot(context.Background(), ``)
+		res, err := r.Snapshot(context.Background(), ``)
 
 		// Assert
 		require.NoError(t, err)
 		require.True(t, res.Snapshot)
 		require.False(t, res.PageChanged)
 		require.Equal(t, jdHome, res.URL)
-		require.Equal(t, hashText(shopPages()[jdHome].elements), r.snapshotHash)
-		require.Equal(t, pageState(r.snapshotHash, 0), r.pageHash)
+		require.NotEmpty(t, r.SnapshotHash)
+		require.Equal(t, browsertool.PageState(r.SnapshotHash, 0), r.PageHash)
 		require.Contains(t, res.Text, "来自外部网页")
 		require.Contains(t, res.Text, "[0]<input placeholder=搜索>")
 		require.Contains(t, res.Text, "下面还有 3.0 屏")
 	})
-
-	t.Run("页面一样哈希就一样，页面变了哈希就变", func(t *testing.T) {
-		require.Equal(t, hashText("a"), hashText("a"))
-		require.NotEqual(t, hashText("a"), hashText("b"))
-	})
-}
-
-func Test_formatSnapshot(t *testing.T) {
-	unstable := false
-	snap := snapshotData{URL: jdHome, Title: "京东", Truncated: true}
-	snap.Stats.Stable = &unstable
-
-	// Act
-	text := formatSnapshot(snap)
-
-	// Assert
-	require.Contains(t, text, "没有可以操作的元素")
-	require.Contains(t, text, "只列出了前面一部分")
-	require.Contains(t, text, "一直在变化")
-	require.NotContains(t, text, "浮层")
-}
-
-func Test_formatSnapshot_浮层(t *testing.T) {
-	// Arrange：插件说页面中间开着一个浮层
-	snap := snapshotData{URL: jdHome, Title: "京东", Elements: "[0]<div>关闭弹窗"}
-	snap.Stats.Overlay = true
-
-	// Act
-	text := formatSnapshot(snap)
-
-	// Assert：告诉模型先关掉它，怎么关，以及验证码不要关
-	require.Contains(t, text, "开着一个浮层")
-	require.Contains(t, text, "「关闭弹窗」")
-	require.Contains(t, text, "验证码")
 }
 
 func Test_click(t *testing.T) {
@@ -508,7 +379,7 @@ func Test_click(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.click(context.Background(), `{"index":1}`)
+		res, err := r.Click(context.Background(), `{"index":1}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -522,7 +393,7 @@ func Test_click(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.click(context.Background(), `5`)
+		res, err := r.Click(context.Background(), `5`)
 
 		// Assert
 		require.NoError(t, err)
@@ -537,11 +408,11 @@ func Test_afterAct(t *testing.T) {
 		r := openedRun(t, newFakeBrowser())
 
 		// Act
-		res, err := r.click(context.Background(), `{"index":1}`)
+		res, err := r.Click(context.Background(), `{"index":1}`)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, 1, r.tabID)
+		require.Equal(t, 1, r.TabID)
 		require.Equal(t, jdSearch, res.URL)
 		require.Contains(t, res.Text, "现在的网址是 "+jdSearch)
 	})
@@ -550,32 +421,17 @@ func Test_afterAct(t *testing.T) {
 		// Arrange
 		b := newFakeBrowser()
 		r := newToolRun(b)
-		_, _ = r.open(context.Background(), `{"url":"`+tbHome+`"}`)
+		_, _ = r.Open(context.Background(), `{"url":"`+tbHome+`"}`)
 
 		// Act
-		res, err := r.click(context.Background(), `{"index":1}`)
+		res, err := r.Click(context.Background(), `{"index":1}`)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, 2, r.tabID)
-		require.Equal(t, []int{1, 2}, r.openedTabs)
+		require.Equal(t, 2, r.TabID)
+		require.Equal(t, []int{1, 2}, r.OpenedTabs)
 		require.True(t, res.PageChanged)
 		require.Contains(t, res.Text, "已经切换到这个标签页")
-	})
-
-	t.Run("新标签页自己关掉了（文件下载）：留在原来的标签页，让模型换一个来源", func(t *testing.T) {
-		// Arrange
-		r := openedRun(t, newFakeBrowser())
-
-		// Act
-		res := r.afterAct("已点击 [19]。", actResult{URL: "https://metaso.cn/chat/1", NewTabClosed: true})
-
-		// Assert
-		require.Equal(t, 1, r.tabID)
-		require.False(t, res.Failed)
-		require.False(t, res.PageChanged, "页面没变，编号还能用")
-		require.Contains(t, res.Text, "文件下载")
-		require.Contains(t, res.Text, "不要再点它")
 	})
 }
 
@@ -583,17 +439,17 @@ func Test_closeTabs(t *testing.T) {
 	// Arrange：开了首页，搜索又开了一个新标签页
 	b := newFakeBrowser()
 	r := newToolRun(b)
-	_, _ = r.open(context.Background(), `{"url":"`+tbHome+`"}`)
-	_, _ = r.typeText(context.Background(), `{"index":0,"text":"iphone","submit":true}`)
+	_, _ = r.Open(context.Background(), `{"url":"`+tbHome+`"}`)
+	_, _ = r.Type(context.Background(), `{"index":0,"text":"iphone","submit":true}`)
 
 	// Act
-	r.closeTabs()
+	r.CloseTabs()
 
 	// Assert：两个都关了，浏览器里不剩 Agent 开的标签页
 	require.Contains(t, b.calls, "close 1")
 	require.Contains(t, b.calls, "close 2")
 	require.Empty(t, b.tabs)
-	require.Empty(t, r.openedTabs)
+	require.Empty(t, r.OpenedTabs)
 }
 
 func Test_typeText(t *testing.T) {
@@ -602,7 +458,7 @@ func Test_typeText(t *testing.T) {
 		r := openedRun(t, newFakeBrowser())
 
 		// Act
-		res, err := r.typeText(context.Background(), `{"index":0,"text":"iphone 17"}`)
+		res, err := r.Type(context.Background(), `{"index":0,"text":"iphone 17"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -615,7 +471,7 @@ func Test_typeText(t *testing.T) {
 		r := openedRun(t, newFakeBrowser())
 
 		// Act
-		res, err := r.typeText(context.Background(), `{"index":0,"text":"iphone 17","submit":true}`)
+		res, err := r.Type(context.Background(), `{"index":0,"text":"iphone 17","submit":true}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -628,7 +484,7 @@ func Test_typeText(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.typeText(context.Background(), `{"index":0,"text":"  "}`)
+		res, err := r.Type(context.Background(), `{"index":0,"text":"  "}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -644,7 +500,7 @@ func Test_scroll(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.scroll(context.Background(), `{"direction":"down"}`)
+		res, err := r.Scroll(context.Background(), `{"direction":"down"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -656,30 +512,30 @@ func Test_scroll(t *testing.T) {
 	t.Run("滚动以后页面状态跟着位置变，快照的哈希不变", func(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())
-		_, _ = r.snapshot(context.Background(), `{}`)
-		before := r.pageHash
+		_, _ = r.Snapshot(context.Background(), `{}`)
+		before := r.PageHash
 
 		// Act
-		_, err := r.scroll(context.Background(), `{"direction":"down","pages":2}`)
+		_, err := r.Scroll(context.Background(), `{"direction":"down","pages":2}`)
 
 		// Assert
 		require.NoError(t, err)
-		require.NotEqual(t, before, r.pageHash)
-		require.Equal(t, pageState(r.snapshotHash, 2), r.pageHash)
+		require.NotEqual(t, before, r.PageHash)
+		require.Equal(t, browsertool.PageState(r.SnapshotHash, 2), r.PageHash)
 	})
 
 	t.Run("滚到底以后再滚，页面状态不再变", func(t *testing.T) {
 		// Arrange：3 屏高的页面，先滚到底
 		r := openedRun(t, newFakeBrowser())
-		_, _ = r.scroll(context.Background(), `{"direction":"down","pages":5}`)
-		atBottom := r.pageHash
+		_, _ = r.Scroll(context.Background(), `{"direction":"down","pages":5}`)
+		atBottom := r.PageHash
 
 		// Act
-		_, err := r.scroll(context.Background(), `{"direction":"down"}`)
+		_, err := r.Scroll(context.Background(), `{"direction":"down"}`)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, atBottom, r.pageHash)
+		require.Equal(t, atBottom, r.PageHash)
 	})
 
 	t.Run("方向不对时不滚", func(t *testing.T) {
@@ -688,7 +544,7 @@ func Test_scroll(t *testing.T) {
 		r := openedRun(t, b)
 
 		// Act
-		res, err := r.scroll(context.Background(), `{"direction":"left"}`)
+		res, err := r.Scroll(context.Background(), `{"direction":"left"}`)
 
 		// Assert
 		require.NoError(t, err)
@@ -739,7 +595,7 @@ func Test_runTool(t *testing.T) {
 		// Arrange
 		r := openedRun(t, newFakeBrowser())
 		tools, _, _ := r.tools(true)
-		r.pageHash = "before"
+		r.PageHash = "before"
 		r.step = 4
 
 		// Act
@@ -748,32 +604,13 @@ func Test_runTool(t *testing.T) {
 		// Assert：快照执行以后哈希变了，但这次动作的指纹要用执行之前的
 		require.NoError(t, err)
 		require.Equal(t, "before", res.PageHash)
-		require.NotEqual(t, "before", r.pageHash)
+		require.NotEqual(t, "before", r.PageHash)
 		last := r.steps[len(r.steps)-1]
 		require.Equal(t, 4, last.Step)
 		require.Equal(t, toolSnapshot, last.Tool)
 		require.Equal(t, jdHome, last.URL)
 	})
 
-}
-
-func Test_commandFailure(t *testing.T) {
-	for code, want := range map[string]string{
-		"ELEMENT_NOT_FOUND":   "先 snapshot",
-		"NOT_EDITABLE":        "不是输入框",
-		"TAB_NOT_FOUND":       "open",
-		"PAGE_NOT_SCRIPTABLE": "换一个网址",
-		"EXEC_FAILED":         "插件执行失败：出错了",
-	} {
-		t.Run(code, func(t *testing.T) {
-			// Act
-			res := commandFailure(&browser.CommandError{Code: code, Message: "出错了"})
-
-			// Assert
-			require.True(t, res.Failed)
-			require.Contains(t, res.Text, want)
-		})
-	}
 }
 
 func Test_canonicalArgs(t *testing.T) {

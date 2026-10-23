@@ -23,18 +23,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 )
 
 // runAgent 让模型操作浏览器，直到它调用 done、直接回答，或者走到收尾。
 // browserOn 为 false 时不给任何工具，模型只能直接回答（概念 7 的降级）。
 func (pas *PurchaseAIService) runAgent(ctx context.Context, messages []llm.Message, browserOn bool) (*agentResult, error) {
 	r := pas.newRun()
-	defer r.closeTabs()
+	defer r.CloseTabs()
 	return r.run(ctx, messages, browserOn)
 }
 
@@ -72,7 +72,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 
 	var tools map[string]agentTool
 	var defs []llm.Tool
-	if browserOn || r.draft != nil || r.workspaces != nil {
+	if browserOn || r.draft != nil || r.Workspaces != nil {
 		var err error
 		tools, defs, err = r.tools(browserOn)
 		if err != nil {
@@ -192,7 +192,7 @@ func (r *agentRun) loop(ctx context.Context, messages []llm.Message, browserOn b
 		if restSteps == r.limits.warnAt {
 			messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, stepWarningText(restSteps)), messageMeta{Synthetic: true})
 		}
-		if restSteps == r.limits.deliverAt && r.workspaces != nil {
+		if restSteps == r.limits.deliverAt && r.Workspaces != nil {
 			messages = r.keep(ctx, messages, llm.Text(llm.RoleUser, deliverWarningText(restSteps)), messageMeta{Synthetic: true})
 		}
 	}
@@ -364,25 +364,11 @@ func toolMessage(callID, text string) llm.Message {
 	return msg
 }
 
-// leakedDoneText 匹配模型当成文字写出来的 done 调用里的 text 参数。
-// deepseek 在没给工具、对话里却全是工具调用时（收尾就是这样），有时会照着样子把调用 done 写成它内部的
-// DSML 标记，而不是直接回答：<｜｜DSML｜｜ invoke name="done"> … <｜｜DSML｜｜ parameter name="text" …>回答</｜｜DSML｜｜ parameter>
-var leakedDoneText = regexp.MustCompile(`(?s)invoke name="done">.*?parameter name="text"[^>]*>(.*?)</[^<>]*parameter>`)
-
-// answerText 是模型回复里给用户的回答：正常就是 Content；模型把 done 写成了文字时，取出里面的 text
-func answerText(resp *llm.ChatResp) string {
-	if strings.Contains(resp.Content, "DSML") {
-		if m := leakedDoneText.FindStringSubmatch(resp.Content); m != nil {
-			return strings.TrimSpace(m[1])
-		}
-	}
-	return resp.Content
-}
-
-// leakedCall 说模型是不是把 done 以外的工具调用写成了文字
-func leakedCall(resp *llm.ChatResp) bool {
-	return strings.Contains(resp.Content, "DSML") && !leakedDoneText.MatchString(resp.Content)
-}
+// answerText、leakedCall 搬到了 agent 包
+var (
+	answerText = agent.AnswerText
+	leakedCall = agent.LeakedCall
+)
 
 // doneResult 找出这一轮里 done 的结果
 func doneResult(results []toolResult) (toolResult, bool) {

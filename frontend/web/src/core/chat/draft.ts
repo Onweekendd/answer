@@ -1,7 +1,7 @@
 /**
  * The post draft the agent hands over when the user asks it to post to the community (the
  * `tool_suspend` event). The agent stops there; the user edits the draft, publishes it through
- * the usual post endpoint, or drops it. Mirrors DraftInput in internal/service/purchase_ai/drafts.go.
+ * the usual post endpoint, or drops it. Mirrors DraftInput in internal/service/purchase_ai/tools_draft.go.
  */
 export interface PostDraft {
   draftId: string;

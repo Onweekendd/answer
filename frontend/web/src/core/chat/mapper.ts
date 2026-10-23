@@ -33,7 +33,7 @@ export interface SavedIds {
 }
 
 /**
- * A product card, as internal/service/purchase_ai/products.go sends it. The link and the image
+ * A product card, as internal/service/purchase_ai/tools_products.go sends it. The link and the image
  * come from the page itself, not from the model; the image is stored on our own server.
  */
 export interface ProductCard {
@@ -49,7 +49,7 @@ export interface ProductCard {
 }
 
 /**
- * A web page the agent made in its sandbox and handed over (artifacts.go). The page and its
+ * A web page the agent made in its sandbox and handed over (purchase_ai/tools_deliver.go). The page and its
  * screenshot are stored on our own server; the page is served with a sandbox CSP, and it is shown
  * in a sandboxed iframe, since the model wrote it from what it read on other sites.
  */
