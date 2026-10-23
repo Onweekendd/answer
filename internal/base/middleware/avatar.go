@@ -80,15 +80,9 @@ func (am *AvatarMiddleware) AvatarThumb() gin.HandlerFunc {
 			}
 			ctx.Abort()
 			return
-		} else {
-			urlInfo, err := url.Parse(uri)
-			if err != nil {
-				ctx.Next()
-				return
-			}
-			ext := strings.TrimPrefix(filepath.Ext(urlInfo.Path), ".")
-			ctx.Header("content-type", fmt.Sprintf("image/%s", ext))
 		}
+		// Other upload routes own their MIME type. In particular, pre-setting
+		// image/html prevents Gin's streamed HTML response from selecting text/html.
 		ctx.Next()
 	}
 }

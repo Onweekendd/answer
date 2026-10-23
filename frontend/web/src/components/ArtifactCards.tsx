@@ -1,8 +1,8 @@
 import { makeAssistantDataUI } from "@assistant-ui/react";
 import { DownloadIcon, ExternalLinkIcon, FileTextIcon, Loader2Icon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { formatSize } from "@/core/chat/artifact";
 import { type Artifact, ARTIFACTS_PART } from "@/core/chat/mapper";
@@ -79,8 +79,19 @@ function ArtifactCard({ artifact }: { artifact: Artifact }) {
 
 /** The open page: a bar with its title and what the user can do with it, then the page in its frame. */
 function ArtifactPreview({ artifact }: { artifact: Artifact }) {
-  const [loaded, setLoaded] = useState(false);
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const [attempt, setAttempt] = useState(0);
+  // Older responses were cached with image/html and an immutable one-year TTL.
+  const preview = new URL(artifact.url);
+  preview.searchParams.set("preview", "2");
+  const previewURL = preview.href;
   const action = cn(buttonVariants({ variant: "outline", size: "sm" }));
+
+  useEffect(() => {
+    if (state !== "loading") return;
+    const timer = window.setTimeout(() => setState("failed"), 15_000);
+    return () => window.clearTimeout(timer);
+  }, [state, attempt]);
 
   return (
     <>
@@ -93,23 +104,53 @@ function ArtifactPreview({ artifact }: { artifact: Artifact }) {
             保存为图片
           </a>
         )}
-        <a href={artifact.url} target="_blank" rel="noopener noreferrer" className={action}>
+        <a href={previewURL} target="_blank" rel="noopener noreferrer" className={action}>
           <ExternalLinkIcon aria-hidden />
           在新标签页打开
         </a>
       </div>
       <div className="relative min-h-0 flex-1 bg-white">
-        {!loaded && (
-          <Loader2Icon className="absolute inset-0 m-auto size-6 animate-spin text-muted-foreground" aria-hidden />
+        {state === "loading" && (
+          <div role="status" className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+            <Loader2Icon className="size-6 animate-spin" aria-hidden />
+            <span className="sr-only">正在加载预览</span>
+          </div>
         )}
-        <iframe
-          src={artifact.url}
-          title={artifact.title}
-          sandbox={FRAME_SANDBOX}
-          referrerPolicy="no-referrer"
-          onLoad={() => setLoaded(true)}
-          className="size-full border-0"
-        />
+        {state === "failed" ? (
+          <div
+            role="alert"
+            className="flex h-full flex-col items-center justify-center gap-4 bg-background p-6 text-center text-sm text-muted-foreground"
+          >
+            <p>预览暂时没能加载，可以重试或在新标签页打开。</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAttempt((n) => n + 1);
+                setState("loading");
+              }}
+            >
+              重新加载
+            </Button>
+            {artifact.image && (
+              <img
+                src={artifact.image}
+                alt={`${artifact.title}的预览图片`}
+                className="max-h-[50dvh] max-w-full rounded-lg object-contain"
+              />
+            )}
+          </div>
+        ) : (
+          <iframe
+            key={attempt}
+            src={previewURL}
+            title={artifact.title}
+            sandbox={FRAME_SANDBOX}
+            referrerPolicy="no-referrer"
+            onLoad={() => setState("ready")}
+            onError={() => setState("failed")}
+            className="size-full border-0"
+          />
+        )}
       </div>
     </>
   );

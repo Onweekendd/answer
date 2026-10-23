@@ -133,6 +133,8 @@ func (a *StaticRouter) agentFile(c *gin.Context) {
 	}
 	ext := path.Ext(name)
 	contentType := uploader.AgentFileTypes[ext]
+	// Set this explicitly before streaming as Gin preserves an existing type.
+	c.Header("Content-Type", contentType)
 	// 名字每次都是新的，一份拷贝永远不会过期
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	c.Header("X-Content-Type-Options", "nosniff")
@@ -160,7 +162,6 @@ func (a *StaticRouter) agentFile(c *gin.Context) {
 		return
 	}
 	// c.File 会按扩展名自己猜类型（.md、.csv 猜得五花八门），先定死
-	c.Header("Content-Type", contentType)
 	c.File(local)
 }
 

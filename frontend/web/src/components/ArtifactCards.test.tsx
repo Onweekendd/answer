@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { Artifact } from "@/core/chat/mapper";
@@ -17,7 +17,11 @@ const trip: Artifact = {
 };
 
 describe("ArtifactCards", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it("shows a card with the page's picture, title and size; the page itself is not loaded yet", () => {
     // Act
@@ -39,7 +43,7 @@ describe("ArtifactCards", () => {
     // Assert
     const frame = await screen.findByTitle("成都 4 天行程");
     expect(frame.tagName).toBe("IFRAME");
-    expect(frame).toHaveAttribute("src", trip.url);
+    expect(frame).toHaveAttribute("src", `${trip.url}?preview=2`);
     expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox");
     expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
@@ -57,7 +61,7 @@ describe("ArtifactCards", () => {
     expect(save).toHaveAttribute("href", trip.image);
     expect(save).toHaveAttribute("download");
     const open = screen.getByRole("link", { name: "在新标签页打开" });
-    expect(open).toHaveAttribute("href", trip.url);
+    expect(open).toHaveAttribute("href", `${trip.url}?preview=2`);
     expect(open).toHaveAttribute("rel", expect.stringContaining("noopener"));
   });
 
@@ -72,5 +76,22 @@ describe("ArtifactCards", () => {
     // Assert
     expect(await screen.findByTitle("成都 4 天行程")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "保存为图片" })).toBeNull();
+  });
+
+  it("stops a stalled preview, shows its picture and lets the reader retry", async () => {
+    const timers = vi.spyOn(window, "setTimeout");
+    render(<ArtifactCards artifacts={[trip]} />);
+    await userEvent.click(screen.getByRole("button", { name: /成都 4 天行程/ }));
+    const deadline = timers.mock.calls.find(([, delay]) => delay === 15_000)?.[0];
+    expect(deadline).toBeTypeOf("function");
+    act(() => {
+      if (typeof deadline === "function") deadline();
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("预览暂时没能加载");
+    expect(screen.getByAltText(`${trip.title}的预览图片`)).toHaveAttribute("src", trip.image);
+    await userEvent.click(screen.getByRole("button", { name: "重新加载" }));
+    expect(screen.getByTitle(trip.title)).toBeInTheDocument();
+    fireEvent.load(screen.getByTitle(trip.title));
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
