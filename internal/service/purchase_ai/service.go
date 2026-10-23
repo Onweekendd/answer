@@ -108,6 +108,7 @@ func (pas *PurchaseAIService) taskOptions(browserOn bool) taskOptions {
 		browserOn:     browserOn,
 		limits:        defaultLimits,
 		images:        pas.uploaderService,
+		resources:     pas.uploaderService,
 		artifactStore: pas.uploaderService,
 	}
 }

@@ -1,4 +1,4 @@
-import type { toQuestionAdd } from "../chat/draft";
+import type { DraftResult, toQuestionAdd } from "../chat/draft";
 import type { Choice, MyChoice } from "../vote/tally";
 import type { ApiClient } from "./client";
 
@@ -33,6 +33,10 @@ export interface FeedItem {
   title: string;
   url_title: string;
   description: string;
+  tags?: { slug_name: string; display_name: string }[];
+  /** The feed uses newest ordering, so operator is the post's author. */
+  operator?: { id: string; username: string; display_name: string; avatar?: string };
+  answer_count?: number;
   purchase?: PurchaseInfo;
 }
 
@@ -103,6 +107,14 @@ export function createEndpoints(client: ApiClient) {
     /** Asks the AI to cast the vote it kept with the draft, on the post just published from it. */
     draftVote: (draftId: string, questionId: string) =>
       client.post<null>("/purchase/ai/draft/vote", { draft_id: draftId, question_id: questionId }),
+
+    /** Tells the server what the user did with a draft, so the chat history shows it decided. */
+    draftResult: (draftId: string, result: DraftResult) =>
+      client.post<null>("/purchase/ai/draft/result", {
+        draft_id: draftId,
+        status: result.status,
+        ...(result.status === "published" ? { question_id: result.questionId, title: result.title } : {})
+      }),
 
     /** Uploads an image for a post and returns its url. */
     uploadImage: (file: File) => {

@@ -65,6 +65,8 @@ type Event struct {
 	Product  *ProductCard `json:"product,omitempty"`  // product
 	Artifact *Artifact    `json:"artifact,omitempty"` // artifact
 	Input    *DraftInput  `json:"input,omitempty"`    // tool_suspend：交给用户确认的内容（tool_input）
+	// Outcome 是 tool_suspend 里的草稿用户已经处理过了：只有回放历史时有，直播时用户还没拍板
+	Outcome *DraftOutcome `json:"outcome,omitempty"`
 	// followups：用户接下来可能会说的话，最多 3 句
 	Followups []string  `json:"followups,omitempty"`
 	Saved     *SavedIDs `json:"saved,omitempty"` // saved

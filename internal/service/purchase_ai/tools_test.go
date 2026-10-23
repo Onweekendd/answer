@@ -93,7 +93,7 @@ func Test_tools(t *testing.T) {
 		require.Equal(t, []string{
 			toolSkill, toolOpen, toolNavigate, toolSnapshot, toolRead, toolShot, toolClick, toolHover, toolType, toolPress, toolScroll,
 			toolProduct, toolImage, toolHarvest, toolVideo,
-			toolBash, toolReadFile, toolWriteFile, toolEditFile, toolDeliver,
+			toolBash, toolReadFile, toolWriteFile, toolEditFile, toolImport, toolDeliver,
 			toolDraft, toolDone,
 		}, names)
 	})

@@ -240,7 +240,7 @@ func (p *presenter) replayTurn(turn []Entry) []Event {
 				out = append(out, Event{Type: EventArtifact, Artifact: d.Artifact})
 			}
 			if d.Draft != nil {
-				out = append(out, Event{Type: EventToolSuspend, ID: id, Name: c.Name, Input: d.Draft})
+				out = append(out, Event{Type: EventToolSuspend, ID: id, Name: c.Name, Input: d.Draft, Outcome: d.Outcome})
 			}
 			ok := !d.Failed
 			out = append(out, Event{Type: EventToolEnd, ID: id, Result: &ToolView{Summary: p.view(resultSummary(tool.Result{Failed: d.Failed, Display: d.Display})), OK: &ok}})

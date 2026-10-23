@@ -141,3 +141,21 @@ func TestChatRecorder_FailedWriteIsReported(t *testing.T) {
 	// Assert：Chat 要打日志，错误不能吞掉
 	assert.Error(t, err)
 }
+
+func TestChatRecorder_TellsWhoeverListensAboutEachWrittenEntry(t *testing.T) {
+	// Arrange：第二条写的时候数据库抖了一下
+	log := &fakeChatLog{}
+	rec := newChatRecorder(log, fakeChatID, "")
+	var told []string
+	rec.saved = func(leaf string) { told = append(told, leaf) }
+
+	// Act
+	a := rec.record(context.Background(), textEntry("一"))
+	log.appendErr = errors.New("database is down")
+	rec.record(context.Background(), textEntry("二"))
+	log.appendErr = nil
+	c := rec.record(context.Background(), textEntry("三"))
+
+	// Assert：写进库的才通知；没写成的那条补写时一起进库，通知的是这时的 leaf
+	assert.Equal(t, []string{a, c}, told)
+}

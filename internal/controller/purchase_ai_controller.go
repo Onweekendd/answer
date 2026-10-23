@@ -155,6 +155,25 @@ func (pac *PurchaseAIController) VoteDraft(ctx *gin.Context) {
 	handler.HandleResponse(ctx, err, nil)
 }
 
+// SaveDraftResult remembers what the user did with a draft
+// @Summary remember that the user published or dropped a draft, so the chat history shows it decided
+// @Tags PurchaseAI
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param data body schema.PurchaseDraftResultReq true "draft and what happened to it"
+// @Success 200 {object} handler.RespBody
+// @Router /answer/api/v1/purchase/ai/draft/result [post]
+func (pac *PurchaseAIController) SaveDraftResult(ctx *gin.Context) {
+	req := &schema.PurchaseDraftResultReq{}
+	if handler.BindAndCheck(ctx, req) {
+		return
+	}
+	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
+	err := pac.purchaseAIService.SaveDraftResult(ctx, req)
+	handler.HandleResponse(ctx, err, nil)
+}
+
 // writeSSE 把事件一条条写成 SSE，直到 channel 关闭（最后写 data: [DONE]）或者用户断开。
 // 写网络只在这一个 goroutine 里：同时等事件和心跳，ResponseWriter 不用加锁（概念 2）
 func writeSSE(ctx *gin.Context, events <-chan purchaseai.Event, heartbeat time.Duration) {

@@ -159,6 +159,23 @@ func TestReplayTurn_ProductAndDraft(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+func TestReplayTurn_DecidedDraftCarriesItsOutcome(t *testing.T) {
+	// Arrange：用户已经把草稿发出去了（SetDraftOutcome 写在草稿那条上）
+	r := replayRun(false)
+	outcome := &DraftOutcome{Status: DraftPublished, QuestionID: "10", Title: "XM5 值不值"}
+	draft := &DraftInput{DraftID: "d1", Title: "索尼 XM5 值不值得买", Candidates: []string{}}
+	turn := []Entry{
+		msgEntry("a1", "u1", callMsg("", toolCall("c1", toolDraft, `{"title":"索尼 XM5 值不值得买","vote":"wait"}`)), messageMeta{}),
+		msgEntry("t1", "a1", toolMessage("c1", "草稿已经交给用户确认。"), messageMeta{ToolName: toolDraft, Details: &Details{Summary: "整理帖子草稿", Display: "草稿交给你确认", Draft: draft, Outcome: outcome, Final: true}}),
+	}
+
+	// Act
+	got := r.replayTurn(turn)
+
+	// Assert：草稿和结果一起交给页面，页面才不会再摆出一份能发第二次的草稿
+	assert.Equal(t, Event{Type: EventToolSuspend, ID: "0-0", Name: toolDraft, Input: draft, Outcome: outcome}, got[1])
+}
+
 func TestReplayTurn_Artifact(t *testing.T) {
 	// Arrange：交付了一个网页
 	r := replayRun(false)

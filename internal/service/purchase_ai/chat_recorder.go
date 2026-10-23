@@ -54,6 +54,11 @@ type chatRecorder struct {
 	// 一条写失败也不会断链，它留在这里，下一次 record 或者 close 时和新的一起重写。
 	// Append 是一个事务，一批要么全进要么全不进，所以整批重写不会写出重复的
 	pending []Entry
+
+	// saved 在一条写进库以后调用，参数是这时的 leaf。Chat 用它马上告诉页面：用户中途点了停止，
+	// 页面手里就有停下那一刻的 leaf，下一条消息接在那里，而不是接回上一轮的末端、把这一轮丢在旁支上。
+	// 没写进库的不通知：页面拿着一个库里没有的 id 发下一条，会被当成 parent_id 对不上
+	saved func(leaf string)
 }
 
 func newChatRecorder(log ChatLog, chatID int64, parent string) *chatRecorder {
@@ -85,7 +90,9 @@ func (c *chatRecorder) record(ctx context.Context, e Entry) string {
 
 	c.pending = append(c.pending, e)
 
-	_ = c.flush(ctx)
+	if c.flush(ctx) == nil && c.saved != nil {
+		c.saved(e.ID)
+	}
 
 	return e.ID
 }

@@ -112,6 +112,11 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 			userEntry = t.rec.record(ctx, Entry{Kind: EntryMessage, Message: storeMessage(user, messageMeta{})})
 			messages = append(messages, user)
 		}
+		// 每记一条就告诉页面它的 id（recorder.saved）：用户中途点停止，页面也知道这一轮停在哪一条
+		t.rec.saved = func(leaf string) { send(Event{Type: EventSaved, Saved: &SavedIDs{User: userEntry, Leaf: leaf}}) }
+		if userEntry != "" {
+			t.rec.saved(userEntry)
+		}
 		// 日志和页面里的图都是网址，模型服务商访问不到我们的服务器，发之前换成 data URI
 		messages = pas.loadImages(ctx, messages)
 
@@ -129,8 +134,9 @@ func (pas *PurchaseAIService) Chat(ctx context.Context, req *schema.PurchaseAICh
 			finals = t.pres.answerEvents(res)
 		}
 
-		// 先把这一轮记完，再告诉页面条目的 id，页面下一条消息拿 leaf 当 parent_id。
-		// 顺序不能反：页面拿到 id 马上就可能发下一条。页面上的这条回答不另存：打开历史对话时从这一轮的消息重放
+		// 先把这一轮记完，再告诉页面最后的 id，页面下一条消息拿 leaf 当 parent_id。
+		// 顺序不能反：页面拿到 id 马上就可能发下一条。路上每一条的 id 已经发过了（上面的 saved），这里是收尾的一次。
+		// 页面上的这条回答不另存：打开历史对话时从这一轮的消息重放
 		if err := t.rec.close(ctx); err != nil {
 			log.Errorf("purchase ai: cannot save chat %d: %v", chatID, err)
 		} else {

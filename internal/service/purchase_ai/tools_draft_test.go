@@ -235,3 +235,33 @@ func Test_draftPost_noPictures(t *testing.T) {
 	assert.Contains(t, string(raw), `"images":[]`)
 	assert.Contains(t, string(raw), `"candidates":[]`)
 }
+
+func Test_SaveDraftResult(t *testing.T) {
+	// Arrange：对话日志里有一份草稿
+	log := &fakeChatLog{entries: []Entry{
+		msgEntry("t1", "", toolMessage("c1", "草稿已经交给用户确认。"), messageMeta{ToolName: toolDraft, Details: &Details{Draft: &DraftInput{DraftID: "d1"}}}),
+	}}
+	pas := &PurchaseAIService{chatLog: log}
+	req := &schema.PurchaseDraftResultReq{DraftID: "d1", Status: DraftPublished, QuestionID: "10", Title: "XM5 值不值", UserID: fakeUserID}
+
+	t.Run("记在草稿那条上", func(t *testing.T) {
+		// Act
+		err := pas.SaveDraftResult(context.Background(), req)
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, &DraftOutcome{Status: DraftPublished, QuestionID: "10", Title: "XM5 值不值"}, log.entries[0].Message.Details.Outcome)
+	})
+
+	t.Run("不是这个用户的草稿，当没有这回事", func(t *testing.T) {
+		// Arrange
+		other := *req
+		other.UserID = "8"
+
+		// Act
+		err := pas.SaveDraftResult(context.Background(), &other)
+
+		// Assert
+		require.Error(t, err)
+	})
+}

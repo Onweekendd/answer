@@ -120,4 +120,28 @@ describe("the tool_suspend event", () => {
     const last = parts.at(-1);
     expect(last?.type === "tool-call" && last.toolCallId).toBe("3-0:review");
   });
+
+  it("replays a draft the user decided already with that decision as its result", () => {
+    // Arrange: what the server sends for a turn whose draft was published
+    const outcome = { status: "published", questionId: "10", title: "XM5 值不值" };
+    const event = parseEvent(
+      JSON.stringify({ type: "tool_suspend", id: "3-0", name: "draft_post", input: draft, outcome })
+    );
+
+    // Act
+    const parts = event ? applyEvent([], event) : [];
+
+    // Assert: the card gets the result, so it shows "已发到社区" instead of an editor to publish again
+    const part = parts.at(-1);
+    expect(part?.type === "tool-call" && part.result).toEqual(outcome);
+  });
+
+  it("ignores an outcome it cannot read and leaves the draft open", () => {
+    const event = parseEvent(
+      JSON.stringify({ type: "tool_suspend", id: "3-0", name: "draft_post", input: draft, outcome: { status: "?" } })
+    );
+
+    const part = (event ? applyEvent([], event) : []).at(-1);
+    expect(part?.type === "tool-call" && part.result).toBeUndefined();
+  });
 });

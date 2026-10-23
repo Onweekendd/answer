@@ -94,6 +94,9 @@ type Details struct {
 	Product *ProductCard `json:"product,omitempty"`
 	// Draft 是 draft_post 交给用户确认的草稿：草稿 id、候选图是运行时定的
 	Draft *DraftInput `json:"draft,omitempty"`
+	// Outcome 是用户拿这份草稿做了什么：发出去了，还是放弃了。页面报上来才写（SetDraftOutcome），
+	// 没有就是还没拍板。回放时跟着草稿一起交给页面，不然回来看到的又是一份可以再发一次的草稿
+	Outcome *DraftOutcome `json:"outcome,omitempty"`
 	// Artifact 是 deliver 交给用户的产物：已经从沙箱拷出来存到了我们这边，沙箱没了也打得开
 	Artifact *Artifact `json:"artifact,omitempty"`
 
@@ -125,6 +128,9 @@ type ChatLog interface {
 	Entries(ctx context.Context, chatID int64, userID string) (entries []Entry, found bool, err error)
 	// Append 按顺序追加条目
 	Append(ctx context.Context, chatID int64, entries []Entry) error
+	// SetDraftOutcome 把用户对草稿的处理写进带着这份草稿的那条的 Details。条目是只追加的，
+	// 这是唯一一处事后改条目的地方，只动 Details.Outcome。草稿不存在或者不是 userID 的对话里的，found 为 false
+	SetDraftOutcome(ctx context.Context, userID, draftID string, outcome DraftOutcome) (found bool, err error)
 }
 
 // newEntryID 生成一个条目 id：e_ 加 12 个随机的小写字母和数字，一个对话里撞上的概率可以不管

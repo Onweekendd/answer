@@ -61,6 +61,20 @@ func (f *fakeChatLog) Append(ctx context.Context, _ int64, entries []Entry) erro
 	return nil
 }
 
+// SetDraftOutcome 和真的一样：只在 fakeUserID 的对话里找带着这份草稿的那条
+func (f *fakeChatLog) SetDraftOutcome(_ context.Context, userID, draftID string, outcome DraftOutcome) (bool, error) {
+	if userID != fakeUserID {
+		return false, nil
+	}
+	for _, e := range f.entries {
+		if e.Message != nil && e.Message.Details != nil && e.Message.Details.Draft != nil && e.Message.Details.Draft.DraftID == draftID {
+			e.Message.Details.Outcome = &outcome
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // msgEntry 拼一条测试用的日志条目
 func msgEntry(id, parent string, m llm.Message, meta messageMeta) Entry {
 	return Entry{ID: id, ParentID: parent, Kind: EntryMessage, Message: storeMessage(m, meta)}

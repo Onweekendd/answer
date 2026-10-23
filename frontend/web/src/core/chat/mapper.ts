@@ -2,7 +2,7 @@
  * The events the chat endpoint streams, one JSON object per SSE `data:` line. The Go side
  * must emit exactly these; they are the contract between the two.
  */
-import { isPostDraft, type PostDraft, PUBLISH_TOOL } from "./draft";
+import { type DraftResult, isDraftResult, isPostDraft, type PostDraft, PUBLISH_TOOL } from "./draft";
 
 export type ChatEvent =
   | { type: "text"; delta: string }
@@ -15,8 +15,11 @@ export type ChatEvent =
   | { type: "product"; product: ProductCard }
   /** A web page the agent made and handed over. Sent again with the same id when it delivers the page again. */
   | { type: "artifact"; artifact: Artifact }
-  /** A call the agent stopped at for the user to decide: the post draft, in `input`. */
-  | { type: "tool_suspend"; id: string; name: string; input: PostDraft }
+  /**
+   * A call the agent stopped at for the user to decide: the post draft, in `input`. A replayed one the
+   * user has decided already carries what they did in `outcome`, so it shows as decided, not as a draft.
+   */
+  | { type: "tool_suspend"; id: string; name: string; input: PostDraft; outcome?: DraftResult }
   /** What the user may want to say next, at most three; shown as buttons that send it. */
   | { type: "followups"; followups: string[] }
   | { type: "error"; message: string }
@@ -150,7 +153,8 @@ function fold(parts: readonly ContentPart[], event: ChatEvent): ContentPart[] {
           toolCallId: `${event.id}:review`,
           toolName: PUBLISH_TOOL,
           args: { ...event.input },
-          argsText: JSON.stringify(event.input)
+          argsText: JSON.stringify(event.input),
+          ...(event.outcome ? { result: event.outcome } : {})
         }
       ];
     case "followups":
@@ -268,7 +272,13 @@ export function toEvent(raw: unknown): ChatEvent | null {
       return isArtifact(raw.artifact) ? { type: "artifact", artifact: raw.artifact } : null;
     case "tool_suspend":
       return typeof raw.id === "string" && typeof raw.name === "string" && isPostDraft(raw.input)
-        ? { type: "tool_suspend", id: raw.id, name: raw.name, input: raw.input }
+        ? {
+            type: "tool_suspend",
+            id: raw.id,
+            name: raw.name,
+            input: raw.input,
+            ...(isDraftResult(raw.outcome) ? { outcome: raw.outcome } : {})
+          }
         : null;
     case "followups": {
       const followups = Array.isArray(raw.followups)

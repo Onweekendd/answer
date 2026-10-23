@@ -82,3 +82,41 @@ func TestIsProductPage(t *testing.T) {
 		})
 	}
 }
+
+func TestComplete(t *testing.T) {
+	opened := "https://www.xiaohongshu.com/explore/6a91?xsec_source=pc_search&xsec_token=AB%3D"
+	cases := []struct {
+		name, link, opened, want string
+	}{
+		{"裸链接补上 token", "https://www.xiaohongshu.com/explore/6a91", opened, opened},
+		{"页面上已经有 token 的不动", "https://www.xiaohongshu.com/explore/6a91?xsec_token=PAGE", opened, "https://www.xiaohongshu.com/explore/6a91?xsec_token=PAGE"},
+		{"不是同一篇笔记不补", "https://www.xiaohongshu.com/explore/other", opened, "https://www.xiaohongshu.com/explore/other"},
+		{"没打开过不补", "https://www.xiaohongshu.com/explore/6a91", "", "https://www.xiaohongshu.com/explore/6a91"},
+		{"打开的网址也没有 token 就没得补", "https://www.xiaohongshu.com/explore/6a91", "https://www.xiaohongshu.com/explore/6a91", "https://www.xiaohongshu.com/explore/6a91"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, Complete(c.link, c.opened))
+		})
+	}
+}
+
+func TestCompleteText(t *testing.T) {
+	// Arrange：打开过 6a91，没打开过 6a93
+	opened := func(key string) string {
+		if key == Key("https://www.xiaohongshu.com/explore/6a91") {
+			return "https://www.xiaohongshu.com/explore/6a91?xsec_source=pc_search&xsec_token=AB%3D"
+		}
+		return ""
+	}
+	text := "吐槽最多的是这篇（https://www.xiaohongshu.com/explore/6a91 ，已开抢不到）；" +
+		"[另一篇](https://www.xiaohongshu.com/explore/6a93)；结尾 https://www.xiaohongshu.com/explore/6a91。"
+
+	// Act
+	got := CompleteText(text, opened)
+
+	// Assert：补全的链接前后的标点不被吞掉；没打开过的原样
+	want := "吐槽最多的是这篇（https://www.xiaohongshu.com/explore/6a91?xsec_source=pc_search&xsec_token=AB%3D ，已开抢不到）；" +
+		"[另一篇](https://www.xiaohongshu.com/explore/6a93)；结尾 https://www.xiaohongshu.com/explore/6a91?xsec_source=pc_search&xsec_token=AB%3D。"
+	assert.Equal(t, want, got)
+}

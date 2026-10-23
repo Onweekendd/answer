@@ -31,7 +31,8 @@ import (
 //   - 是编的，或者是网页内容里注入的：用户在我们的产物里点到它，会以为是我们核实过的
 //
 // 所以交付时每个 <a href> 都洗一遍、补上 target 和 rel；再核对这次是不是真的见过它，
-// 没见过的列给模型，由它去核实或者删掉，不替它删
+// 没见过的列给模型，由它去核实或者删掉，不替它删。
+// 模型抄小红书的网址常省掉 xsec_token，这时用打开时的完整网址补上（Complete）
 
 var (
 	anchorTag = regexp.MustCompile(`(?i)<a\b[^>]*>`)
@@ -47,8 +48,9 @@ type Report struct {
 }
 
 // Fix 把网页里每个 <a href> 洗干净、补上 target="_blank" rel="noopener noreferrer"。
-// 页内跳转（#第三天）不动；不是 http(s) 的去掉 href，文字留着。seen 说一个网址（Key）这次见没见过
-func Fix(page []byte, seen func(key string) bool) ([]byte, Report) {
+// 页内跳转（#第三天）不动；不是 http(s) 的去掉 href，文字留着。seen 说一个网址（Key）这次见没见过，
+// opened 给出这次打开它时的完整网址（没有就返回空）
+func Fix(page []byte, seen func(key string) bool, opened func(key string) string) ([]byte, Report) {
 	report := Report{Keys: map[string]bool{}}
 	out := anchorTag.ReplaceAllStringFunc(string(page), func(tag string) string {
 		var href string
@@ -71,6 +73,7 @@ func Fix(page []byte, seen func(key string) bool) ([]byte, Report) {
 			return "<a" + rest
 		}
 		key := Key(clean)
+		clean = Complete(clean, opened(key))
 		if !report.Keys[key] {
 			report.Keys[key] = true
 			if !seen(key) {

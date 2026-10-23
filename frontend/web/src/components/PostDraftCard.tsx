@@ -19,6 +19,7 @@ import {
   VOTE_LABEL
 } from "@/core/chat/draft";
 import { usePublishDraft } from "@/hooks/usePublishDraft";
+import { api } from "@/lib/session";
 import { isOwnUpload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -149,7 +150,14 @@ function DraftEditor({ draft, onDone }: { draft: PostDraft; onDone: (result: Dra
       )}
 
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" disabled={pending} onClick={() => onDone({ status: "dropped" })}>
+        <Button
+          variant="ghost"
+          disabled={pending}
+          onClick={() => {
+            void api.draftResult(draft.draftId, { status: "dropped" }).catch(() => undefined);
+            onDone({ status: "dropped" });
+          }}
+        >
           放弃
         </Button>
         <Button disabled={pending} onClick={submit}>

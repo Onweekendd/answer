@@ -128,6 +128,42 @@ func (r *chatLog) Append(ctx context.Context, chatID int64, entries []purchaseai
 	return nil
 }
 
+// SetDraftOutcome 把用户对草稿的处理写进带着这份草稿的那条的 Details.Outcome（写），见 ChatLog 接口。
+//
+//   - 谁调用：页面在用户发布或放弃草稿以后报上来（PurchaseAIService.SaveDraftResult）
+//   - 草稿 id 在 body 里，先用 LIKE 把候选行找出来，再解开核对 Details.Draft.DraftID，LIKE 里的通配符不影响结果；
+//     只在 userID 自己的对话里找，别人的草稿 id 猜中了也改不到
+//   - 只改这一条的 body 里的 outcome，其余原样写回
+func (r *chatLog) SetDraftOutcome(ctx context.Context, userID, draftID string, outcome purchaseai.DraftOutcome) (bool, error) {
+	var rows []entity.PurchaseChatEntry
+	err := r.data.DB.Context(ctx).
+		Where("kind = ? AND chat_id IN (SELECT id FROM purchase_chat WHERE user_id = ?)", purchaseai.EntryMessage, userID).
+		And("body LIKE ?", `%"draftId":"`+draftID+`"%`).
+		Find(&rows)
+	if err != nil {
+		return false, dbError(err)
+	}
+	for _, row := range rows {
+		var msg purchaseai.StoredMessage
+		if err := json.Unmarshal([]byte(row.Body), &msg); err != nil {
+			return false, fmt.Errorf("purchase chat: entry %s: %w", row.EntryID, err)
+		}
+		if msg.Details == nil || msg.Details.Draft == nil || msg.Details.Draft.DraftID != draftID {
+			continue
+		}
+		msg.Details.Outcome = &outcome
+		raw, err := json.Marshal(&msg)
+		if err != nil {
+			return false, err
+		}
+		if _, err := r.data.DB.Context(ctx).ID(row.ID).Cols("body").Update(&entity.PurchaseChatEntry{Body: string(raw)}); err != nil {
+			return false, dbError(err)
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func toRow(chatID int64, e purchaseai.Entry) (*entity.PurchaseChatEntry, error) {
 	var body any
 	switch e.Kind {

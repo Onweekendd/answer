@@ -138,3 +138,41 @@ func Key(raw string) string {
 	}
 	return key
 }
+
+// tokenParams 是缺了页面就打不开的参数：只有小红书用，别的网站这些参数都是追踪用的，不补
+var tokenParams = []string{"xsec_token", "xsec_source"}
+
+// Complete 用这次真的打开过的完整网址（opened）补全模型写的网址（link）：
+// 模型抄网址时常把 ?xsec_token=… 当成噪音省掉，裸链接在小红书上是「当前笔记暂时无法浏览」。
+// 只在两个网址是同一个页面（Key 相同）、link 没带 xsec_token、opened 带着的时候才补，其余原样返回
+func Complete(link, opened string) string {
+	if opened == "" || Key(link) == "" || Key(link) != Key(opened) {
+		return link
+	}
+	l, err := url.Parse(strings.TrimSpace(link))
+	if err != nil || l.Query().Get("xsec_token") != "" {
+		return link
+	}
+	o, err := url.Parse(opened)
+	if err != nil || o.Query().Get("xsec_token") == "" {
+		return link
+	}
+	query := l.Query()
+	for _, k := range tokenParams {
+		if v := o.Query().Get(k); v != "" {
+			query.Set(k, v)
+		}
+	}
+	l.RawQuery = query.Encode()
+	return l.String()
+}
+
+// bareURL 是文字里的一个网址：到空白、引号、尖括号、中文标点、括号、* 和反引号为止
+var bareURL = regexp.MustCompile("https?://[^\\s<>\"'`*()（）【】「」『』“”‘’，。、；：！？]+")
+
+// CompleteText 把一段回答里的每个网址都 Complete 一遍。opened 按 Key 给出这次打开过的完整网址，没有就返回空
+func CompleteText(text string, opened func(key string) string) string {
+	return bareURL.ReplaceAllStringFunc(text, func(link string) string {
+		return Complete(link, opened(Key(link)))
+	})
+}

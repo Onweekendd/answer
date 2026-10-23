@@ -53,6 +53,19 @@ type DraftStore interface {
 	DeleteDraft(ctx context.Context, id string) error
 }
 
+// 草稿的处理结果的取值，页面的 DraftResult（frontend/web/src/core/chat/draft.ts）用同样的
+const (
+	DraftPublished = "published"
+	DraftDropped   = "dropped"
+)
+
+// DraftOutcome 是用户拿一份草稿做了什么。字段和页面的 DraftResult 对应
+type DraftOutcome struct {
+	Status     string `json:"status"`
+	QuestionID string `json:"questionId,omitempty"` // published：发出来的帖子
+	Title      string `json:"title,omitempty"`      // published：用户最后发的标题，可能和草稿的不一样
+}
+
 // Draft 是服务端记下的草稿：谁的、AI 投哪一票
 type Draft struct {
 	UserID string `json:"user_id"`
@@ -261,6 +274,21 @@ func (pas *PurchaseAIService) VoteDraft(ctx context.Context, req *schema.Purchas
 	}
 	if err := pas.drafts.DeleteDraft(ctx, req.DraftID); err != nil {
 		log.Warnf("purchase ai: cannot delete a used draft: %v", err)
+	}
+	return nil
+}
+
+// SaveDraftResult 记下用户对草稿的处理，历史里再打开这一轮时，草稿显示成「已发到社区」或「已放弃」，
+// 而不是一份又能发一次的草稿。草稿不是这个用户的，当没有这回事
+func (pas *PurchaseAIService) SaveDraftResult(ctx context.Context, req *schema.PurchaseDraftResultReq) error {
+	found, err := pas.chatLog.SetDraftOutcome(ctx, req.UserID, req.DraftID, DraftOutcome{
+		Status: req.Status, QuestionID: req.QuestionID, Title: req.Title,
+	})
+	if err != nil {
+		return err
+	}
+	if !found {
+		return errors.NotFound(reason.ObjectNotFound)
 	}
 	return nil
 }

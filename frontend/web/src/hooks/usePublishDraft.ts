@@ -21,7 +21,10 @@ export function usePublishDraft() {
       }
       const post = await api.publishPost(toQuestionAdd(form));
       await api.draftVote(draft.draftId, post.id).catch(() => undefined);
-      return { status: "published", questionId: post.id, title: form.title.trim() };
+      const result: DraftResult = { status: "published", questionId: post.id, title: form.title.trim() };
+      // the chat remembers it so the history shows the draft as published; the post is out either way
+      await api.draftResult(draft.draftId, result).catch(() => undefined);
+      return result;
     }
   });
 

@@ -27,6 +27,16 @@ type PurchaseDraftVoteReq struct {
 	UserID     string `json:"-"`
 }
 
+// PurchaseDraftResultReq tells what the user did with a draft: published it (as the post
+// QuestionID, titled Title) or dropped it. The chat remembers it, so the history shows it as decided.
+type PurchaseDraftResultReq struct {
+	DraftID    string `validate:"required,max=32" json:"draft_id"`
+	Status     string `validate:"required,oneof=published dropped" json:"status"`
+	QuestionID string `validate:"omitempty,max=32" json:"question_id"`
+	Title      string `validate:"omitempty,max=300" json:"title"`
+	UserID     string `json:"-"`
+}
+
 // PurchaseChatCreateReq starts a conversation; the page sends the first question as the title.
 type PurchaseChatCreateReq struct {
 	Title  string `json:"title"`

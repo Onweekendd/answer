@@ -98,3 +98,54 @@ func TestChatLog(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestChatLog_SetDraftOutcome(t *testing.T) {
+	ctx := context.Background()
+	_, x := newRepo(t)
+	require.NoError(t, x.Sync(new(entity.PurchaseChatEntry)))
+	mine := &entity.PurchaseChat{UserID: "1", Title: "耳机"}
+	_, err := x.Insert(mine)
+	require.NoError(t, err)
+	log := &chatLog{data: &data.Data{DB: x}}
+	draft := purchaseai.Entry{ID: "e_2", ParentID: "e_1", Kind: purchaseai.EntryMessage,
+		Message: &purchaseai.StoredMessage{V: 1, Role: "tool", ToolCallID: "c1", ToolName: "draft_post", Parts: []purchaseai.StoredPart{{Text: "草稿"}},
+			Details: &purchaseai.Details{Summary: "整理草稿", Draft: &purchaseai.DraftInput{DraftID: "abc123def456", Title: "XM5 值不值"}}}}
+	require.NoError(t, log.Append(ctx, mine.ID, []purchaseai.Entry{draft}))
+	outcome := purchaseai.DraftOutcome{Status: purchaseai.DraftPublished, QuestionID: "10", Title: "XM5 值不值？"}
+
+	t.Run("别人的草稿找不到，也不会被改", func(t *testing.T) {
+		// Act
+		found, err := log.SetDraftOutcome(ctx, "2", "abc123def456", outcome)
+
+		// Assert
+		require.NoError(t, err)
+		assert.False(t, found)
+		got, _, _ := log.Entries(ctx, mine.ID, "1")
+		assert.Nil(t, got[0].Message.Details.Outcome)
+	})
+
+	t.Run("id 里带通配符也只认完全相同的草稿", func(t *testing.T) {
+		// Act
+		found, err := log.SetDraftOutcome(ctx, "1", "abc%", outcome)
+
+		// Assert
+		require.NoError(t, err)
+		assert.False(t, found)
+	})
+
+	t.Run("自己的草稿：只多一个 outcome，别的原样", func(t *testing.T) {
+		// Act
+		found, err := log.SetDraftOutcome(ctx, "1", "abc123def456", outcome)
+		got, _, readErr := log.Entries(ctx, mine.ID, "1")
+
+		// Assert
+		require.NoError(t, err)
+		require.NoError(t, readErr)
+		assert.True(t, found)
+		want := *draft.Message
+		details := *draft.Message.Details
+		details.Outcome = &outcome
+		want.Details = &details
+		assert.Equal(t, &want, got[0].Message)
+	})
+}

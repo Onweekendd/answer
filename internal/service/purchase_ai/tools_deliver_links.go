@@ -40,17 +40,22 @@ import (
 
 // linkBook 记着这次任务真的见过哪些网址
 type linkBook struct {
-	seen     map[string]bool // links.Key
-	products *productBook    // 商品卡片的链接也算见过
+	seen     map[string]bool   // links.Key
+	opened   map[string]string // links.Key → 打开时的完整网址（小红书的 xsec_token 在里面）
+	products *productBook      // 商品卡片的链接也算见过
 }
 
-// plugin 装「每个工具执行完，它打开的页面记下来」：不用每个工具自己想着记
+// plugin 装「每个工具执行完，它打开的页面记下来」：不用每个工具自己想着记；
+// 最终回答里的网址缺了小红书的 xsec_token，用打开时的补上（回答是模型手抄的，常常省掉）
 func (l *linkBook) plugin() agent.Plugin {
 	return func(r *agent.Registry) {
 		r.AfterTool(func(_ context.Context, _ llm.ToolCall, res *tool.Result) {
 			if res.URL != "" && !res.Failed {
 				l.see(res.URL)
 			}
+		})
+		r.OnAnswer(func(_ context.Context, a *agent.Answer) {
+			a.Text = links.CompleteText(a.Text, l.full)
 		})
 	}
 }
@@ -65,6 +70,18 @@ func (l *linkBook) see(raw string) {
 		l.seen = map[string]bool{}
 	}
 	l.seen[key] = true
+	// 同一页的网址只留带 token 的：读页面的结果里网址可能被截短
+	if clean, ok := links.Clean(raw); ok && (l.opened[key] == "" || strings.Contains(clean, "xsec_token=")) {
+		if l.opened == nil {
+			l.opened = map[string]string{}
+		}
+		l.opened[key] = clean
+	}
+}
+
+// full 是这次打开 key 这一页时的完整网址（洗过的），没打开过就是空的
+func (l *linkBook) full(key string) string {
+	return l.opened[key]
 }
 
 // saw 说这次任务见没见过这个网址：打开过的页面、收割清单（see 记下的），还有商品卡片

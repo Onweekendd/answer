@@ -124,7 +124,7 @@ func TestTools_SandboxToolsOnlyWithAWorkspace(t *testing.T) {
 
 	// Act + Assert：插件没连着，有沙箱也能读写文件，但收割要从页面上收
 	assert.NotContains(t, names(without), toolBash)
-	assert.Equal(t, []string{toolBash, toolReadFile, toolWriteFile, toolEditFile, toolDeliver}, names(with))
+	assert.Equal(t, []string{toolBash, toolReadFile, toolWriteFile, toolEditFile, toolImport, toolDeliver}, names(with))
 	assert.Contains(t, names(withBoth), toolHarvest)
 }
 

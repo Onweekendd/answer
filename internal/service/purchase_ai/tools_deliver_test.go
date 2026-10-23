@@ -233,6 +233,21 @@ func Test_deliver_links(t *testing.T) {
 		assert.Contains(t, res.Text, "没链上这些商品卡片：2. 海尔冰箱 https://item.jd.com/200.html。")
 	})
 
+	t.Run("模型抄网址时省掉的小红书 token，用打开时的补上", func(t *testing.T) {
+		// Arrange
+		r, ws, store, _ := deliverRun()
+		r.links.see("https://www.xiaohongshu.com/explore/6ad5?xsec_token=OPENED&xsec_source=pc_search")
+		ws.files["/home/user/note.html"] = []byte(`<a href="https://www.xiaohongshu.com/explore/6ad5">笔记</a>`)
+
+		// Act
+		res, err := callTool(t, r, toolDeliver, `{"path":"note.html","title":"口碑"}`)
+
+		// Assert
+		require.NoError(t, err)
+		require.False(t, res.Failed, res.Text)
+		assert.Contains(t, string(store.saved[0].data), `href="https://www.xiaohongshu.com/explore/6ad5?xsec_source=pc_search&amp;xsec_token=OPENED"`)
+	})
+
 	t.Run("链接都是打开过的、商品都链上了：什么都不用说", func(t *testing.T) {
 		// Arrange：商品卡片来自搜索结果，商品页本身没打开过，也算见过
 		r, ws, _, _ := deliverRun()
@@ -277,6 +292,30 @@ func Test_linkBook_seesOpenedPages(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, book.saw(links.Key("https://a.test/1")))
 	assert.False(t, book.saw(links.Key("https://a.test/2")))
+}
+
+func Test_linkBook_completesAnswerLinks(t *testing.T) {
+	// Arrange：打开过一篇带 token 的笔记，模型写回答时把 token 省掉了
+	opened := func(r *agent.Registry) {
+		r.Tool(tool.Spec{Name: "ok", Description: "x", Args: struct{}{}, Run: func(context.Context, string) (tool.Result, error) {
+			return tool.Result{URL: "https://www.xiaohongshu.com/explore/6a91?xsec_token=AB&xsec_source=pc_search"}, nil
+		}})
+	}
+	book := &linkBook{products: &productBook{}}
+	model := &fakeLLM{replies: []*llm.ChatResp{
+		{ToolCalls: []llm.ToolCall{{ID: "c1", Name: "ok", Arguments: "{}"}}},
+		{Content: "吐槽在这篇（https://www.xiaohongshu.com/explore/6a91 ）"},
+	}}
+	a, err := agent.New(agent.Config{Model: model, MaxSteps: 5, Timeouts: agent.Timeouts{Run: time.Second, Model: time.Second},
+		Plugins: []agent.Plugin{opened, book.plugin()}})
+	require.NoError(t, err)
+
+	// Act
+	res, err := a.Run(context.Background(), startMessages())
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "吐槽在这篇（https://www.xiaohongshu.com/explore/6a91?xsec_source=pc_search&xsec_token=AB ）", res.Text)
 }
 
 func Test_inlineImages(t *testing.T) {

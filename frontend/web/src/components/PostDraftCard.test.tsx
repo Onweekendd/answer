@@ -9,7 +9,8 @@ import type { PostDraft } from "@/core/chat/draft";
 
 const publishPost = vi.hoisted(() => vi.fn());
 const draftVote = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/session", () => ({ api: { publishPost, draftVote }, tokenStore: {} }));
+const draftResult = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/session", () => ({ api: { publishPost, draftVote, draftResult }, tokenStore: {} }));
 
 import { PostDraftCard } from "./PostDraftCard";
 
@@ -40,6 +41,8 @@ afterEach(cleanup);
 beforeEach(() => {
   publishPost.mockReset();
   draftVote.mockReset();
+  draftResult.mockReset();
+  draftResult.mockResolvedValue(null);
 });
 
 describe("PostDraftCard", () => {
@@ -64,11 +67,23 @@ describe("PostDraftCard", () => {
       })
     );
     expect(draftVote).toHaveBeenCalledWith("d1", "42");
-    expect(onDone).toHaveBeenCalledWith({
-      status: "published",
-      questionId: "42",
-      title: "iPad Air M3 双 11 前该不该买"
-    });
+    const published = { status: "published", questionId: "42", title: "iPad Air M3 双 11 前该不该买" };
+    expect(draftResult).toHaveBeenCalledWith("d1", published); // the chat remembers it
+    expect(onDone).toHaveBeenCalledWith(published);
+  });
+
+  it("still counts as published when the chat cannot remember it", async () => {
+    // Arrange
+    publishPost.mockResolvedValue({ id: "42" });
+    draftVote.mockResolvedValue(null);
+    draftResult.mockRejectedValue(new Error("offline"));
+    const onDone = renderCard();
+
+    // Act
+    await userEvent.click(screen.getByRole("button", { name: "发布到社区" }));
+
+    // Assert: the post is out, whatever happens to the note about it
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ status: "published" }));
   });
 
   it("still counts as published when only the AI's vote fails", async () => {
@@ -108,6 +123,7 @@ describe("PostDraftCard", () => {
 
     // Assert
     expect(onDone).toHaveBeenCalledWith({ status: "dropped" });
+    expect(draftResult).toHaveBeenCalledWith("d1", { status: "dropped" });
     expect(publishPost).not.toHaveBeenCalled();
   });
 

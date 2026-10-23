@@ -78,6 +78,7 @@ type UploaderService interface {
 	PostImagePath(ctx context.Context, imageURL string) (localPath string, err error)
 	SaveAgentImage(ctx context.Context, data []byte) (url string, err error)
 	SaveAgentFile(ctx context.Context, ext string, data []byte) (url string, err error)
+	ReadUpload(ctx context.Context, fileURL string) (name string, data []byte, err error)
 }
 
 // uploaderService uploader service

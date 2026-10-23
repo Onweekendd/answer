@@ -158,7 +158,7 @@ func (d *deliverer) deliver(ctx context.Context, ws Workspace, arguments string)
 		return tool.Result{}, err
 	}
 	// 链接洗干净、在新标签页打开，核对这次见没见过（tools_deliver_links.go）
-	page, linked := links.Fix(page, d.links.saw)
+	page, linked := links.Fix(page, d.links.saw, d.links.full)
 	report += d.links.text(linked)
 
 	// ③ 存网页。存不了多半是太大了，或者根本不是文本

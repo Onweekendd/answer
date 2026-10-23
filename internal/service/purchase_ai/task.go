@@ -52,6 +52,7 @@ const (
 	toolDone     = agent.DoneName
 
 	toolHarvest   = "harvest"
+	toolImport    = "import_file"
 	toolVideo     = videotool.Name
 	toolBash      = sandboxtool.NameBash
 	toolReadFile  = sandboxtool.NameReadFile
@@ -76,10 +77,11 @@ type taskOptions struct {
 	browserOn bool // 插件连着：给浏览器的工具
 	limits    agentLimits
 
-	images        ImageStore    // 存回答引用的图、商品卡片的图；nil 就都没有图
-	artifactStore ArtifactStore // 存交付的网页；nil 就交付不了
-	workspaces    Workspaces    // 沙箱；nil 就没有工作台的工具
-	chatID        int64         // 工作台按对话租用
+	images        ImageStore     // 存回答引用的图、商品卡片的图；nil 就都没有图
+	resources     ResourceReader // import_file 读我们自己存的文件；nil 就只能放图N
+	artifactStore ArtifactStore  // 存交付的网页；nil 就交付不了
+	workspaces    Workspaces     // 沙箱；nil 就没有工作台的工具
+	chatID        int64          // 工作台按对话租用
 	userID        string
 	draft         *draftContext // 对话页才有：可以把对话整理成帖子草稿
 	followups     bool          // 对话才有：回答后面的后续建议
@@ -115,6 +117,7 @@ func newTask(o taskOptions) (*task, error) {
 
 	// 图的编号是整次任务共用的（截图、看原图、工作台里的图），浏览器工具和工作台工具编号时问它
 	pics := &pictures{state: state, images: o.images}
+	importer := &importer{pics: pics, store: o.resources}
 	state.NumberPicture = pics.number
 	bench.NumberPicture = pics.number
 
@@ -135,7 +138,7 @@ func newTask(o taskOptions) (*task, error) {
 	add(browserOn, skills.Plugin(), browsertool.Plugin(state), cards.plugin())
 	add(true, pics.plugin(browserOn))
 	add(browserOn && sandboxOn, harvest.plugin(), videotool.Plugin(video, bench))
-	add(sandboxOn, sandboxtool.Plugin(bench), arts.plugin())
+	add(sandboxOn, sandboxtool.Plugin(bench), importer.plugin(bench), arts.plugin())
 	var draft *drafter
 	if o.draft != nil {
 		draft = &drafter{ctx: o.draft, pres: pres, products: cards}

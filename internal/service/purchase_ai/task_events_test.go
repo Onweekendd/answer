@@ -203,16 +203,19 @@ func collect(events <-chan Event) []Event {
 	return got
 }
 
-// savedOf 找出 saved 事件
+// savedOf 找出最后一个 saved 事件：一轮里每记一条都发一个，最后的是收尾那次
 func savedOf(t *testing.T, events []Event) *SavedIDs {
 	t.Helper()
+	var last *SavedIDs
 	for _, ev := range events {
 		if ev.Type == EventSaved {
-			return ev.Saved
+			last = ev.Saved
 		}
 	}
-	t.Fatal("没有 saved 事件")
-	return nil
+	if last == nil {
+		t.Fatal("没有 saved 事件")
+	}
+	return last
 }
 
 func Test_Chat(t *testing.T) {
@@ -346,6 +349,30 @@ func Test_Chat(t *testing.T) {
 		assert.Equal(t, EventText, got[n-2].Type)
 		assert.NotEmpty(t, got[n-3].Saved.User)
 		assert.NotEmpty(t, got[n-3].Saved.Leaf)
+	})
+
+	t.Run("每记一条就发一个 saved：用户中途停止，页面也知道这一轮停在哪", func(t *testing.T) {
+		// Arrange
+		model := &fakeLLM{replies: []*llm.ChatResp{calls(openJD("c1")), calls(doneCall("c2", "**买**"))}}
+		log := &fakeChatLog{}
+
+		// Act
+		got := collect(chatServiceWith(model, log).Chat(context.Background(), chatReq("XM5 值不值")))
+
+		// Assert：id 的顺序就是日志里条目的顺序，第一个是用户那条（user 和 leaf 都是它），最后一个是收尾
+		var leaves []string
+		for _, ev := range got {
+			if ev.Type == EventSaved {
+				leaves = append(leaves, ev.Saved.Leaf)
+				assert.Equal(t, log.entries[0].ID, ev.Saved.User)
+			}
+		}
+		var ids []string
+		for _, e := range log.entries {
+			ids = append(ids, e.ID)
+		}
+		assert.Equal(t, ids, leaves[:len(leaves)-1], "每条一个")
+		assert.Equal(t, ids[len(ids)-1], leaves[len(leaves)-1], "收尾的还是 leaf")
 	})
 
 	t.Run("这一轮记进日志：用户消息、调用和结果，最后一条是 done 的结果", func(t *testing.T) {
