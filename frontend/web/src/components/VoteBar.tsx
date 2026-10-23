@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { canVote, type Choice, CHOICES, type MyChoice, percent, type Tally, total } from "@/core/vote/tally";
 import { cn } from "@/lib/utils";
@@ -7,11 +9,6 @@ const SEGMENT: Record<keyof Tally, string> = {
   buy: "bg-buy",
   wait: "bg-wait",
   skip: "bg-skip"
-};
-const ACTIVE: Record<keyof Tally, string> = {
-  buy: "border-buy bg-buy text-buy-foreground hover:bg-buy/90",
-  wait: "border-wait bg-wait text-wait-foreground hover:bg-wait/90",
-  skip: "border-skip bg-skip text-skip-foreground hover:bg-skip/90"
 };
 
 interface Props {
@@ -54,11 +51,14 @@ export function VoteBar({ tally, myVote, closed, isAuthor = false, pending = fal
             size="lg"
             disabled={!enabled}
             aria-pressed={myVote === choice}
-            className={cn("h-10 flex-col gap-0 py-1", myVote === choice && ACTIVE[key])}
+            className={cn("purchase-vote-button h-12 min-w-0 flex-col gap-1 py-1.5", `purchase-vote-${key}`)}
             onClick={() => onVote(choice)}
           >
-            <span className="text-sm font-medium leading-none">{label}</span>
-            <span className="text-xs leading-none opacity-80">
+            <span className="flex items-center gap-1 text-sm font-semibold leading-none">
+              {myVote === choice && <Check aria-hidden="true" className="size-3.5" />}
+              {label}
+            </span>
+            <span className="text-xs leading-none tabular-nums opacity-80">
               {tally[key]}
               {sum > 0 && ` · ${percent(tally[key], sum)}%`}
             </span>

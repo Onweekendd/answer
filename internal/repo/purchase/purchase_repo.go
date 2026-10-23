@@ -118,16 +118,6 @@ func (pr *purchaseRepo) BatchGetByQuestionIDs(ctx context.Context, questionIDs [
 	return details, nil
 }
 
-func (pr *purchaseRepo) UpdateAIStatus(ctx context.Context, questionID string, status int) (err error) {
-	questionID = uid.DeShortID(questionID)
-
-	_, err = pr.data.DB.Context(ctx).ID(questionID).Cols("ai_status").Update(&entity.PurchaseDetail{
-		AIStatus: status,
-	})
-
-	return dbError(err)
-}
-
 func (pr *purchaseRepo) UpdateProduct(ctx context.Context, questionID, product string) (err error) {
 	questionID = uid.DeShortID(questionID)
 

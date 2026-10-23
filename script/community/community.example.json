@@ -1,0 +1,174 @@
+{
+  "baseUrl": "http://127.0.0.1:8081",
+  "timeZone": "Asia/Shanghai",
+  "dailyAt": "10:00",
+  "postsPerDay": 3,
+  "minIntervalSeconds": 900,
+  "maxIntervalSeconds": 3600,
+  "topicCooldownDays": 7,
+  "requestTimeoutSeconds": 300,
+  "accounts": [
+    {
+      "id": "rice",
+      "nickname": "米饭要趁热",
+      "emailEnv": "COMMUNITY_RICE_EMAIL",
+      "passwordEnv": "COMMUNITY_RICE_PASSWORD",
+      "persona": "爱琢磨吃饭和家务，句子短，有一点自嘲，关心省事和收纳。不要每篇都写同一种开头。",
+      "categories": ["家电", "家居", "食品"]
+    },
+    {
+      "id": "weekend",
+      "nickname": "周末再说吧",
+      "emailEnv": "COMMUNITY_WEEKEND_EMAIL",
+      "passwordEnv": "COMMUNITY_WEEKEND_PASSWORD",
+      "persona": "喜欢数码但不迷信参数，讲话随意，偶尔用括号补一句，最纠结快乐和闲置。",
+      "categories": ["数码", "娱乐"]
+    },
+    {
+      "id": "orange",
+      "nickname": "一颗慢橘子",
+      "emailEnv": "COMMUNITY_ORANGE_EMAIL",
+      "passwordEnv": "COMMUNITY_ORANGE_PASSWORD",
+      "persona": "在意生活里的小快乐，表达温和具体，常问长远值不值，少用网络热梗。",
+      "categories": ["服饰", "家居", "运动"]
+    },
+    {
+      "id": "pocket",
+      "nickname": "口袋里有风",
+      "emailEnv": "COMMUNITY_POCKET_EMAIL",
+      "passwordEnv": "COMMUNITY_POCKET_PASSWORD",
+      "persona": "实用派，爱算使用次数和单次成本，可以轻轻吐槽，问题直接，正文不要太工整。",
+      "categories": ["数码", "运动", "家电"]
+    },
+    {
+      "id": "cat",
+      "nickname": "猫先替我看看",
+      "emailEnv": "COMMUNITY_CAT_EMAIL",
+      "passwordEnv": "COMMUNITY_CAT_PASSWORD",
+      "persona": "对新鲜小东西有好奇心，但怕交智商税，问题里可以带一点意外反差，不用夸张标题。",
+      "categories": ["宠物", "家居", "娱乐"]
+    }
+  ],
+  "topics": [
+    {
+      "id": "dishwasher-time",
+      "category": "家电",
+      "request": "讨论两千元左右的台式洗碗机：如果只是为了每天少洗十分钟碗，值得占掉厨房一块台面吗？把空间、耗材和解放双手的矛盾说清楚。金额是预算，不能写成查到的到手价。"
+    },
+    {
+      "id": "dryer-balcony",
+      "category": "家电",
+      "request": "讨论烘干机：花三千元预算换一个不用挂满衣服的阳台，究竟是在买家电还是买生活空间？提问要具体，不虚构已经买过的经历。"
+    },
+    {
+      "id": "robot-floor",
+      "category": "家电",
+      "request": "讨论扫地机器人：房间不大还要先收拾地上的线才能用，和买个轻便吸尘器比，哪个更不容易闲置？"
+    },
+    {
+      "id": "airfryer-single",
+      "category": "家电",
+      "request": "讨论空气炸锅：一个人吃饭，想少点外卖但不想多洗一件锅，应该买小容量还是干脆用现有电饭煲？把这是待选择的场景写清楚。"
+    },
+    {
+      "id": "coffee-math",
+      "category": "食品",
+      "request": "讨论入门咖啡机：预算一千五，想省每天买咖啡的钱，却担心买了机器反而开始买更多豆子和配件。这个账该怎么算？"
+    },
+    {
+      "id": "frozen-bread",
+      "category": "食品",
+      "request": "讨论囤面包：为了免运费买一大箱冷冻贝果，单个便宜了但可能吃到怀疑人生。小包装贵一点算不算更省钱？"
+    },
+    {
+      "id": "ergonomic-chair",
+      "category": "家居",
+      "request": "讨论人体工学椅：预算两千，椅子能解决久坐不舒服多少问题，还是应该先把显示器高度和站起来的频率改了？别写医疗效果保证。"
+    },
+    {
+      "id": "lamp-atmosphere",
+      "category": "家居",
+      "request": "讨论氛围落地灯：功能差不多的灯价格差三倍，只是每天进门看着开心，能成为多花钱的理由吗？"
+    },
+    {
+      "id": "rental-mattress",
+      "category": "家居",
+      "request": "讨论租房买床垫：搬家很麻烦，但睡觉又是每天都要做的事。预算一千五，在可能只住一年的房子里换床垫值吗？"
+    },
+    {
+      "id": "storage-before",
+      "category": "家居",
+      "request": "讨论收纳盒：买一整套统一的盒子能让家里整齐，还是只是把乱变成了整齐的乱？要不要先少买东西再买盒子？"
+    },
+    {
+      "id": "projector-wall",
+      "category": "娱乐",
+      "request": "讨论投影仪：预算两千，想躺着看电影，但白墙、遮光窗帘和音响可能还要继续花钱。你会先买入门款试试还是一步到位？"
+    },
+    {
+      "id": "console-backlog",
+      "category": "娱乐",
+      "request": "讨论游戏机：想买掌机获得下班后的快乐，但电脑里还有一堆没打开过的游戏。是在买游戏机，还是在买想象中有空的自己？别捏造具体品牌参数。"
+    },
+    {
+      "id": "earbuds-commute",
+      "category": "数码",
+      "request": "讨论降噪耳机：每天只有半小时通勤，预算一千，应该把钱花在更好的降噪还是戴久了不难受？问法要能让人讲自己的取舍。"
+    },
+    {
+      "id": "phone-battery",
+      "category": "数码",
+      "request": "讨论旧手机续命：手机其他都还顺手，就是电池不行了，换电池和直接换机怎么选？不要编造某机型官方维修报价。"
+    },
+    {
+      "id": "tablet-notes",
+      "category": "数码",
+      "request": "讨论平板记笔记：纸质本子还没用完就开始研究手写笔，想提高效率还是在用买工具逃避学习？预算两千，怎么判断真需要？"
+    },
+    {
+      "id": "keyboard-office",
+      "category": "数码",
+      "request": "讨论机械键盘：在家觉得声音治愈，带进办公室可能变成同事的噩梦。预算五百，该为手感买单还是先选安静？"
+    },
+    {
+      "id": "camera-phone",
+      "category": "数码",
+      "request": "讨论入门相机：为了旅行买相机，和把手机照片认真整理一下相比，哪件事更能留下回忆？考虑重量和愿不愿意背出门。"
+    },
+    {
+      "id": "running-shoes",
+      "category": "运动",
+      "request": "讨论跑鞋：刚打算开始跑步，先买三百元的鞋，还是买贵一点让自己心疼钱坚持下去？不要把花钱当成坚持的保证。"
+    },
+    {
+      "id": "walking-pad",
+      "category": "运动",
+      "request": "讨论走步机：想边追剧边走路，但很怕最后变成一个不能挂衣服的晾衣架。预算一千，应该先借一台试试吗？"
+    },
+    {
+      "id": "camping-one",
+      "category": "运动",
+      "request": "讨论露营装备：一年可能只去两次，买全套装备还是每次租？储物空间、临时起意和租赁卫生怎么取舍？"
+    },
+    {
+      "id": "coat-cost",
+      "category": "服饰",
+      "request": "讨论冬季外套：贵的能穿很多年和便宜的每年换一件，哪种真的更省？预算一千，不拿价格直接等同质量。"
+    },
+    {
+      "id": "shoes-clean",
+      "category": "服饰",
+      "request": "讨论小白鞋：喜欢白鞋但懒得打理，为了喜欢的样子多花时间值得吗，还是选一双耐脏的更适合日常？"
+    },
+    {
+      "id": "cat-toy-box",
+      "category": "宠物",
+      "request": "讨论猫玩具：自动逗猫球和一个纸箱子，怎么判断主子真的需要哪个？不编造自家猫已经用过某产品的评测。"
+    },
+    {
+      "id": "pet-feeder",
+      "category": "宠物",
+      "request": "讨论自动喂食器：偶尔晚回家，买一个是方便还是多了断网和卡粮的担心？预算五百，该关注哪些实际问题？"
+    }
+  ]
+}

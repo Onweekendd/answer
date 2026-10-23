@@ -55,7 +55,6 @@ import (
 	purchaseai "github.com/apache/answer/internal/service/purchase_ai"
 	purchasechat "github.com/apache/answer/internal/service/purchase_chat"
 	purchasevote "github.com/apache/answer/internal/service/purchase_vote"
-	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	questioncommon "github.com/apache/answer/internal/service/question_common"
 	"github.com/apache/answer/internal/service/rank"
 	"github.com/apache/answer/internal/service/reason"
@@ -99,7 +98,6 @@ var ProviderSetService = wire.NewSet(
 	purchaseai.NewWorkspaces,
 	purchasevote.NewPurchaseVoteService,
 	purchasechat.NewPurchaseChatService,
-	purchaseaiqueue.NewService,
 	llm.NewClient,
 	content.NewAnswerService,
 	export.NewEmailService,

@@ -85,7 +85,6 @@ import (
 	"github.com/apache/answer/internal/service/purchase_ai"
 	purchasechat2 "github.com/apache/answer/internal/service/purchase_chat"
 	"github.com/apache/answer/internal/service/purchase_vote"
-	"github.com/apache/answer/internal/service/purchaseaiqueue"
 	"github.com/apache/answer/internal/service/question_common"
 	rank2 "github.com/apache/answer/internal/service/rank"
 	reason2 "github.com/apache/answer/internal/service/reason"
@@ -206,8 +205,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	answerActivityRepo := activity.NewAnswerActivityRepo(dataData, activityRepo, userRankRepo, noticequeueService)
 	answerActivityService := activity2.NewAnswerActivityService(answerActivityRepo, configService)
 	externalNotificationService := notification.NewExternalNotificationService(dataData, userNotificationConfigRepo, followRepo, emailService, userRepo, externalService, userExternalLoginRepo, siteInfoCommonService)
-	purchaseaiqueueService := purchaseaiqueue.NewService()
-	questionService := content.NewQuestionService(activityRepo, questionRepo, answerRepo, tagCommonService, tagService, questionCommon, userCommon, userRepo, userRoleRelService, revisionService, metaCommonService, collectionCommon, answerActivityService, emailService, noticequeueService, externalService, service, siteInfoCommonService, externalNotificationService, reviewService, configService, eventqueueService, reviewRepo, vector_syncService, purchaseaiqueueService, purchaseService)
+	questionService := content.NewQuestionService(activityRepo, questionRepo, answerRepo, tagCommonService, tagService, questionCommon, userCommon, userRepo, userRoleRelService, revisionService, metaCommonService, collectionCommon, answerActivityService, emailService, noticequeueService, externalService, service, siteInfoCommonService, externalNotificationService, reviewService, configService, eventqueueService, reviewRepo, vector_syncService, purchaseService)
 	answerService := content.NewAnswerService(answerRepo, questionRepo, questionCommon, userCommon, collectionCommon, userRepo, revisionService, answerActivityService, answerCommon, voteRepo, emailService, userRoleRelService, noticequeueService, externalService, service, reviewService, eventqueueService, vector_syncService)
 	reportHandle := report_handle.NewReportHandle(questionService, answerService, commentService)
 	reportService := report2.NewReportService(reportRepo, objService, userCommon, answerRepo, questionRepo, commentCommonRepo, reportHandle, configService, eventqueueService)
@@ -231,7 +229,7 @@ func initApplication(debug bool, serverConf *conf.Server, dbConf *data.Database,
 	sandboxStore := purchasechat.NewSandboxStore(dataData)
 	workspaces := purchaseai.NewWorkspaces(sandboxStore)
 	chatLog := purchasechat.NewChatLog(dataData)
-	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, purchaseService, commentService, configService, client, purchaseaiqueueService, browser, uploaderService, purchaseVoteService, draftStore, workspaces, chatLog)
+	purchaseAIService := purchaseai.NewPurchaseAIService(questionCommon, configService, client, browser, uploaderService, purchaseVoteService, draftStore, workspaces, chatLog)
 	purchaseAIController := controller.NewPurchaseAIController(purchaseAIService)
 	purchaseVoteController := controller.NewPurchaseVoteController(purchaseVoteService)
 	purchaseChatRepo := purchasechat.NewPurchaseChatRepo(dataData)

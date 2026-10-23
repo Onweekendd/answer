@@ -81,7 +81,7 @@ type PurchaseInfo struct {
 	Price    float64  `json:"price" validate:"gte=0"`
 	Currency string   `json:"currency" validate:"omitempty,len=3"`
 	Link     string   `json:"link" validate:"omitempty,url,lte=255"`
-	AIStatus int      `json:"ai_status"` // 只出不进，前端传了也忽略
+	AIStatus int      `json:"ai_status"` // 保留历史分析状态供旧数据读取；不再触发分析，前端传入也忽略
 	// Product is what the AI read off the screenshots, nil until then. The post
 	// form submits the reading it got from identify, so the analysis need not
 	// read the screenshots again; the fields are checked like any user input.

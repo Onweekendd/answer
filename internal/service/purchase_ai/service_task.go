@@ -63,7 +63,7 @@ func WithArtifactStore(store ArtifactStore) TaskOption {
 	return func(o *taskOptions) { o.artifactStore = store }
 }
 
-// RunTask 不经过帖子，直接让 Agent 做一个任务：系统提示词和 Analyze 用的一样，用户消息就是 task。
+// RunTask 不经过帖子，直接让 Agent 做一个任务：使用对话的系统提示词，用户消息就是 task。
 // 给 case 运行器和手动试跑用，它们在 answer run 外面，自己带模型和浏览器。
 func RunTask(ctx context.Context, client llm.Client, b Browser, task string, opts ...TaskOption) (*TaskResult, error) {
 	browserOn := b.Connected()

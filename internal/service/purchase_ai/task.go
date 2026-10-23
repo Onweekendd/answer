@@ -69,7 +69,7 @@ const (
 	extraShots    = "shots"    // []Shot，回答引用、存下来的图
 )
 
-// taskOptions 是一次任务的配置，由入口（Chat、Analyze、RunTask）拼出来。
+// taskOptions 是一次任务的配置，由入口（Chat、RunTask）拼出来。
 // 装哪些插件完全由这里决定：没连插件就没有浏览器的工具，没有沙箱就没有工作台的工具，不是对话就没有草稿
 type taskOptions struct {
 	llm       llm.Client

@@ -38,6 +38,8 @@ dist/
 .env
 
 browser-use
+pi
+CubeSandbox
 # full page snapshots from script/pagebench; may contain account names
 script/pagebench/out/
 script/pagebench/redact.txt
@@ -46,3 +48,9 @@ script/pagebench/redact.txt
 script/agentcase/llm.local.json
 # full records from script/agentcase; hold page content
 script/agentcase/out/
+
+# Community scheduler credentials, drafts, state and process lock
+script/community/*.local.json
+script/community/*.local.env
+script/community/out/
+script/community/*.log

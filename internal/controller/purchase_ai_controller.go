@@ -47,28 +47,6 @@ func NewPurchaseAIController(
 	}
 }
 
-// Analyze analyze a purchase request
-// @Summary analyze a purchase request
-// @Description ask the model whether the item is worth buying; the advice is posted as a comment
-// @Tags PurchaseAI
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param data body schema.PurchaseAIAnalyzeReq true "question id"
-// @Success 200 {object} handler.RespBody
-// @Router /answer/api/v1/purchase/ai/analyze [post]
-func (pac *PurchaseAIController) Analyze(ctx *gin.Context) {
-	req := &schema.PurchaseAIAnalyzeReq{}
-	if handler.BindAndCheck(ctx, req) {
-		return
-	}
-
-	// the analysis takes tens of seconds, so this only queues it. The caller polls
-	// purchase.ai_status to find out how it went.
-	pac.purchaseAIService.Enqueue(ctx, req.QuestionID)
-	handler.HandleResponse(ctx, nil, nil)
-}
-
 // Identify read the product off just-uploaded screenshots
 // @Summary read the product off just-uploaded screenshots
 // @Description ask the vision model what product the screenshots show, so the post form can fill in the price and tags; product is null when they show none
@@ -86,7 +64,7 @@ func (pac *PurchaseAIController) Identify(ctx *gin.Context) {
 	}
 	req.UserID = middleware.GetLoginUserIDFromContext(ctx)
 
-	// unlike Analyze this waits for the result: it is one vision call of a few
+	// This waits for the result: it is one vision call of a few
 	// seconds, and the form needs it. The request's context goes along, so the
 	// call stops when the user removes the screenshots and the form cancels.
 	resp, err := pac.purchaseAIService.Identify(ctx, req)

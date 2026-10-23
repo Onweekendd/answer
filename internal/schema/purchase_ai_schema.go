@@ -27,13 +27,6 @@ import (
 	"github.com/segmentfault/pacman/errors"
 )
 
-// PurchaseAIAnalyzeReq asks for an AI opinion on one purchase request.
-type PurchaseAIAnalyzeReq struct {
-	QuestionID string `validate:"required" json:"question_id"`
-	// UserID is filled by the controller, never by the client.
-	UserID string `json:"-"`
-}
-
 // PurchaseProduct is what the vision model read off the screenshots of one
 // post: the one product the post is about. Anything the screenshots do not
 // show is left empty rather than guessed.

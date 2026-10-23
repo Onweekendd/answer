@@ -1,0 +1,68 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.purchase-vote-button {
+  --vote-surface: var(--bs-body-bg);
+}
+.purchase-vote-buy {
+  --vote-accent: #22c55e;
+  --vote-ink: #166534;
+}
+.purchase-vote-wait {
+  --vote-accent: #f59e0b;
+  --vote-ink: #92400e;
+}
+.purchase-vote-skip {
+  --vote-accent: #f43f5e;
+  --vote-ink: #9f1239;
+}
+[data-bs-theme='dark'] .purchase-vote-buy {
+  --vote-ink: #86efac;
+}
+[data-bs-theme='dark'] .purchase-vote-wait {
+  --vote-ink: #fcd34d;
+}
+[data-bs-theme='dark'] .purchase-vote-skip {
+  --vote-ink: #fda4af;
+}
+
+.purchase-vote-button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--vote-accent) 65%, var(--vote-surface));
+  background-color: color-mix(
+    in srgb,
+    var(--vote-accent) 14%,
+    var(--vote-surface)
+  );
+  color: var(--vote-ink);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--vote-accent) 30%, transparent);
+
+  &:hover {
+    background-color: color-mix(
+      in srgb,
+      var(--vote-accent) 22%,
+      var(--vote-surface)
+    );
+    color: var(--vote-ink);
+  }
+
+  &:disabled {
+    opacity: 1;
+  }
+}

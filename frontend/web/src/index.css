@@ -174,3 +174,43 @@
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+
+/* Keep selected vote colours above generic button hover and dark-mode variants. */
+.purchase-vote-button {
+  --vote-surface: var(--background);
+}
+.purchase-vote-buy {
+  --vote-accent: #22c55e;
+  --vote-ink: #166534;
+}
+.purchase-vote-wait {
+  --vote-accent: #f59e0b;
+  --vote-ink: #92400e;
+}
+.purchase-vote-skip {
+  --vote-accent: #f43f5e;
+  --vote-ink: #9f1239;
+}
+.dark .purchase-vote-buy {
+  --vote-ink: #86efac;
+}
+.dark .purchase-vote-wait {
+  --vote-ink: #fcd34d;
+}
+.dark .purchase-vote-skip {
+  --vote-ink: #fda4af;
+}
+
+.purchase-vote-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--vote-accent) 65%, var(--vote-surface));
+  background-color: color-mix(in srgb, var(--vote-accent) 14%, var(--vote-surface));
+  color: var(--vote-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vote-accent) 30%, transparent);
+}
+.purchase-vote-button[aria-pressed="true"]:hover {
+  background-color: color-mix(in srgb, var(--vote-accent) 22%, var(--vote-surface));
+  color: var(--vote-ink);
+}
+.purchase-vote-button[aria-pressed="true"]:disabled {
+  opacity: 1;
+}

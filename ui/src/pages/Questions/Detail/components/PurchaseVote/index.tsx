@@ -31,6 +31,8 @@ import type * as Type from '@/common/interface';
 import { votePurchase } from '@/services';
 import { guard } from '@/utils';
 
+import './index.scss';
+
 // Must match voteCloseAt in internal/service/purchase_vote.
 const VOTE_CLOSE_AT = 10;
 
@@ -149,10 +151,17 @@ const Index: FC<Props> = ({ questionId, purchase, isAuthor }) => {
             <Button
               key={o.key}
               size="sm"
-              variant={myVote === o.choice ? o.variant : `outline-${o.variant}`}
+              variant={`outline-${o.variant}`}
+              className={`purchase-vote-button purchase-vote-${o.key}`}
+              aria-pressed={myVote === o.choice}
               active={myVote === o.choice}
               disabled={closed || isAuthor || submitting}
               onClick={() => handleVote(o.choice)}>
+              {myVote === o.choice && (
+                <span aria-hidden="true" className="me-1">
+                  ✓
+                </span>
+              )}
               {t(o.key)}
               <span className="ms-1 fw-semibold">{tally[o.key]}</span>
               {total > 0 && (

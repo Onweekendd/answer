@@ -7,6 +7,12 @@
 answer-data/
 tmp/
 
+# Scheduler credentials and local trial records
+script/community/*.local.env
+script/community/*.local.json
+script/community/out/
+script/community/*.log
+
 # the browser agent is a separate Python project, not part of the image
 browser-use/
 # the Chrome extension runs in the user's browser, not on the server; the new web

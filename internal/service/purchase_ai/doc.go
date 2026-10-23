@@ -17,7 +17,7 @@
  * under the License.
  */
 
-// Package purchaseai 是「买不买」的 AI：对话页里替用户做功课的 Agent，和帖子发出来以后的 AI 分析。
+// Package purchaseai 是「买不买」的 AI：对话页里替用户做功课的 Agent，以及截图识别和发帖草稿。
 //
 // # 怎么读这个目录
 //
@@ -29,7 +29,7 @@
 // 根包的文件按前缀分组，同一组的文件排在一起：
 //
 //	service.go、service_task.go   入口：PurchaseAIService（controller 调）、RunTask（case 运行器调）
-//	post_*.go                     帖子分析：从截图识别商品（identify）、给出买不买的结论（verdict）
+//	post_*.go                     截图识别：从用户上传的商品截图中提取信息（identify）
 //	chat*.go                      对话页：一轮对话（chat）、打开历史对话（page）、对话日志（log、projection、recorder）
 //	task.go                       装配：newTask 按固定的顺序把插件装起来，顺序就是工具定义的顺序和上限的优先级
 //	task_*.go                     一次任务要用的：事件和推给用户的出口（events）、提示词（prompt）、

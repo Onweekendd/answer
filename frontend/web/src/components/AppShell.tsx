@@ -26,7 +26,7 @@ export function AppShell() {
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="sticky top-0 z-20 bg-background/85 pt-[env(safe-area-inset-top,0px)] backdrop-blur">
-        <div className="mx-auto grid h-14 max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-2 px-3">
+        <div className="mx-auto grid h-16 w-full max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 md:px-8">
           <span className="text-base font-bold tracking-tight">买不买</span>
           <SectionSwitch />
           <div className="flex items-center justify-end gap-1">
@@ -38,7 +38,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
+      <main className="mx-auto flex w-full max-w-[1800px] flex-1 flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] md:px-8">
         <Outlet />
       </main>
     </div>

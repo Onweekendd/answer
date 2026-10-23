@@ -76,8 +76,7 @@ func (pas *PurchaseAIService) imageParts(ctx context.Context, imageURLs []string
 // the post form can offer to fill in the price and tags. Nothing is saved: the
 // post does not exist yet, and the form submits the reading along with it.
 //
-// The analysis no longer goes through here: the agent looks at the screenshots
-// itself. Only the old ui's post form calls this, and it goes when that form does.
+// Only the old ui's post form calls this, and it goes when that form does.
 func (pas *PurchaseAIService) Identify(ctx context.Context, req *schema.PurchaseAIIdentifyReq) (*schema.PurchaseAIIdentifyResp, error) {
 	product, err := pas.identifyProduct(ctx, req.Images)
 
@@ -209,7 +208,7 @@ func cleanList(items []string, maxItems, maxRunes int) []string {
 	return out
 }
 
-// clipRunes cuts s to at most max runes. Unlike truncateRunes it adds no note,
+// clipRunes cuts s to at most max runes without adding a note,
 // because the result is stored data rather than text for a model.
 func clipRunes(s string, max int) string {
 	runes := []rune(s)

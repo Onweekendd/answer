@@ -32,7 +32,6 @@ import (
 	"github.com/apache/answer/internal/base/reason"
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
-	"github.com/apache/answer/internal/service/purchase"
 	"github.com/apache/answer/internal/service/uploader"
 	pacmanerrors "github.com/segmentfault/pacman/errors"
 	"github.com/stretchr/testify/require"
@@ -308,7 +307,7 @@ func TestPurchaseAIService_Identify(t *testing.T) {
 	t.Run("AI 未配置时原样返回 400，不改写成笼统的 500", func(t *testing.T) {
 		// Arrange: the client refuses before any request, as it does when AI is disabled
 		model := &fakeLLM{err: pacmanerrors.BadRequest(reason.AINotConfigured)}
-		pas := newProductForService(t, model, &fakePurchaseRepo{})
+		pas := newProductForService(t, model)
 
 		// Act
 		resp, err := pas.Identify(context.Background(), &schema.PurchaseAIIdentifyReq{Images: []string{"u"}})
@@ -327,7 +326,7 @@ func TestPurchaseAIService_Identify(t *testing.T) {
 		for range maxIdentifyAttempts {
 			replies = append(replies, &llm.ChatResp{Content: "这是一台 Switch"})
 		}
-		pas := newProductForService(t, &fakeLLM{replies: replies}, &fakePurchaseRepo{})
+		pas := newProductForService(t, &fakeLLM{replies: replies})
 
 		// Act
 		resp, err := pas.Identify(context.Background(), &schema.PurchaseAIIdentifyReq{Images: []string{"u"}})
@@ -343,7 +342,7 @@ func TestPurchaseAIService_Identify(t *testing.T) {
 	t.Run("识别成功时返回商品", func(t *testing.T) {
 		// Arrange
 		model := &fakeLLM{replies: []*llm.ChatResp{{Content: switchJSON}}}
-		pas := newProductForService(t, model, &fakePurchaseRepo{})
+		pas := newProductForService(t, model)
 
 		// Act
 		resp, err := pas.Identify(context.Background(), &schema.PurchaseAIIdentifyReq{Images: []string{"u"}})
@@ -354,26 +353,12 @@ func TestPurchaseAIService_Identify(t *testing.T) {
 	})
 }
 
-// fakePurchaseRepo records the products written through SaveProduct. Only
-// UpdateProduct is implemented; the embedded interface covers the rest.
-type fakePurchaseRepo struct {
-	purchase.PurchaseRepo
-	saved []string
-	err   error
-}
-
-func (f *fakePurchaseRepo) UpdateProduct(_ context.Context, _, product string) error {
-	f.saved = append(f.saved, product)
-	return f.err
-}
-
 // newProductForService builds a service whose screenshot "u" is readable, so a
-// test only has to script the model and, if it cares, the repo.
-func newProductForService(t *testing.T, model *fakeLLM, repo *fakePurchaseRepo) *PurchaseAIService {
+// tests only have to script the model.
+func newProductForService(t *testing.T, model *fakeLLM) *PurchaseAIService {
 	t.Helper()
 	return &PurchaseAIService{
 		llmClient:       model,
 		uploaderService: fakeUploader{paths: map[string]string{"u": writePNG(t)}},
-		purchaseService: purchase.NewPurchaseService(repo, nil),
 	}
 }

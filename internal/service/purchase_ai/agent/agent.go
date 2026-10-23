@@ -29,7 +29,7 @@ import (
 	"github.com/apache/answer/internal/service/purchase_ai/tool"
 )
 
-// Config 是一个 Agent 的配置。入口（Chat、Analyze、RunTask）各自拼一个
+// Config 是一个 Agent 的配置。入口（Chat、RunTask）各自拼一个
 type Config struct {
 	Model llm.Client
 
