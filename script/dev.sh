@@ -82,13 +82,13 @@ fi
 mkdir -p tmp
 echo "编译 Hub ..."
 go build -o tmp/answer-hub.exe ./cmd/answer
-./tmp/answer-hub.exe browser --console=false --addr "$hub_addr" &
+./tmp/answer-hub.exe browser --addr "$hub_addr" &
 hub_pid=$!
 trap 'kill "$hub_pid" 2>/dev/null || true' EXIT
 
-# 等 Hub 的调试接口能用了再起后端，后端一起来就可能调它
+# 等 Hub 的 HTTP API 能用了再起后端，后端一起来就可能调它
 for _ in $(seq 1 30); do
-  code="$(curl -s -m 2 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $BROWSER_HUB_TOKEN" "$BROWSER_HUB_URL/debug/tabs" || true)"
+  code="$(curl -s -m 2 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $BROWSER_HUB_TOKEN" "$BROWSER_HUB_URL/api/browser/tabs" || true)"
   if [[ "$code" == 200 ]]; then
     break
   fi

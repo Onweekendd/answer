@@ -48,7 +48,7 @@ frontend/web (Chat.tsx) ──SSE──► answer run
                                            └ 浏览器工具 ──► Browser 接口 ──► Hub ──WebSocket──► Pagehand
 ```
 
-- **Browser 接口定义在 Agent 这一边**，只包含 Agent 用到的方法。真实运行时是 Hub；测试时换成假的浏览器；case 运行器在 `answer run` 外面运行，用的是"通过调试接口调用 Hub"的实现。
+- **Browser 接口定义在 Agent 这一边**，只包含 Agent 用到的方法。真实运行时是 Hub；测试时换成假的浏览器；case 运行器在 `answer run` 外面运行，用的是"通过 HTTP API 调用 Hub"的实现。
 - 现在 Hub 只在 `answer browser` 这个独立程序里。等对话接口上线时，要把 Hub 也挂进 `answer run`（仍然只监听 127.0.0.1）。
 
 ---
@@ -80,7 +80,7 @@ frontend/web (Chat.tsx) ──SSE──► answer run
 | 上下文管理 | 只保留最新一份快照（截图同理），旧的内容换成一句固定的话，消息本身不删；需要记住的信息让模型写在回复里。前缀缓存照样命中：每轮只有末尾一小段变化。所以占位语要固定、换上后不再改；步数这类会变的内容追加在最后，不改系统提示词；工具定义的顺序要固定 |
 | 记录每一步 | 动作、参数、结果摘要、耗时；用于排查问题，也给前端展示过程 |
 
-2026-10-17 进度：边角已经写完——联网搜索相关的代码（`websearch`、`webreader`、`sources.go`、配置里的 `search` / `reader` 两段）已删除；7 个浏览器工具、`toolResult`、`Browser` 接口、`Hub.Connected()`、`/debug/status`、`DebugClient`、`fakeBrowser`、提示语都已就位。精华部分是 11 个 TODO（`agent.go`、`loop.go`、`tools.go` 里的 `browserFailure`），编号 ①～⑨ 就是一步里的执行顺序，对应的测试在 `agent_test.go` 和 `loop_test.go` 里。
+2026-10-17 进度：边角已经写完——联网搜索相关的代码（`websearch`、`webreader`、`sources.go`、配置里的 `search` / `reader` 两段）已删除；7 个浏览器工具、`toolResult`、`Browser` 接口、`Hub.Connected()`、`/api/browser/status`、`HubClient`、`fakeBrowser`、提示语都已就位。精华部分是 11 个 TODO（`agent.go`、`loop.go`、`tools.go` 里的 `browserFailure`），编号 ①～⑨ 就是一步里的执行顺序，对应的测试在 `agent_test.go` 和 `loop_test.go` 里。
 
 - `answer run` 里现在注入的是 `noBrowser`（永远没连上），帖子的 AI 分析会降级成"不查实时价格、直接回答"。等阶段 3 把 Hub 挂进 `answer run` 再换成真的
 - 还没处理：京东点商品会在**新标签页**打开详情页，Agent 只认自己开的那个标签页。等跑 1c 的"京东详情页" case 时再加（先有数据再加）
@@ -115,7 +115,7 @@ frontend/web (Chat.tsx) ──SSE──► answer run
 - 2026-10-18 已实现：`POST /purchase/ai/chat`（要登录），事件 `reasoning / text / tool_start / tool_end / error / done`，最后 `data: [DONE]`，每 15 秒 `: ping`。
   Agent 通过 channel 交出事件（`agentRun.events`，为 nil 时帖子分析和 case 运行器照旧）；每次发送都和 `ctx.Done()` 一起等，用户断开就停、关标签页。
   给用户看的是每个工具自己写的 `Display`（白名单），点击写元素名不写编号，网址只留域名，失败不说原因；思考按步骤整段发，打码加屏蔽词（`PURCHASE_AI_REDACT_FILE`），`PURCHASE_AI_SHOW_REASONING=false` 关掉，前端按纯文本显示。
-  浏览器：设置 `BROWSER_HUB_URL` 和 `BROWSER_HUB_TOKEN` 时，answer run 通过调试接口用 `answer browser` 里的 Hub（过渡做法），没设置就降级
+  浏览器：设置 `BROWSER_HUB_URL` 和 `BROWSER_HUB_TOKEN` 时，answer run 通过 HTTP API 用 `answer browser` 里的 Hub（过渡做法），没设置就降级
 - 还没做：多个对话同时跑会抢同一个浏览器（概念 5 的串行锁和排队）；系统提示词还是写给帖子评论的，强制第一行给结论
 - `Chat.tsx` 从 mock 切换到真实接口
 - "帮我发帖"：复用现有的发帖流程，带上商品信息和 AI 的建议
@@ -150,7 +150,7 @@ frontend/web (Chat.tsx) ──SSE──► answer run
 - 遇到登录页、验证码就停下来，告诉你，不尝试绕过
 - 低频：case 运行器每一步之间有间隔，每个页面每次运行只打开一次
 - 快照和截图里可能有你的昵称、头像、地址：只发给模型，不写进日志；本地记录写入 gitignore 的目录，保存之前先替换屏蔽词
-- Hub 只监听 127.0.0.1；调试接口需要 token，并且拒绝网页发来的请求
+- Hub 只监听 127.0.0.1；HTTP API 需要 token，并且拒绝网页发来的请求
 
 ---
 

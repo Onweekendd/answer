@@ -19,7 +19,7 @@
 
 // agentcase 让 Agent 在你自己的浏览器里跑 case，判定通过没有，最后输出每个 case 的通过率。
 //
-// 先启动 Hub（answer browser --console=false），插件连上以后：
+// 先启动 Hub（answer browser），插件连上以后：
 //
 //	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase                      # 跑 cases.yaml 里的全部 case，每个 1 次
 //	BROWSER_HUB_TOKEN=<token> go run ./script/agentcase -case 京东 -n 3      # 名字里带"京东"的，每个 3 次
@@ -126,7 +126,7 @@ func run(ctx context.Context, o options) error {
 		return err
 	}
 
-	b := browser.NewDebugClient(o.hub, token)
+	b := browser.NewHubClient(o.hub, token)
 	if !b.Connected() {
 		return fmt.Errorf("the extension is not connected to the hub at %s (start answer browser and check the popup)", o.hub)
 	}

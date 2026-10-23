@@ -51,7 +51,7 @@ services:
     image: ghcr.io/onweekendd/answer:${TAG:-latest}
     restart: unless-stopped
     # 在容器里要监听 0.0.0.0，answer 才能从内部网络连过来；对外只发布到宿主机的 127.0.0.1
-    entrypoint: ["dumb-init", "--", "answer", "browser", "--addr", "0.0.0.0:8765", "--console=false"]
+    entrypoint: ["dumb-init", "--", "answer", "browser", "--addr", "0.0.0.0:8765"]
     environment:
       BROWSER_HUB_TOKEN: ${BROWSER_HUB_TOKEN:?在 deploy/.env 里设置 BROWSER_HUB_TOKEN}
     ports:

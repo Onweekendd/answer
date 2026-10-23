@@ -41,7 +41,7 @@ function reloadExtensionSoon() {
       return;
     }
     try {
-      const res = await fetch(`${hub}/debug/call`, {
+      const res = await fetch(`${hub}/api/browser/call`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({ tabId: 0, cmd: "reload" })

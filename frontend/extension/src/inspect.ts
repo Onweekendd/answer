@@ -18,7 +18,7 @@
  */
 
 // 调试用：看一段文字所在的元素在 DOM 里的位置，写站点策略时用，不用每次请人打开 DevTools 截图。
-// 只有 Go 的调试接口（/debug/call）会发这个命令，Agent 的工具里没有它。
+// 只有 Go 的 HTTP API（/api/browser/call）会发这个命令，Agent 的工具里没有它。
 // 输出标签、id、class、role 和 data-* 属性，文字最多 TEXT_MAX 个字：页面上的昵称、地址不该整段流出来
 
 const TEXT_MAX = 20;

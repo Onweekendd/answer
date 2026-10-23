@@ -28,9 +28,9 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// session 是一条插件连接，以及在这条连接上等结果的调用。
+// connection 是一条插件连接，以及在这条连接上等结果的调用。
 // pending 跟着连接走：旧连接断开时，不会误伤新连接上的调用。
-type session struct {
+type connection struct {
 	conn *websocket.Conn
 
 	mu      sync.Mutex
@@ -38,12 +38,12 @@ type session struct {
 	closed  bool                    // 为 true 后不再接受新的调用
 }
 
-func newSession(conn *websocket.Conn) *session {
-	return &session{conn: conn, pending: make(map[string]chan Message)}
+func newConnection(conn *websocket.Conn) *connection {
+	return &connection{conn: conn, pending: make(map[string]chan Message)}
 }
 
 // call 发出命令，等结果、超时或断线三者之一。
-func (s *session) call(ctx context.Context, cmd Command) (json.RawMessage, error) {
+func (s *connection) call(ctx context.Context, cmd Command) (json.RawMessage, error) {
 	s.mu.Lock()
 	// 检查 closed 和登记必须在同一把锁里，否则 failAll 可能夹在中间，这次调用就没人通知了
 	if s.closed {
@@ -82,7 +82,7 @@ func (s *session) call(ctx context.Context, cmd Command) (json.RawMessage, error
 }
 
 // readLoop 是这条连接上唯一读消息的 goroutine，一直跑到连接断开。
-func (s *session) readLoop(ctx context.Context, h *Hub) {
+func (s *connection) readLoop(ctx context.Context, h *Hub) {
 	for {
 		var msg Message // 每次新建：Unmarshal 不清零旧字段，RawMessage 还会复用底层数组
 		if err := wsjson.Read(ctx, s.conn, &msg); err != nil {
@@ -108,7 +108,7 @@ func (s *session) readLoop(ctx context.Context, h *Hub) {
 }
 
 // failAll 让还在等的调用立刻失败，并且不再接受新的调用。
-func (s *session) failAll() {
+func (s *connection) failAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

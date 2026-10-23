@@ -52,7 +52,7 @@ type Hub struct {
 	nextID atomic.Uint64
 
 	mu   sync.Mutex
-	cur  *session // nil 表示没有插件连着
+	cur  *connection // nil 表示没有插件连着
 	tabs []TabInfo
 }
 
@@ -105,7 +105,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s := newSession(conn)
+	s := newConnection(conn)
 	h.attach(s, hello.Tabs)
 	log.Infof("browser hub: extension %s connected, %d tabs", hello.Version, len(hello.Tabs))
 
@@ -143,7 +143,7 @@ type errBadHello string
 func (e errBadHello) Error() string { return string(e) }
 
 // attach 把新连接设为当前连接，并关掉旧连接；旧连接上的调用由它自己的 readLoop 让它们失败。
-func (h *Hub) attach(s *session, tabs []TabInfo) {
+func (h *Hub) attach(s *connection, tabs []TabInfo) {
 	h.mu.Lock()
 	old := h.cur
 	h.cur = s
@@ -155,7 +155,7 @@ func (h *Hub) attach(s *session, tabs []TabInfo) {
 }
 
 // detach 只在 s 还是当前连接时清空，它可能已经被新连接替换了。
-func (h *Hub) detach(s *session) {
+func (h *Hub) detach(s *connection) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.cur == s {
@@ -164,7 +164,7 @@ func (h *Hub) detach(s *session) {
 	}
 }
 
-func (h *Hub) current() *session {
+func (h *Hub) current() *connection {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.cur

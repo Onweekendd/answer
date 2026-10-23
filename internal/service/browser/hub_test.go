@@ -113,7 +113,7 @@ func connectFake(t *testing.T, hub *Hub, srv *httptest.Server, reply fakeReply) 
 	return conn
 }
 
-func pendingLen(s *session) int {
+func pendingLen(s *connection) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.pending)

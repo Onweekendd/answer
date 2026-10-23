@@ -59,13 +59,13 @@ func waitForCtx(ctx context.Context) error {
 	}
 }
 
-type debugRequest struct {
+type apiRequest struct {
 	method, path, body string
 	header             map[string]string
 	ctx                context.Context
 }
 
-func serveDebug(t *testing.T, backend DebugBackend, req debugRequest) (int, debugResponse) {
+func serveAPI(t *testing.T, backend APIBackend, req apiRequest) (int, apiResponse) {
 	t.Helper()
 	r := httptest.NewRequest(req.method, req.path, strings.NewReader(req.body))
 	if req.ctx != nil {
@@ -76,9 +76,9 @@ func serveDebug(t *testing.T, backend DebugBackend, req debugRequest) (int, debu
 	}
 	w := httptest.NewRecorder()
 
-	NewDebugHandler(backend, testToken).ServeHTTP(w, r)
+	NewAPIHandler(backend, testToken).ServeHTTP(w, r)
 
-	var resp debugResponse
+	var resp apiResponse
 	if w.Code != http.StatusMethodNotAllowed { // 405 是 ServeMux 自己写的纯文本
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp), "body: %s", w.Body.String())
 	}
@@ -87,9 +87,9 @@ func serveDebug(t *testing.T, backend DebugBackend, req debugRequest) (int, debu
 
 var authed = map[string]string{"Authorization": "Bearer " + testToken}
 
-func postCall(t *testing.T, backend DebugBackend, body string) (int, debugResponse) {
+func postCall(t *testing.T, backend APIBackend, body string) (int, apiResponse) {
 	t.Helper()
-	return serveDebug(t, backend, debugRequest{method: http.MethodPost, path: "/debug/call", body: body, header: authed})
+	return serveAPI(t, backend, apiRequest{method: http.MethodPost, path: "/api/browser/call", body: body, header: authed})
 }
 
 func returning(data string, err error) *fakeBackend {
@@ -101,11 +101,11 @@ func returning(data string, err error) *fakeBackend {
 	}}
 }
 
-func TestDebugHandler_Authorize(t *testing.T) {
+func TestAPIHandler_Authorize(t *testing.T) {
 	backend := &fakeBackend{tabs: []TabInfo{{ID: 1, Title: "首页"}}}
 
 	t.Run("没带 token 返回 401", func(t *testing.T) {
-		status, resp := serveDebug(t, backend, debugRequest{method: http.MethodGet, path: "/debug/tabs"})
+		status, resp := serveAPI(t, backend, apiRequest{method: http.MethodGet, path: "/api/browser/tabs"})
 
 		assert.Equal(t, http.StatusUnauthorized, status)
 		require.NotNil(t, resp.Error)
@@ -113,8 +113,8 @@ func TestDebugHandler_Authorize(t *testing.T) {
 	})
 
 	t.Run("token 不对返回 401", func(t *testing.T) {
-		status, _ := serveDebug(t, backend, debugRequest{
-			method: http.MethodGet, path: "/debug/tabs",
+		status, _ := serveAPI(t, backend, apiRequest{
+			method: http.MethodGet, path: "/api/browser/tabs",
 			header: map[string]string{"Authorization": "Bearer wrong"},
 		})
 
@@ -122,8 +122,8 @@ func TestDebugHandler_Authorize(t *testing.T) {
 	})
 
 	t.Run("没有 Bearer 前缀返回 401", func(t *testing.T) {
-		status, _ := serveDebug(t, backend, debugRequest{
-			method: http.MethodGet, path: "/debug/tabs",
+		status, _ := serveAPI(t, backend, apiRequest{
+			method: http.MethodGet, path: "/api/browser/tabs",
 			header: map[string]string{"Authorization": testToken},
 		})
 
@@ -131,8 +131,8 @@ func TestDebugHandler_Authorize(t *testing.T) {
 	})
 
 	t.Run("网页发来的请求带 Origin，token 对也返回 403", func(t *testing.T) {
-		status, resp := serveDebug(t, backend, debugRequest{
-			method: http.MethodGet, path: "/debug/tabs",
+		status, resp := serveAPI(t, backend, apiRequest{
+			method: http.MethodGet, path: "/api/browser/tabs",
 			header: map[string]string{"Authorization": "Bearer " + testToken, "Origin": "https://evil.example.com"},
 		})
 
@@ -142,10 +142,10 @@ func TestDebugHandler_Authorize(t *testing.T) {
 	})
 }
 
-func TestDebugHandler_Status(t *testing.T) {
+func TestAPIHandler_Status(t *testing.T) {
 	for _, connected := range []bool{true, false} {
 		t.Run(fmt.Sprintf("插件连接状态为 %v 时原样返回", connected), func(t *testing.T) {
-			status, resp := serveDebug(t, &fakeBackend{connected: connected}, debugRequest{method: http.MethodGet, path: "/debug/status", header: authed})
+			status, resp := serveAPI(t, &fakeBackend{connected: connected}, apiRequest{method: http.MethodGet, path: "/api/browser/status", header: authed})
 
 			assert.Equal(t, http.StatusOK, status)
 			assert.JSONEq(t, fmt.Sprintf(`{"connected":%v}`, connected), string(resp.Data))
@@ -153,25 +153,25 @@ func TestDebugHandler_Status(t *testing.T) {
 	}
 }
 
-func TestDebugHandler_Tabs(t *testing.T) {
+func TestAPIHandler_Tabs(t *testing.T) {
 	t.Run("返回插件上报的标签页", func(t *testing.T) {
 		backend := &fakeBackend{tabs: []TabInfo{{ID: 1, Title: "首页"}, {ID: 2, Title: "详情"}}}
 
-		status, resp := serveDebug(t, backend, debugRequest{method: http.MethodGet, path: "/debug/tabs", header: authed})
+		status, resp := serveAPI(t, backend, apiRequest{method: http.MethodGet, path: "/api/browser/tabs", header: authed})
 
 		assert.Equal(t, http.StatusOK, status)
 		assert.JSONEq(t, `[{"id":1,"title":"首页"},{"id":2,"title":"详情"}]`, string(resp.Data))
 	})
 
 	t.Run("没有标签页时返回空数组，不返回 null", func(t *testing.T) {
-		status, resp := serveDebug(t, &fakeBackend{}, debugRequest{method: http.MethodGet, path: "/debug/tabs", header: authed})
+		status, resp := serveAPI(t, &fakeBackend{}, apiRequest{method: http.MethodGet, path: "/api/browser/tabs", header: authed})
 
 		assert.Equal(t, http.StatusOK, status)
 		assert.JSONEq(t, `[]`, string(resp.Data))
 	})
 }
 
-func TestDebugHandler_Call(t *testing.T) {
+func TestAPIHandler_Call(t *testing.T) {
 	t.Run("把 tabId、cmd、args 原样交给 Hub，返回它的 data", func(t *testing.T) {
 		// Arrange
 		var gotTab int
@@ -221,14 +221,14 @@ func TestDebugHandler_Call(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, status)
 	})
 
-	t.Run("GET 调用 /debug/call 返回 405", func(t *testing.T) {
-		status, _ := serveDebug(t, returning(`{}`, nil), debugRequest{method: http.MethodGet, path: "/debug/call", header: authed})
+	t.Run("GET 调用 /api/browser/call 返回 405", func(t *testing.T) {
+		status, _ := serveAPI(t, returning(`{}`, nil), apiRequest{method: http.MethodGet, path: "/api/browser/call", header: authed})
 
 		assert.Equal(t, http.StatusMethodNotAllowed, status)
 	})
 }
 
-func TestDebugHandler_CallErrors(t *testing.T) {
+func TestAPIHandler_CallErrors(t *testing.T) {
 	tests := []struct {
 		name       string
 		err        error
@@ -256,7 +256,7 @@ func TestDebugHandler_CallErrors(t *testing.T) {
 	}
 }
 
-func TestDebugHandler_CallContext(t *testing.T) {
+func TestAPIHandler_CallContext(t *testing.T) {
 	t.Run("timeoutMs 到了，Hub 收到的 ctx 结束，返回 504", func(t *testing.T) {
 		// Arrange
 		backend := &fakeBackend{call: func(ctx context.Context, _ int, _ string, _ any) (json.RawMessage, error) {
@@ -282,7 +282,7 @@ func TestDebugHandler_CallContext(t *testing.T) {
 
 		postCall(t, backend, `{"tabId":7,"cmd":"snapshot"}`)
 
-		assert.InDelta(t, debugDefaultTimeout.Seconds(), left.Seconds(), 1)
+		assert.InDelta(t, apiDefaultTimeout.Seconds(), left.Seconds(), 1)
 	})
 
 	t.Run("timeoutMs 超过上限时按 2 分钟算", func(t *testing.T) {
@@ -295,7 +295,7 @@ func TestDebugHandler_CallContext(t *testing.T) {
 
 		postCall(t, backend, `{"tabId":7,"cmd":"snapshot","timeoutMs":3600000}`)
 
-		assert.InDelta(t, debugMaxTimeout.Seconds(), left.Seconds(), 1)
+		assert.InDelta(t, apiMaxTimeout.Seconds(), left.Seconds(), 1)
 	})
 
 	t.Run("客户端断开时，Hub 收到的 ctx 也被取消", func(t *testing.T) {
@@ -307,8 +307,8 @@ func TestDebugHandler_CallContext(t *testing.T) {
 		}}
 
 		// Act
-		status, resp := serveDebug(t, backend, debugRequest{
-			method: http.MethodPost, path: "/debug/call", header: authed, ctx: reqCtx,
+		status, resp := serveAPI(t, backend, apiRequest{
+			method: http.MethodPost, path: "/api/browser/call", header: authed, ctx: reqCtx,
 			body: `{"tabId":7,"cmd":"snapshot"}`,
 		})
 

@@ -31,15 +31,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 真的调试接口跑在 httptest 上，DebugClient 连过去：错误发出去、收回来以后要和 Hub.Call 返回的一样
-func newTestClient(t *testing.T, backend DebugBackend, token string) *DebugClient {
+// 真的 HTTP API 跑在 httptest 上，HubClient 连过去：错误发出去、收回来以后要和 Hub.Call 返回的一样
+func newTestClient(t *testing.T, backend APIBackend, token string) *HubClient {
 	t.Helper()
-	server := httptest.NewServer(NewDebugHandler(backend, testToken))
+	server := httptest.NewServer(NewAPIHandler(backend, testToken))
 	t.Cleanup(server.Close)
-	return NewDebugClient(server.URL+"/", token)
+	return NewHubClient(server.URL+"/", token)
 }
 
-func TestDebugClient_Call(t *testing.T) {
+func TestHubClient_Call(t *testing.T) {
 	t.Run("tabId、cmd、args 原样到达 Hub，返回它的 data", func(t *testing.T) {
 		// Arrange
 		var gotTab int
@@ -149,7 +149,7 @@ func TestDebugClient_Call(t *testing.T) {
 	})
 }
 
-func TestDebugClient_Connected(t *testing.T) {
+func TestHubClient_Connected(t *testing.T) {
 	t.Run("插件连着时返回 true", func(t *testing.T) {
 		client := newTestClient(t, &fakeBackend{connected: true}, testToken)
 
@@ -164,9 +164,9 @@ func TestDebugClient_Connected(t *testing.T) {
 
 	t.Run("Hub 本身连不上时返回 false", func(t *testing.T) {
 		// Arrange：服务器开了又关，地址上没有人在听
-		server := httptest.NewServer(NewDebugHandler(&fakeBackend{connected: true}, testToken))
+		server := httptest.NewServer(NewAPIHandler(&fakeBackend{connected: true}, testToken))
 		server.Close()
-		client := NewDebugClient(server.URL, testToken)
+		client := NewHubClient(server.URL, testToken)
 
 		// Act & Assert
 		assert.False(t, client.Connected())

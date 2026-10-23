@@ -81,7 +81,7 @@ ESLint 和 Prettier 的规则沿用 funBI（`packages/eslint-config`）：双引
 BROWSER_HUB_TOKEN=<token> pnpm watch
 ```
 
-原理：打包完调用 Hub 的调试接口发一条 `reload` 命令，插件先回复、再调用 `chrome.runtime.reload()` 从磁盘重新加载。网页里旧的 content script 会和插件断开，下一条命令会自动注入新的（按需注入），网页不用刷新。
+原理：打包完调用 Hub 的 HTTP API 发一条 `reload` 命令，插件先回复、再调用 `chrome.runtime.reload()` 从磁盘重新加载。网页里旧的 content script 会和插件断开，下一条命令会自动注入新的（按需注入），网页不用刷新。
 
 没有开 Hub 时：
 
@@ -101,24 +101,20 @@ BROWSER_HUB_TOKEN=<token> pnpm watch
 
 ### 从命令行控制插件
 
-`answer browser` 有两种用法，都在仓库根目录运行，token 和 popup 里填的一致：
+`answer browser` 启动 Hub 和 HTTP API，一直运行到 Ctrl+C。在仓库根目录运行，token 和 popup 里填的一致：
 
 ```bash
-# 交互式：敲 tabs、navigate、snapshot、click
 BROWSER_HUB_TOKEN=<token> go run ./cmd/answer browser
-
-# 只开 HTTP 调试接口，一直跑到 Ctrl+C：给 curl、脚本和自动化测试用
-BROWSER_HUB_TOKEN=<token> go run ./cmd/answer browser --console=false
 ```
 
-两种用法都会开调试接口，请求头带上同一个 token：
+通过 HTTP 接口查看标签页、获取快照和执行操作，请求头带上同一个 token：
 
 ```bash
 H="Authorization: Bearer $BROWSER_HUB_TOKEN"
-curl -s -H "$H" http://127.0.0.1:8765/debug/status   # {"connected":true}：插件连着没有
-curl -s -H "$H" http://127.0.0.1:8765/debug/tabs
-curl -s -H "$H" -d '{"tabId":123,"cmd":"snapshot","args":{"maxChars":8000}}' http://127.0.0.1:8765/debug/call
-curl -s -H "$H" -d '{"tabId":123,"cmd":"navigate","args":{"url":"https://github.com"},"timeoutMs":60000}' http://127.0.0.1:8765/debug/call
+curl -s -H "$H" http://127.0.0.1:8765/api/browser/status   # {"connected":true}：插件连着没有
+curl -s -H "$H" http://127.0.0.1:8765/api/browser/tabs
+curl -s -H "$H" -d '{"tabId":123,"cmd":"snapshot","args":{"maxChars":8000}}' http://127.0.0.1:8765/api/browser/call
+curl -s -H "$H" -d '{"tabId":123,"cmd":"navigate","args":{"url":"https://github.com"},"timeoutMs":60000}' http://127.0.0.1:8765/api/browser/call
 ```
 
 返回格式和插件回给 Go 的结果一样：`{"ok":true,"data":…}` 或 `{"ok":false,"error":{"code":…,"message":…}}`。状态码：
@@ -164,4 +160,4 @@ MV3 的 background 不是常驻进程：空闲约 30 秒后 Chrome 会关掉它�
 - [x] ④ `snapshot` P1，参考 [第 4 站笔记](../../docs/browser-use-study/04-页面压缩.md) 和 [压缩方案](../../docs/page-snapshot-design.md)
 - [x] ⑤ 通用化：上报所有网页标签页，content script 按需注入
 
-终端调试：`BROWSER_HUB_TOKEN=<popup 里填的> go run ./cmd/answer browser`，然后敲 `tabs`、`snapshot <id>`。
+调试：启动 `answer browser` 后，通过上面的 HTTP 接口查看标签页、获取快照和执行操作。

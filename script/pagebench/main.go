@@ -19,7 +19,7 @@
 
 // pagebench 在一组固定页面上量一遍快照，和基线比较，看压缩规则改了以后变好还是变坏。
 //
-// 先启动 Hub（answer browser --console=false），插件连上以后：
+// 先启动 Hub（answer browser），插件连上以后：
 //
 //	BROWSER_HUB_TOKEN=<token> go run ./script/pagebench
 //	BROWSER_HUB_TOKEN=<token> go run ./script/pagebench -update-baseline   # 把这次的结果存成新基线
@@ -232,18 +232,18 @@ var errHubGone = errors.New("hub or extension is not available")
 
 // ready 在开始之前确认 Hub 在跑、token 对、插件连着
 func (c *client) ready() error {
-	req, err := http.NewRequest(http.MethodGet, c.hub+"/debug/tabs", nil)
+	req, err := http.NewRequest(http.MethodGet, c.hub+"/api/browser/tabs", nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: start it with `answer browser --console=false` (%v)", errHubGone, err)
+		return fmt.Errorf("%w: start it with `answer browser` (%v)", errHubGone, err)
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: /debug/tabs returned HTTP %d, check BROWSER_HUB_TOKEN", errHubGone, resp.StatusCode)
+		return fmt.Errorf("%w: /api/browser/tabs returned HTTP %d, check BROWSER_HUB_TOKEN", errHubGone, resp.StatusCode)
 	}
 	return nil
 }
@@ -270,10 +270,10 @@ func (c *client) open(tabID *int, url string) (pageInfo, error) {
 	return info, nil
 }
 
-// call 调一次 Hub 的 /debug/call
+// call 调一次 Hub 的 /api/browser/call
 func (c *client) call(cmd string, tabID int, args any, timeoutMs int) (json.RawMessage, error) {
 	body, _ := json.Marshal(map[string]any{"tabId": tabID, "cmd": cmd, "args": args, "timeoutMs": timeoutMs})
-	req, err := http.NewRequest(http.MethodPost, c.hub+"/debug/call", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, c.hub+"/api/browser/call", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
