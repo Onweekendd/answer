@@ -77,6 +77,7 @@ type aweme struct {
 
 // awemeBR 是一档清晰度
 type awemeBR struct {
+	Format   string   `json:"format"`
 	GearName string   `json:"gear_name"` // 比如 normal_540_0、normal_1080_0
 	PlayAddr playAddr `json:"play_addr"`
 }
@@ -110,11 +111,37 @@ func ParseDouyin(body []byte, id string) (Source, bool) {
 			Default:  a.Video.PlayAddr.variant("default"),
 		}
 		for _, br := range a.Video.BitRate {
+			// DASH entries can be video-only. Save a self-contained MP4 so the
+			// resulting asset includes the audio carried by the source file.
+			if br.Format != "" && br.Format != "mp4" {
+				continue
+			}
 			s.Variants = append(s.Variants, br.PlayAddr.variant(br.GearName))
 		}
 		return s, true
 	}
 	return Source{}, false
+}
+
+// ListDouyin extracts candidates from a search response, using the same parser
+// as video details. Returned order follows the response's result arrays.
+func ListDouyin(body []byte) []Source {
+	var value any
+	if json.Unmarshal(body, &value) != nil {
+		return nil
+	}
+	var out []Source
+	seen := map[string]bool{}
+	for _, a := range findAwemes(value) {
+		if seen[a.ID] {
+			continue
+		}
+		seen[a.ID] = true
+		if source, ok := ParseDouyin(body, a.ID); ok {
+			out = append(out, source)
+		}
+	}
+	return out
 }
 
 // findAwemes 在任意 JSON 里找带 aweme_id 和 video.play_addr 的对象。不写死路径：

@@ -14,6 +14,7 @@ script/community/out/
 script/community/*.log
 deploy/docker-compose.override.yaml
 deploy/local-services/
+downloads/
 
 # the browser agent is a separate Python project, not part of the image
 browser-use/
