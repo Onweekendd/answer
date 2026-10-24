@@ -90,6 +90,7 @@ export type ErrorCode =
   | "ELEMENT_NOT_FOUND"
   | "NOT_EDITABLE" // type 的目标不是输入框
   | "TIMEOUT"
+  | "RATE_LIMITED" // 本地站点额度用尽；错误消息给出等待时间，停止后续操作
   | "EXEC_FAILED";
 
 export interface ErrorBody {
@@ -228,6 +229,12 @@ export interface HarvestResult {
 }
 
 export type TabResponse = { ok: true; data: unknown } | { ok: false; error: ErrorBody };
+
+// content script → background：harvest 的每一屏也要占用同站点额度。
+export interface RateLimitRequest {
+  type: "rateLimit";
+  action: "harvestScroll";
+}
 
 // 带错误码的异常，各层都用它，最后由 background 转成 Result 发给 Go
 export class CommandError extends Error {

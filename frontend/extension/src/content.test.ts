@@ -26,11 +26,18 @@ vi.mock("./snapshot/stable", () => ({ waitForStable: async () => ({ waitedMs: 0,
 
 let listener: (req: TabRequest, sender: unknown, respond: (res: TabResponse) => void) => void;
 const scrollIntoView = vi.fn();
+const runtimeMessage = vi.fn();
 
 beforeEach(async () => {
   vi.resetModules();
   scrollIntoView.mockClear();
-  vi.stubGlobal("chrome", { runtime: { onMessage: { addListener: (fn: typeof listener) => (listener = fn) } } });
+  runtimeMessage.mockReset();
+  vi.stubGlobal("chrome", {
+    runtime: {
+      onMessage: { addListener: (fn: typeof listener) => (listener = fn) },
+      sendMessage: runtimeMessage
+    }
+  });
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
     x: 10,
     y: 10,
@@ -56,6 +63,24 @@ afterEach(() => {
   document.body.innerHTML = "";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+it("harvest 在每屏滚动前申请额度，被限流后不再滚动", async () => {
+  vi.useFakeTimers();
+  document.body.innerHTML = Array.from(
+    { length: 4 },
+    (_, i) =>
+      `<article><a href="https://example.com/${i}"><img src="https://img.example.com/${i}.jpg">商品${i}</a></article>`
+  ).join("");
+  const scrollBy = vi.fn();
+  document.documentElement.scrollBy = scrollBy;
+  runtimeMessage.mockResolvedValue({ ok: false, error: { code: "RATE_LIMITED", message: "请等待 30 秒" } });
+  const done = request({ type: "harvestList", limit: 100, maxScrolls: 2 });
+  await vi.runAllTimersAsync();
+  expect(await done).toMatchObject({ ok: false, error: { code: "RATE_LIMITED" } });
+  expect(runtimeMessage).toHaveBeenCalledExactlyOnceWith({ type: "rateLimit", action: "harvestScroll" });
+  expect(scrollBy).not.toHaveBeenCalled();
 });
 
 function request(req: TabRequest): Promise<TabResponse> {

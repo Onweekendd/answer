@@ -25,12 +25,83 @@ import type { Command } from "./protocol";
 const remove = vi.fn();
 const update = vi.fn();
 const sendMessage = vi.fn();
+const get = vi.fn();
+let stored: Record<string, unknown>;
 
 beforeEach(() => {
   remove.mockReset();
   update.mockReset().mockResolvedValue({});
   sendMessage.mockReset();
-  vi.stubGlobal("chrome", { tabs: { remove, update, sendMessage } });
+  get.mockReset().mockResolvedValue({ url: "https://www.example.com/" });
+  stored = {};
+  vi.stubGlobal("chrome", {
+    tabs: { remove, update, sendMessage, get },
+    storage: {
+      session: {
+        get: async (key: string) => ({ [key]: stored[key] }),
+        set: async (patch: Record<string, unknown>) => {
+          Object.assign(stored, patch);
+        }
+      }
+    }
+  });
+});
+
+describe("execute 站点限速接入", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const media = (tabId: number): Command => ({
+    id: `media-${tabId}`,
+    type: "command",
+    cmd: "mediaRange",
+    tabId,
+    args: { url: "https://cdn.example.com/a.mp4", start: 0, end: 2 }
+  });
+
+  it("同站点不同标签页的媒体请求实际按 3 秒间隔发送", async () => {
+    vi.useFakeTimers();
+    sendMessage.mockResolvedValue({ ok: true, data: {} });
+    await execute(media(101));
+    const next = execute(media(102));
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await next;
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("耗尽额度后不发请求，snapshot 仍可读取页面", async () => {
+    stored["rateLimit:example.com"] = Array(10).fill(Date.now());
+    await expect(execute(media(103))).rejects.toMatchObject({ code: "RATE_LIMITED" });
+    expect(sendMessage).not.toHaveBeenCalled();
+    sendMessage.mockResolvedValue({ ok: true, data: { elements: "page" } });
+    await expect(execute({ id: "snapshot", type: "command", cmd: "snapshot", tabId: 103, args: {} })).resolves.toEqual({
+      elements: "page"
+    });
+  });
+
+  it("跳转/新开页/抓包按目标站点计数，不通过新标签页绕过额度", async () => {
+    stored["rateLimit:target.com"] = Array(10).fill(Date.now());
+    for (const cmd of ["navigate", "open", "netcapture"] as const) {
+      await expect(
+        execute({
+          id: cmd,
+          type: "command",
+          cmd,
+          tabId: 104,
+          args: { url: "https://shop.target.com/", match: "api" }
+        } as Command)
+      ).rejects.toMatchObject({ code: "RATE_LIMITED" });
+    }
+    expect(update).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("未知命令保留原来的错误码", async () => {
+    await expect(
+      execute({ id: "unknown", type: "command", cmd: "unknown", tabId: 0, args: {} } as unknown as Command)
+    ).rejects.toMatchObject({ code: "UNKNOWN_COMMAND" });
+  });
 });
 afterEach(() => vi.unstubAllGlobals());
 
