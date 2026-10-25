@@ -21,7 +21,6 @@ package purchase
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/apache/answer/internal/base/reason"
@@ -40,7 +39,7 @@ func requireReason(t *testing.T, err error, want string) {
 	t.Helper()
 
 	var pacmanErr *myErrors.Error
-	require.True(t, errors.As(err, &pacmanErr), "expected a pacman error, got %v", err)
+	require.ErrorAs(t, err, &pacmanErr, "expected a pacman error, got %v", err)
 	require.Equal(t, want, pacmanErr.Reason)
 }
 
@@ -141,8 +140,8 @@ func TestToEntity(t *testing.T) {
 
 		// Assert
 		require.Equal(t, "CNY", detail.Currency)
-		require.Equal(t, "", info.Currency, "入参不应该被改写")
-		require.Equal(t, 5499.0, detail.Price)
+		require.Empty(t, info.Currency, "入参不应该被改写")
+		require.InDelta(t, 5499.0, detail.Price, 0)
 		require.Equal(t, "https://item.jd.com/1.html", detail.Link)
 	})
 
@@ -188,7 +187,7 @@ func TestToSchema(t *testing.T) {
 
 		// Assert
 		require.Equal(t, []string{"http://x/a.png", "http://x/b.png"}, got.Images)
-		require.Equal(t, 5499.0, got.Price)
+		require.InDelta(t, 5499.0, got.Price, 0)
 		require.Equal(t, "CNY", got.Currency)
 		require.Equal(t, "https://item.jd.com/1.html", got.Link)
 		require.Equal(t, entity.PurchaseAIStatusFinished, got.AIStatus)
@@ -221,7 +220,7 @@ func TestToSchema(t *testing.T) {
 
 		require.NotNil(t, got.Product)
 		require.Equal(t, "任天堂 Switch OLED", got.Product.Name)
-		require.Equal(t, 2099.0, *got.Product.Price)
+		require.InDelta(t, 2099.0, *got.Product.Price, 0)
 		require.Nil(t, got.Product.ListPrice)
 	})
 
@@ -276,7 +275,7 @@ func TestSaveProduct(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, "", repo.product)
+		require.Empty(t, repo.product)
 	})
 }
 
@@ -294,7 +293,7 @@ func TestToEntityToSchemaRoundTrip(t *testing.T) {
 
 	// Assert
 	require.Equal(t, info.Images, got.Images)
-	require.Equal(t, info.Price, got.Price)
+	require.InDelta(t, info.Price, got.Price, 0)
 	require.Equal(t, info.Link, got.Link)
 	require.Equal(t, "CNY", got.Currency, "空币种在 ToEntity 时被补成默认值")
 	require.Nil(t, got.Product, "没提交商品时读回来也是 nil")

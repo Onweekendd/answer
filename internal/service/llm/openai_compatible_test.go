@@ -105,7 +105,7 @@ func Test_toSDKMessages_toolRound(t *testing.T) {
 	require.Len(t, out[1].ToolCalls, 2)
 	require.Equal(t, "call_2", out[1].ToolCalls[1].ID)
 	require.Equal(t, "web_search", out[1].ToolCalls[1].Function.Name)
-	require.Equal(t, `{"query":"b"}`, out[1].ToolCalls[1].Function.Arguments)
+	require.JSONEq(t, `{"query":"b"}`, out[1].ToolCalls[1].Function.Arguments)
 
 	require.Equal(t, RoleTool, out[2].Role)
 	require.Equal(t, "call_1", out[2].ToolCallID)

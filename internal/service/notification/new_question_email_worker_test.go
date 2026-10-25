@@ -408,9 +408,7 @@ func TestNewQuestionEmailWorkerTryEnqueueConcurrentClose(t *testing.T) {
 
 		for range senders {
 			//nolint:modernize // CI uses Go 1.23, which does not support WaitGroup.Go.
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				defer func() {
 					if recovered := recover(); recovered != nil {
 						panicCh <- recovered
@@ -429,7 +427,7 @@ func TestNewQuestionEmailWorkerTryEnqueueConcurrentClose(t *testing.T) {
 					}
 					runtime.Gosched()
 				}
-			}()
+			})
 		}
 		for range senders {
 			<-ready

@@ -112,7 +112,7 @@ func requireHTTPError(t *testing.T, err error, code int, wantReason string) {
 	t.Helper()
 
 	var pacmanErr *myErrors.Error
-	require.True(t, errors.As(err, &pacmanErr), "expected a pacman error, got %v", err)
+	require.ErrorAs(t, err, &pacmanErr, "expected a pacman error, got %v", err)
 	require.Equal(t, code, pacmanErr.Code)
 	require.Equal(t, wantReason, pacmanErr.Reason)
 }

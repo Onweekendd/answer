@@ -180,7 +180,7 @@ func Test_countPrices(t *testing.T) {
 	}
 }
 
-func Test_judge_卡片(t *testing.T) {
+func Test_judge_Card(t *testing.T) {
 	cardCase := Case{Name: "京东卡片", Expect: Expect{MinCards: 1}}
 
 	t.Run("卡片够数、链接在去过的网站上，通过", func(t *testing.T) {

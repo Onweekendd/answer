@@ -152,7 +152,6 @@ func (ps *PurchaseService) IsChanged(ctx context.Context, questionID string, inf
 
 // GetByQuestionID returns the purchase info for one question, or nil when absent.
 func (ps *PurchaseService) GetByQuestionID(ctx context.Context, questionID string) (*schema.PurchaseInfo, error) {
-
 	detail, exist, err := ps.purchaseRepo.GetByQuestionID(ctx, questionID)
 
 	if err != nil {

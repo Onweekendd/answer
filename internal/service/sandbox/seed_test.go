@@ -26,7 +26,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -143,5 +142,5 @@ func TestSeed_FailedUnpackIsAnError(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "Unexpected EOF"), "错误里要带上 stderr：%v", err)
+	assert.Contains(t, err.Error(), "Unexpected EOF", "错误里要带上 stderr：%v", err)
 }

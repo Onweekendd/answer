@@ -165,7 +165,7 @@ func (c *collection) collectVideo(ctx context.Context, arguments string) (tool.R
 	var play video.Play
 	var data []byte
 	var err error
-	for attempt := 0; attempt < 2; attempt++ {
+	for range 2 {
 		src, err = c.captureVideo(ctx, page, id)
 		if err != nil {
 			break

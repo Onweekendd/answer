@@ -43,9 +43,9 @@ func ValidateMedia(ctx context.Context, a Asset, data []byte) (Asset, error) {
 	if err != nil {
 		return Asset{}, err
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close()
 		return Asset{}, err
 	}
 	if err := f.Close(); err != nil {

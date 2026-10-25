@@ -162,7 +162,7 @@ func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID stri
 	// ① 开事务
 	_, err = pr.data.DB.Transaction(func(session *xorm.Session) (any, error) {
 		session = session.Context(ctx)
-		//② FOR UPDATE 锁住帖子
+		// ② FOR UPDATE 锁住帖子
 		exist, err := session.ID(questionID).ForUpdate().Get(detail)
 		if err != nil {
 			return nil, err
@@ -175,7 +175,7 @@ func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID stri
 		if detail.VoteClosed {
 			return nil, purchase.ErrVoteClosed
 		}
-		//③ 查这个人原来的票
+		// ③ 查这个人原来的票
 
 		oldVote := &entity.PurchaseVote{}
 		voted, err := session.Where("question_id = ? AND user_id = ?", questionID, userID).Get(oldVote)
@@ -189,7 +189,7 @@ func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID stri
 			return nil, nil
 		}
 
-		//④ 写票（插入或更新 choice）
+		// ④ 写票（插入或更新 choice）
 		if voted {
 			oldVote.Choice = choice
 			_, err = session.Where("question_id = ? AND user_id = ?", questionID, userID).Cols("choice").Update(oldVote)
@@ -202,7 +202,6 @@ func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID stri
 			if err != nil {
 				return nil, err
 			}
-
 		} else {
 			oldVote.QuestionID = questionID
 			oldVote.UserID = userID
@@ -213,15 +212,14 @@ func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID stri
 			if err != nil {
 				return nil, err
 			}
-
 		}
-		//⑤ Incr / Decr 改计数
+		// ⑤ Incr / Decr 改计数
 		_, err = session.ID(questionID).Incr(voteCountColumn(choice)).Update(&entity.PurchaseDetail{})
 		if err != nil {
 			return nil, err
 		}
 
-		//⑥ CAS 关闭：UPDATE ... WHERE vote_closed = false AND 总票数 >= 10
+		// ⑥ CAS 关闭：UPDATE ... WHERE vote_closed = false AND 总票数 >= 10
 		affected, err := session.
 			Where("question_id = ? AND vote_closed = ? AND buy_count + wait_count + skip_count >= ?",
 				questionID, false, closeAt).
@@ -236,7 +234,7 @@ func (pr *purchaseRepo) Vote(ctx context.Context, questionID string, userID stri
 		if affected == 1 {
 			justClosed = true
 		}
-		//⑦ 返回最新票数；事务结束，锁释放
+		// ⑦ 返回最新票数；事务结束，锁释放
 
 		fresh := &entity.PurchaseDetail{}
 		_, err = session.ID(questionID).Get(fresh)

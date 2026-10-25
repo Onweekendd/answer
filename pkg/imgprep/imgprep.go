@@ -50,7 +50,7 @@ func DataURI(path string, maxSide int) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("imgprep: open %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	img, err := imaging.Decode(file, imaging.AutoOrientation(true))
 	if err != nil {

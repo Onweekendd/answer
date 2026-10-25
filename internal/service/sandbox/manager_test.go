@@ -49,7 +49,7 @@ func TestAcquire_TemporaryChat(t *testing.T) {
 func TestAcquire_FirstUseCreatesAndRecords(t *testing.T) {
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	m := NewManager(cube, store)
 
 	// Act
@@ -59,13 +59,13 @@ func TestAcquire_FirstUseCreatesAndRecords(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, reset, "原来没有沙箱，谈不上重置")
 	assert.Equal(t, CreateOpts{ChatID: 7, Idle: chatIdle, Pause: true}, cube.created[0])
-	assert.Equal(t, box.ID(), store.sandboxOf(7))
+	assert.Equal(t, box.ID(), store.sandboxOf())
 }
 
 func TestAcquire_ReusesRecordedSandbox(t *testing.T) {
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	m := NewManager(cube, store)
 	first, _, err := m.Acquire(context.Background(), 7, "u1")
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestAcquire_ReusesRecordedSandbox(t *testing.T) {
 func TestAcquire_GoneSandboxIsRecreatedWithReset(t *testing.T) {
 	// Arrange：记着 sb-1，但它已经没了
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	m := NewManager(cube, store)
 	old, _, err := m.Acquire(context.Background(), 7, "u1")
 	require.NoError(t, err)
@@ -96,13 +96,13 @@ func TestAcquire_GoneSandboxIsRecreatedWithReset(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, reset, "要告诉模型之前的文件没了")
 	assert.NotEqual(t, old.ID(), box.ID())
-	assert.Equal(t, box.ID(), store.sandboxOf(7))
+	assert.Equal(t, box.ID(), store.sandboxOf())
 }
 
 func TestAcquire_OtherConnectErrorIsReturned(t *testing.T) {
 	// Arrange：Cube 本身出了问题（不是沙箱没了），不能当成"没了"去重建一个
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "sb-x")
+	store.addChat(7, "sb-x")
 	cube.connectErr = errors.New("connection refused")
 	m := NewManager(cube, store)
 
@@ -112,20 +112,20 @@ func TestAcquire_OtherConnectErrorIsReturned(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, 0, cube.createCount())
-	assert.Equal(t, "sb-x", store.sandboxOf(7))
+	assert.Equal(t, "sb-x", store.sandboxOf())
 }
 
 func TestAcquire_SomeoneElsesChat(t *testing.T) {
 	// Arrange
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	m := NewManager(cube, store)
 
 	// Act
 	_, _, err := m.Acquire(context.Background(), 7, "u2")
 
 	// Assert
-	assert.ErrorIs(t, err, ErrChatNotFound)
+	require.ErrorIs(t, err, ErrChatNotFound)
 	assert.Equal(t, 0, cube.createCount())
 }
 
@@ -133,7 +133,7 @@ func TestAcquire_ConcurrentCallsCreateOneSandbox(t *testing.T) {
 	// Arrange：建一个要 50ms，足够让 10 个请求都挤进"查表"和"记下来"之间
 	cube, store := newFakeCube(), newFakeStore()
 	cube.createDelay = 50 * time.Millisecond
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	m := NewManager(cube, store)
 
 	// Act
@@ -165,7 +165,7 @@ func TestAcquire_DifferentChatsDoNotWaitForEachOther(t *testing.T) {
 	cube, store := newFakeCube(), newFakeStore()
 	cube.createDelay = 50 * time.Millisecond
 	for id := int64(1); id <= 10; id++ {
-		store.addChat(id, "u1", "")
+		store.addChat(id, "")
 	}
 	m := NewManager(cube, store)
 
@@ -187,7 +187,7 @@ func TestAcquire_DifferentChatsDoNotWaitForEachOther(t *testing.T) {
 func TestAcquire_LosingTheSwapUsesTheWinnersSandbox(t *testing.T) {
 	// Arrange：另一个后端实例在我们记下之前，抢先建好并记下了 sb-other
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	other := newFakeBox("sb-other")
 	cube.boxes[other.id] = other
 	store.beforeSwap = func(chatID int64) { store.box[chatID] = "sb-other" }
@@ -200,13 +200,13 @@ func TestAcquire_LosingTheSwapUsesTheWinnersSandbox(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "sb-other", box.ID())
 	assert.True(t, cube.boxes["sb-1"].killed, "自己建的那个不销毁就成了孤儿")
-	assert.Equal(t, "sb-other", store.sandboxOf(7))
+	assert.Equal(t, "sb-other", store.sandboxOf())
 }
 
 func TestAcquire_UnrecordedSandboxIsKilled(t *testing.T) {
 	// Arrange：建好了，记的时候数据库出错
 	cube, store := newFakeCube(), newFakeStore()
-	store.addChat(7, "u1", "")
+	store.addChat(7, "")
 	store.swapErr = errors.New("database is down")
 	m := NewManager(cube, store)
 

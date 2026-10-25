@@ -103,7 +103,7 @@ func TestReadUpload(t *testing.T) {
 
 	t.Run("超过上限的不读", func(t *testing.T) {
 		_, _, err := us.ReadUpload(context.Background(), site+"agent-files/big.txt")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrUploadNotFound)
 	})
 }

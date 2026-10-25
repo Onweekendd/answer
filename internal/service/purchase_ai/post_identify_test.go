@@ -59,7 +59,7 @@ func writePNG(t *testing.T) string {
 	p := filepath.Join(t.TempDir(), "shot.png")
 	f, err := os.Create(p)
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	require.NoError(t, png.Encode(f, image.NewRGBA(image.Rect(0, 0, 20, 10))))
 	return p
 }
@@ -78,8 +78,8 @@ func Test_parseProduct(t *testing.T) {
 		require.Equal(t, "任天堂 Switch OLED 国行 白色", p.Name)
 		require.Equal(t, []string{"国行", "白色"}, p.Specs)
 		require.True(t, *p.Official)
-		require.Equal(t, 2099.0, *p.Price)
-		require.Equal(t, 2599.0, *p.ListPrice)
+		require.InDelta(t, 2099.0, *p.Price, 0)
+		require.InDelta(t, 2599.0, *p.ListPrice, 0)
 	})
 
 	t.Run("包在代码块里也能解析", func(t *testing.T) {
@@ -104,7 +104,7 @@ func Test_parseProduct(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 		require.NotNil(t, p.Price, "a price of 0 was shown, so it is not missing")
-		require.Equal(t, 0.0, *p.Price)
+		require.InDelta(t, 0.0, *p.Price, 0)
 		require.Nil(t, p.ListPrice)
 		require.Nil(t, p.Official)
 	})
@@ -155,24 +155,25 @@ func Test_parseProduct(t *testing.T) {
 		require.NoError(t, err3)
 		require.Equal(t, "京东", known.Platform)
 		require.Equal(t, "其他", unknown.Platform)
-		require.Equal(t, "", empty.Platform)
+		require.Empty(t, empty.Platform)
 	})
 
 	t.Run("过长的文字截断，列表去掉空项并限制条数", func(t *testing.T) {
 		// Arrange
 		long := strings.Repeat("长", maxProductNameRunes+50)
 		// distinct items, so the cap is what cuts them rather than dedup
-		specs := `" 国行 ",""`
+		var specs strings.Builder
+		specs.WriteString(`" 国行 ",""`)
 		for i := range maxProductListItems + 5 {
-			specs += fmt.Sprintf(`,"规格%d"`, i)
+			_, _ = fmt.Fprintf(&specs, `,"规格%d"`, i)
 		}
 
 		// Act
-		p, err := parseProduct(`{"name":"` + long + `","specs":[` + specs + `],"confidence":0.5}`)
+		p, err := parseProduct(`{"name":"` + long + `","specs":[` + specs.String() + `],"confidence":0.5}`)
 
 		// Assert
 		require.NoError(t, err)
-		require.Equal(t, maxProductNameRunes, len([]rune(p.Name)))
+		require.Len(t, []rune(p.Name), maxProductNameRunes)
 		require.Len(t, p.Specs, maxProductListItems)
 		require.Equal(t, "国行", p.Specs[0])
 	})
@@ -188,7 +189,7 @@ func Test_parseProduct(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, p.Tags, maxProductTags)
 		require.Equal(t, "数码", p.Tags[0])
-		require.Equal(t, maxProductTagRunes, len([]rune(p.Tags[1])))
+		require.Len(t, []rune(p.Tags[1]), maxProductTagRunes)
 		require.Equal(t, "手机", p.Tags[2])
 	})
 

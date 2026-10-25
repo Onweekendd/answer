@@ -110,9 +110,9 @@ func newAgent(t *testing.T, model llm.Client, plugins ...Plugin) *Agent {
 }
 
 // toolReplies 是第 i 次请求里的工具消息，按顺序
-func toolReplies(model *fakeModel, i int) []llm.Message {
+func toolReplies(model *fakeModel) []llm.Message {
 	var out []llm.Message
-	for _, m := range model.reqs[i].Messages {
+	for _, m := range model.reqs[1].Messages {
 		if m.Role == llm.RoleTool {
 			out = append(out, m)
 		}
@@ -220,7 +220,7 @@ func TestRun_EveryCallGetsAReply(t *testing.T) {
 			if tc.first.Terminate {
 				return // 结束了就不再请求模型
 			}
-			replies := toolReplies(model, 1)
+			replies := toolReplies(model)
 			require.Len(t, replies, 3, "每个调用都有一条回复，不然服务商会拒绝这段对话")
 			assert.Equal(t, tc.skipped, replies[1].Parts[0].Text)
 			assert.Equal(t, tc.skipped, replies[2].Parts[0].Text)
@@ -267,7 +267,7 @@ func TestRun_AbortFinishesWithTheToolsReason(t *testing.T) {
 	assert.Equal(t, "根据已有信息", res.Text)
 	assert.Equal(t, Reason("browser_gone"), res.Finish)
 	assert.False(t, res.Success)
-	replies := toolReplies(model, 1)
+	replies := toolReplies(model)
 	require.Len(t, replies, 2)
 	assert.Equal(t, tool.ErrBrowserGone.Text, replies[0].Parts[0].Text)
 	assert.Equal(t, SkippedText, replies[1].Parts[0].Text)
@@ -390,7 +390,7 @@ func TestRun_AfterToolCanReadAndChangeTheResult(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, []string{"c1 0-0", "c2 1-0"}, seen)
-	assert.Equal(t, "结果（已核对）", toolReplies(model, 1)[0].Parts[0].Text)
+	assert.Equal(t, "结果（已核对）", toolReplies(model)[0].Parts[0].Text)
 }
 
 func TestRun_BeforeModelChangesOnlyWhatIsSent(t *testing.T) {
@@ -416,7 +416,7 @@ func TestRun_BeforeModelChangesOnlyWhatIsSent(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	assert.Equal(t, "占位", toolReplies(model, 1)[0].Parts[0].Text, "发给模型的是处理过的")
+	assert.Equal(t, "占位", toolReplies(model)[0].Parts[0].Text, "发给模型的是处理过的")
 	assert.Equal(t, "真内容", rec.messages[1].Parts[0].Text, "记下来的是原样")
 }
 

@@ -10,7 +10,7 @@ Revision=$(shell git rev-parse --short HEAD 2>/dev/null || echo "")
 GO_FLAGS=-ldflags="-X github.com/apache/answer/cmd.Version=$(VERSION) -X 'github.com/apache/answer/cmd.Revision=$(Revision)' -X 'github.com/apache/answer/cmd.Time=`date +%s`' -extldflags -static"
 GO=$(GO_ENV) "$(shell which go)"
 
-GOLANGCI_VERSION ?= v2.6.2
+GOLANGCI_VERSION ?= v2.10.1
 TOOLS_BIN := $(shell mkdir -p build/tools && realpath build/tools)
 
 GOLANGCI = $(TOOLS_BIN)/golangci-lint-$(GOLANGCI_VERSION)

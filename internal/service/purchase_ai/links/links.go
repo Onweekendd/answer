@@ -25,6 +25,7 @@ package links
 import (
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -89,10 +90,8 @@ func Clean(raw string) (string, bool) {
 		return "", false
 	}
 	host := strings.ToLower(u.Hostname())
-	for _, h := range redirectHosts {
-		if host == h {
-			return "", false
-		}
+	if slices.Contains(redirectHosts, host) {
+		return "", false
 	}
 	u.Fragment = ""
 	u.User = nil

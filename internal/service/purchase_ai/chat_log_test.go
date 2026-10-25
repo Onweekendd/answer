@@ -21,8 +21,6 @@ package purchaseai
 
 import (
 	"context"
-	"errors"
-	"regexp"
 	"testing"
 
 	"github.com/apache/answer/internal/service/llm"
@@ -142,7 +140,7 @@ func TestPathTo(t *testing.T) {
 
 	t.Run("找不到", func(t *testing.T) {
 		_, err := pathTo(entries, "e9")
-		assert.True(t, errors.Is(err, errNoSuchEntry))
+		assert.ErrorIs(t, err, errNoSuchEntry)
 	})
 
 	t.Run("绕成环不会死循环", func(t *testing.T) {
@@ -153,7 +151,7 @@ func TestPathTo(t *testing.T) {
 
 func TestNewEntryID(t *testing.T) {
 	id := newEntryID()
-	assert.Regexp(t, regexp.MustCompile(`^e_[0-9a-z]{12}$`), id)
+	assert.Regexp(t, `^e_[0-9a-z]{12}$`, id)
 	assert.NotEqual(t, id, newEntryID())
 }
 

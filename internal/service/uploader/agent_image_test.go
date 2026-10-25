@@ -42,7 +42,7 @@ func encoded(t *testing.T, encode func(*bytes.Buffer, image.Image) error) []byte
 	return buf.Bytes()
 }
 
-func Test_saveAgentImage_写进agent目录(t *testing.T) {
+func Test_saveAgentImage_SavesToAgentDirectory(t *testing.T) {
 	// Arrange
 	uploadPath := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(uploadPath, constant.AgentSubPath), 0o755))
@@ -59,7 +59,7 @@ func Test_saveAgentImage_写进agent目录(t *testing.T) {
 	assert.Equal(t, data, saved)
 }
 
-func Test_saveAgentImage_不是jpeg就不存(t *testing.T) {
+func Test_saveAgentImage_SkipsNonJPEG(t *testing.T) {
 	// Arrange：png 和一段 HTML，都不是插件截出来的 jpeg
 	uploadPath := t.TempDir()
 	pngData := encoded(t, func(b *bytes.Buffer, img image.Image) error { return png.Encode(b, img) })
@@ -69,7 +69,7 @@ func Test_saveAgentImage_不是jpeg就不存(t *testing.T) {
 		_, err := saveAgentImage(uploadPath, data)
 
 		// Assert
-		assert.Error(t, err)
+		require.Error(t, err)
 	}
 	entries, _ := os.ReadDir(uploadPath)
 	assert.Empty(t, entries)
@@ -115,7 +115,7 @@ func Test_putAgentImage(t *testing.T) {
 		_, err := putAgentImage(context.Background(), store, []byte("<script>alert(1)</script>"))
 
 		// Assert
-		assert.ErrorIs(t, err, ErrNotJPEG)
+		require.ErrorIs(t, err, ErrNotJPEG)
 		assert.Empty(t, store.objects)
 	})
 

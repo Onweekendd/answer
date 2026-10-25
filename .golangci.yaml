@@ -22,6 +22,7 @@ linters:
       - answer-data
       - ui
       - i18n
+      - tmp
   enable:
     - asasalint # checks for pass []any as any in variadic func(...any)
     - asciicheck # checks that your code does not contain non-ASCII identifiers
@@ -36,14 +37,3 @@ linters:
     - unconvert # removes unnecessary type conversions
     - unparam # reports unused function parameters
     - whitespace # detects leading and trailing whitespace
-
-formatters:
-  enable:
-    - gofmt
-    - goimports
-  settings:
-    gofmt:
-      simplify: true
-      rewrite-rules:
-        - pattern: 'interface{}'
-          replacement: 'any'

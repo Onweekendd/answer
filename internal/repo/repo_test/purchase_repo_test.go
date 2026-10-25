@@ -111,7 +111,7 @@ func Test_purchaseRepo_UpsertWithSession(t *testing.T) {
 		detail, exist, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
 		require.True(t, exist)
-		require.Equal(t, 5499.0, detail.Price)
+		require.InDelta(t, 5499.0, detail.Price, 0)
 		require.Equal(t, `["b.png"]`, detail.Images)
 
 		questionCount, err := testDataSource.DB.Where("question_id = ?", question.ID).Count(&entity.PurchaseDetail{})
@@ -122,7 +122,7 @@ func Test_purchaseRepo_UpsertWithSession(t *testing.T) {
 	t.Run("同样的内容写两次结果不变（幂等）", func(t *testing.T) {
 		d := &entity.PurchaseDetail{QuestionID: question.ID, Price: 5499, Currency: "CNY", Images: `["b.png"]`}
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			require.NoError(t, withSession(t, func(session *xorm.Session) error {
 				return purchaseRepo.UpsertWithSession(session, d)
 			}))
@@ -131,13 +131,12 @@ func Test_purchaseRepo_UpsertWithSession(t *testing.T) {
 		detail, exist, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
 		require.True(t, exist)
-		require.Equal(t, 5499.0, detail.Price)
+		require.InDelta(t, 5499.0, detail.Price, 0)
 		require.Equal(t, `["b.png"]`, detail.Images)
 
 		questionCount, err := testDataSource.DB.Where("question_id = ?", question.ID).Count(&entity.PurchaseDetail{})
 		require.NoError(t, err)
 		require.Equal(t, int64(1), questionCount)
-
 	})
 }
 
@@ -154,12 +153,11 @@ func Test_purchaseRepo_GetByQuestionID(t *testing.T) {
 		detail, exist, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
 		require.True(t, exist)
-		require.Equal(t, 5999.0, detail.Price)
+		require.InDelta(t, 5999.0, detail.Price, 0)
 		require.Equal(t, `["a.png"]`, detail.Images)
 	})
 
 	t.Run("不存在时返回 exist=false 且不报错", func(t *testing.T) {
-
 		detail, exist, err := purchaseRepo.GetByQuestionID(ctx, "10010000000000999")
 		require.NoError(t, err)
 		require.False(t, exist)
@@ -190,9 +188,9 @@ func Test_purchaseRepo_BatchGetByQuestionIDs(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 		require.Len(t, purchaseMap, 2)
-		require.Equal(t, 5999.0, purchaseMap[question1.ID].Price)
+		require.InDelta(t, 5999.0, purchaseMap[question1.ID].Price, 0)
 		require.Equal(t, `["a.png"]`, purchaseMap[question1.ID].Images)
-		require.Equal(t, 6999.0, purchaseMap[question2.ID].Price)
+		require.InDelta(t, 6999.0, purchaseMap[question2.ID].Price, 0)
 
 		// 不存在的 ID 不能占一个零值的位置，否则列表接口会返回 {price:0} 而不是 null
 		_, ok := purchaseMap[missingID]
@@ -230,7 +228,7 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 		detail, exist, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
 		require.True(t, exist)
-		require.Equal(t, product, detail.Product)
+		require.JSONEq(t, product, detail.Product)
 	})
 
 	t.Run("只改 product 列，价格和图片不变", func(t *testing.T) {
@@ -241,7 +239,7 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 		require.NoError(t, err)
 		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
-		require.Equal(t, 5999.0, detail.Price)
+		require.InDelta(t, 5999.0, detail.Price, 0)
 		require.Equal(t, `["a.png"]`, detail.Images)
 	})
 
@@ -256,7 +254,7 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 		require.NoError(t, err)
 		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
-		require.Equal(t, "", detail.Product)
+		require.Empty(t, detail.Product)
 	})
 
 	// The edit form sends the product back with the rest, so an edit writes
@@ -286,8 +284,8 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 		require.NoError(t, err)
 		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
-		require.Equal(t, 4999.0, detail.Price)
-		require.Equal(t, edited, detail.Product)
+		require.InDelta(t, 4999.0, detail.Price, 0)
+		require.JSONEq(t, edited, detail.Product)
 	})
 
 	t.Run("编辑帖子时没带商品就清空，比如用户点了「不对」", func(t *testing.T) {
@@ -301,7 +299,7 @@ func Test_purchaseRepo_UpdateProduct(t *testing.T) {
 		require.NoError(t, err)
 		detail, _, err := purchaseRepo.GetByQuestionID(ctx, question.ID)
 		require.NoError(t, err)
-		require.Equal(t, "", detail.Product)
+		require.Empty(t, detail.Product)
 	})
 }
 

@@ -21,11 +21,11 @@ package purchaseai
 
 import (
 	"context"
-	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"testing"
 
 	"github.com/apache/answer/internal/schema"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
 	"github.com/apache/answer/internal/service/uploader"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -263,7 +263,6 @@ func liveAndReplayed(t *testing.T, model *fakeLLM, browserOn bool) (live, replay
 }
 
 func TestReplayTurn_SameAsLive(t *testing.T) {
-
 	t.Run("打开、被跳过的调用、记商品、截图，done 引用了截图", func(t *testing.T) {
 		// Arrange
 		first := calls(openJD("c1"), toolCall("c2", toolSnapshot, `{}`))

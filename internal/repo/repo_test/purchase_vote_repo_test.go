@@ -88,7 +88,6 @@ func Test_purchaseRepo_Vote(t *testing.T) {
 		require.Equal(t, 0, detail.BuyCount)
 		require.Equal(t, 1, detail.SkipCount)
 		require.EqualValues(t, 1, countVotes(t, questionID))
-
 	})
 
 	t.Run("重复投同一个选项，计数不变", func(t *testing.T) {
@@ -123,7 +122,7 @@ func Test_purchaseRepo_Vote(t *testing.T) {
 		//          用户 ID 可以用 strconv.Itoa(200 + i)
 		questionID := newVoteQuestion(t, "vote close")
 
-		for i := 0; i < 9; i++ {
+		for i := range 9 {
 			_, justClosed, err := purchaseRepo.Vote(ctx, questionID, strconv.Itoa(200+i), entity.PurchaseVoteBuy, voteCloseAt)
 
 			require.False(t, justClosed)
@@ -144,7 +143,7 @@ func Test_purchaseRepo_Vote(t *testing.T) {
 		// Arrange: TODO 新建帖子，投满 10 票
 		questionID := newVoteQuestion(t, "vote after close")
 
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			_, _, err := purchaseRepo.Vote(ctx, questionID, strconv.Itoa(200+i), entity.PurchaseVoteBuy, voteCloseAt)
 
 			require.NoError(t, err)
@@ -156,7 +155,6 @@ func Test_purchaseRepo_Vote(t *testing.T) {
 		// Assert: TODO 返回 ErrVoteClosed；重新用 GetByQuestionID 读出来，三个计数加起来还是 10
 		require.ErrorIs(t, err, purchaseservice.ErrVoteClosed)
 		require.Equal(t, voteCloseAt, int(countVotes(t, questionID)))
-
 	})
 }
 

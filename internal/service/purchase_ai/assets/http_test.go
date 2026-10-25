@@ -42,7 +42,7 @@ func serve(h http.Handler, method, path, body, token string) *httptest.ResponseR
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Accept", "application/json, text/event-stream")
-	r.Header.Set("MCP-Protocol-Version", "2025-06-18")
+	r.Header.Set("Mcp-Protocol-Version", "2025-06-18")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	return w
