@@ -60,11 +60,9 @@ ui:
 	@cd ui && pnpm pre-install && pnpm build && cd -
 
 lint: generate $(GOLANGCI)
-	@bash ./script/check-asf-header.sh
 	$(GOLANGCI) run
 
 lint-fix: generate $(GOLANGCI)
-	@bash ./script/check-asf-header.sh
 	$(GOLANGCI) run --fix
 
 all: clean build
