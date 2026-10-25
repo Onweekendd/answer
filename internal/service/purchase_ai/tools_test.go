@@ -99,7 +99,8 @@ func Test_tools(t *testing.T) {
 	})
 
 	t.Run("每次的工具定义都一样", func(t *testing.T) {
-		require.Equal(t, full().agent.Defs(), full().agent.Defs())
+		first, second := full().agent.Defs(), full().agent.Defs()
+		require.Equal(t, first, second)
 	})
 }
 

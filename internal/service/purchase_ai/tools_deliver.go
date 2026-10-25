@@ -263,7 +263,7 @@ func inlineImages(ctx context.Context, ws Workspace, dir string, page []byte) ([
 			return "", false
 		}
 		// 去掉 ?v=1、#frag 这类后缀，按网页所在的目录解析相对路径
-		file := strings.SplitN(strings.SplitN(ref, "?", 2)[0], "#", 2)[0]
+		file, _, _ := strings.Cut(strings.SplitN(ref, "?", 2)[0], "#")
 		p := path.Clean(path.Join(dir, file))
 		if path.IsAbs(file) {
 			p = path.Clean(file)

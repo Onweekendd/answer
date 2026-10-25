@@ -34,6 +34,7 @@ import {
   type TabRequest,
   type TabResponse
 } from "./protocol";
+import { RATE_LIMIT, siteRateLimiter } from "./rate-limit";
 
 // 在 background 里执行 Go 发来的命令。
 // 分工：跟"标签页"有关的（跳转、开关）在这里做；跟"页面内容"有关的转给 content script。
@@ -53,8 +54,8 @@ const PRESS_SETTLE_MS = 500;
 // 列表收割：默认收多少张、最多滚几屏。上限防止一条命令把页面滚上几分钟
 const DEFAULT_HARVEST_LIMIT = 100;
 const MAX_HARVEST_LIMIT = 400;
-const DEFAULT_HARVEST_SCROLLS = 10;
-const MAX_HARVEST_SCROLLS = 40;
+const DEFAULT_HARVEST_SCROLLS = 3;
+const MAX_HARVEST_SCROLLS = 5;
 // 取缩略图：几百张从缓存里读、缩小，每张几毫秒到十几毫秒
 const HARVEST_THUMBS_TIMEOUT_MS = 60_000;
 // 缩略图的质量。压到多宽由页面的增强定（stats.thumbWidth），预算不够时退回 GENERIC_THUMB_WIDTH
@@ -66,10 +67,38 @@ type ListenerOf<E> = E extends chrome.events.Event<infer F> ? F : never;
 
 // 同一标签页串行执行，避免输入、快照和 debugger 会话相互干扰。
 const queues = new Map<number, Promise<unknown>>();
+const LIMITED_COMMANDS = new Set([
+  "navigate",
+  "open",
+  "click",
+  "hover",
+  "press",
+  "type",
+  "scroll",
+  "harvest",
+  "screenshot",
+  "product",
+  "image",
+  "netcapture",
+  "mediaRange"
+]);
 
 export async function execute(cmd: Command): Promise<unknown> {
+  const deadline = Date.now() + RATE_LIMIT.maxQueueWaitMs;
   const previous = queues.get(cmd.tabId) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(() => executeCommand(cmd));
+  const next = previous
+    .catch(() => {})
+    .then(async () => {
+      // 纯读取不占额度；未知命令交给原来的分发器报告 UNKNOWN_COMMAND。
+      if (!LIMITED_COMMANDS.has(cmd.cmd)) {
+        return executeCommand(cmd);
+      }
+      const url =
+        cmd.cmd === "open" || cmd.cmd === "navigate" || cmd.cmd === "netcapture"
+          ? cmd.args.url
+          : await tabUrl(cmd.tabId);
+      return siteRateLimiter.run(url, () => executeCommand(cmd), deadline);
+    });
   queues.set(cmd.tabId, next);
   try {
     return await next;
@@ -77,6 +106,15 @@ export async function execute(cmd: Command): Promise<unknown> {
     if (queues.get(cmd.tabId) === next) {
       queues.delete(cmd.tabId);
     }
+  }
+}
+
+export async function tabUrl(tabId: number): Promise<string> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return tab.pendingUrl ?? tab.url ?? "about:blank";
+  } catch {
+    throw new CommandError("TAB_NOT_FOUND", `没有 id 为 ${tabId} 的标签页`);
   }
 }
 
@@ -164,9 +202,18 @@ async function executeCommand(cmd: Command): Promise<unknown> {
       });
     case "scroll":
       return withDebugger(cmd.tabId, async (target) => {
+        const pages = cmd.args.pages ?? 1;
+        if (!Number.isFinite(pages) || pages <= 0 || pages > 5) {
+          throw new CommandError("BAD_MESSAGE", "一次最多滚动 5 屏，pages 必须大于 0");
+        }
         await bringToFront(cmd.tabId);
         const viewport = (await sendToTab(cmd.tabId, { type: "viewport" })) as { width: number; height: number };
-        await cdpScroll(target, viewport, cmd.args.direction, cmd.args.pages ?? 1);
+        for (let remaining = pages; remaining > 0; remaining -= 1) {
+          if (remaining < pages) {
+            await siteRateLimiter.acquire(await tabUrl(cmd.tabId));
+          }
+          await cdpScroll(target, viewport, cmd.args.direction, Math.min(1, remaining));
+        }
         return sendToTab(cmd.tabId, { type: "scrollPosition" });
       });
     case "open":

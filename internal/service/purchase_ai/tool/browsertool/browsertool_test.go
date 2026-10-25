@@ -134,7 +134,7 @@ func Test_formatSnapshot(t *testing.T) {
 	require.NotContains(t, text, "浮层")
 }
 
-func Test_formatSnapshot_浮层(t *testing.T) {
+func Test_formatSnapshot_FloatingLayer(t *testing.T) {
 	// Arrange：插件说页面中间开着一个浮层
 	snap := snapshotData{URL: "https://www.jd.com", Title: "京东", Elements: "[0]<div>关闭弹窗"}
 	snap.Stats.Overlay = true
@@ -258,6 +258,6 @@ func Test_pageResult(t *testing.T) {
 
 func Test_hashText(t *testing.T) {
 	// 页面一样哈希就一样，页面变了哈希就变
-	require.Equal(t, hashText("a"), hashText("a"))
+	require.Equal(t, "ca978112ca1bbdca", hashText("a"))
 	require.NotEqual(t, hashText("a"), hashText("b"))
 }

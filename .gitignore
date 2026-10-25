@@ -54,3 +54,10 @@ script/community/*.local.json
 script/community/*.local.env
 script/community/out/
 script/community/*.log
+
+# Host-specific reverse SSH routing and public Cube CA mount
+/deploy/docker-compose.override.yaml
+/deploy/local-services/
+
+# Downloaded media and local task results (may contain signed access URLs)
+/downloads/

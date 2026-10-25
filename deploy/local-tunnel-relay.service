@@ -1,0 +1,19 @@
+[Unit]
+Description=Private Docker relay for local Hub and CubeSandbox SSH tunnels
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=simple
+DynamicUser=true
+ExecStart=/usr/bin/python3 /usr/local/lib/maibumai/local-tunnel-relay.py --bind 172.17.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

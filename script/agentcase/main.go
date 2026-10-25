@@ -61,6 +61,10 @@ type options struct {
 }
 
 func main() {
+	os.Exit(runMain())
+}
+
+func runMain() int {
 	var o options
 	flag.StringVar(&o.hub, "hub", "http://127.0.0.1:8765", "Hub address")
 	flag.StringVar(&o.llmConfig, "llm", "script/agentcase/llm.local.json", "model config (not committed)")
@@ -77,9 +81,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if err := run(ctx, o); err != nil {
-		fmt.Fprintln(os.Stderr, "agentcase:", err)
-		os.Exit(1)
+		_, _ = fmt.Fprintln(os.Stderr, "agentcase:", err)
+		return 1
 	}
+	return 0
 }
 
 // outcome 是一次运行的结果。跑不了的（插件没连上、模型服务报错、插件中途断开）不算失败：
@@ -334,13 +339,13 @@ func selfReport(res *purchaseai.TaskResult) string {
 
 func printSteps(steps []purchaseai.TaskStep) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "步\t工具\t参数\t结果\t网址\t耗时")
+	_, _ = fmt.Fprintln(w, "步\t工具\t参数\t结果\t网址\t耗时")
 	for _, s := range steps {
 		status := "ok"
 		if s.Failed {
 			status = "失败"
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", s.Step+1, s.Tool, clip(s.Arguments, 60), status, clip(s.URL, 70), s.Duration.Round(100*time.Millisecond))
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", s.Step+1, s.Tool, clip(s.Arguments, 60), status, clip(s.URL, 70), s.Duration.Round(100*time.Millisecond))
 	}
 	_ = w.Flush()
 }
@@ -352,7 +357,7 @@ func printSummary(all []attempt) {
 	}
 	fmt.Println("\n==== 汇总 ====")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "case\t通过率\t跑不了\t模型自评做成\t平均步数\t平均 token\t平均耗时")
+	_, _ = fmt.Fprintln(w, "case\t通过率\t跑不了\t模型自评做成\t平均步数\t平均 token\t平均耗时")
 
 	var order []string
 	byCase := map[string][]attempt{}
@@ -368,7 +373,7 @@ func printSummary(all []attempt) {
 		if s.judged > 0 {
 			rate = fmt.Sprintf("%d/%d", s.passed, s.judged)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d\t%d/%d\t%s\t%s\t%s\n", name, rate, s.blocked, s.selfPass, s.ran,
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d/%d\t%s\t%s\t%s\n", name, rate, s.blocked, s.selfPass, s.ran,
 			avg(s.steps, s.ran), kilo(avgInt(s.tokens, s.ran)), avgDuration(s.elapsed, s.ran))
 	}
 	_ = w.Flush()

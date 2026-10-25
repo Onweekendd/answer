@@ -27,6 +27,7 @@ import {
   MEDIA_RANGE_MAX,
   type MediaRange,
   type ProductArea,
+  type RateLimitRequest,
   type ShotArea,
   type TabRequest,
   type TabResponse,
@@ -707,6 +708,16 @@ async function harvestOnPage(limit: number, maxScrolls: number): Promise<Harvest
     { limit, maxScrolls },
     {
       async scroll() {
+        const permission = await chrome.runtime.sendMessage<RateLimitRequest, TabResponse>({
+          type: "rateLimit",
+          action: "harvestScroll"
+        });
+        if (!permission?.ok) {
+          throw new CommandError(
+            permission?.error.code ?? "EXEC_FAILED",
+            permission?.error.message ?? "无法取得站点滚动额度"
+          );
+        }
         // 滚卡片所在的那个滚动容器：有的网站滚的不是整个页面，而是里面一个 overflow 的 div
         const scroller = scrollerOf(lastCards[0]);
         const before = scroller.scrollTop;

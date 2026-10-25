@@ -201,8 +201,8 @@ func looksBlank(data string) (bool, error) {
 	const grid = 48
 	counts := map[[3]uint32]int{}
 	most := 0
-	for i := 0; i < grid; i++ {
-		for j := 0; j < grid; j++ {
+	for i := range grid {
+		for j := range grid {
 			x := b.Min.X + (2*i+1)*b.Dx()/(2*grid)
 			y := b.Min.Y + (2*j+1)*b.Dy()/(2*grid)
 			r, g, bl, _ := img.At(x, y).RGBA()

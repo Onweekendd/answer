@@ -90,8 +90,8 @@ func TestAddPurchaseVote_oneVotePerUserPerPost(t *testing.T) {
 	_, otherUserErr := x.Insert(&entity.PurchaseVote{QuestionID: "1", UserID: "3", Choice: entity.PurchaseVoteSkip})
 
 	// Assert
-	assert.Error(t, sameUserErr, "a second vote by the same user must hit the primary key")
-	assert.NoError(t, otherUserErr)
+	require.Error(t, sameUserErr, "a second vote by the same user must hit the primary key")
+	require.NoError(t, otherUserErr)
 	count, err := x.Count(&entity.PurchaseVote{QuestionID: "1"})
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, count)

@@ -101,7 +101,7 @@ func (c *HubClient) do(ctx context.Context, method, path string, payload []byte)
 		}
 		return nil, fmt.Errorf("browser hub unreachable: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	var out apiResult
 	out.status = res.StatusCode

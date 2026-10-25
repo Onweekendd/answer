@@ -22,7 +22,6 @@ package browser
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -144,7 +143,7 @@ func TestHubClient_Call(t *testing.T) {
 		// Assert
 		require.Error(t, err)
 		var cmdErr *CommandError
-		assert.False(t, errors.As(err, &cmdErr))
+		assert.NotErrorAs(t, err, &cmdErr)
 		assert.Contains(t, err.Error(), "UNAUTHORIZED")
 	})
 }

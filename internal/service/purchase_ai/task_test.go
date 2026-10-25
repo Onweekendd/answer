@@ -25,16 +25,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/apache/answer/internal/service/purchase_ai/agent"
-	"github.com/apache/answer/internal/service/purchase_ai/guard"
-	"github.com/apache/answer/internal/service/purchase_ai/tool"
-	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/apache/answer/internal/service/browser"
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/agent"
+	"github.com/apache/answer/internal/service/purchase_ai/guard"
+	"github.com/apache/answer/internal/service/purchase_ai/tool"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"github.com/stretchr/testify/require"
 )
 
@@ -143,7 +143,7 @@ func (f *fakeBrowser) Call(ctx context.Context, tabID int, cmd string, args any)
 			name = fmt.Sprintf("screenshot %d", a.Index)
 		}
 		f.calls = append(f.calls, name)
-		data := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("shot%d", f.shots)))
+		data := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "shot%d", f.shots))
 		return json.Marshal(map[string]any{"data": data, "mime": "image/jpeg", "width": 1024, "height": 576, "url": f.tabs[tabID]})
 	case "image":
 		name := "image"

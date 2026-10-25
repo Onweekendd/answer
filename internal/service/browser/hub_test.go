@@ -64,9 +64,12 @@ func newHub(t *testing.T) (*Hub, *httptest.Server) {
 func dialFake(t *testing.T, srv *httptest.Server, origin, token string, reply fakeReply) (*websocket.Conn, error) {
 	t.Helper()
 	ctx := context.Background()
-	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Origin": {origin}},
 	})
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return nil, err
 	}

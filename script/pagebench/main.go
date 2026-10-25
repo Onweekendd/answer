@@ -179,9 +179,9 @@ func run(c *client, pages []page, delay time.Duration, maxChars int, save func(n
 
 func printResults(results []Result) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(w, "\npage\tlines\tchars\tdup\tempty\tclipped\thidden\tmerged\tms\tstatus\t")
+	_, _ = fmt.Fprintln(w, "\npage\tlines\tchars\tdup\tempty\tclipped\thidden\tmerged\tms\tstatus\t")
 	for _, r := range results {
-		fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%d\t%d\t%.0f\t%.0f\t%.0f\t%s\t\n", r.Name,
+		_, _ = fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%d\t%d\t%.0f\t%.0f\t%.0f\t%s\t\n", r.Name,
 			r.Metrics.Lines, r.Metrics.Chars, r.Metrics.Duplicates, r.Metrics.Empty, r.Metrics.Clipped,
 			r.Stats["hidden"], r.Stats["merged"], r.Stats["ms"], r.Status)
 	}

@@ -17,9 +17,10 @@
  * under the License.
  */
 
-import { execute } from "./commands";
+import { execute, tabUrl } from "./commands";
 import { HubConnection } from "./connection";
-import { type Command, type TabInfo, toErrorBody } from "./protocol";
+import { type Command, type RateLimitRequest, type TabInfo, type TabResponse, toErrorBody } from "./protocol";
+import { siteRateLimiter } from "./rate-limit";
 import { loadConfig } from "./storage";
 
 // 插件的"后台进程"（MV3 service worker）。
@@ -86,6 +87,24 @@ async function handleMessage(text: string): Promise<void> {
 }
 
 // ---- 下面都是顶层同步注册 ----
+
+chrome.runtime.onMessage.addListener((message: RateLimitRequest, sender, respond) => {
+  if (
+    message?.type !== "rateLimit" ||
+    message.action !== "harvestScroll" ||
+    sender.tab?.id === undefined ||
+    sender.frameId !== 0
+  ) {
+    return;
+  }
+  void tabUrl(sender.tab.id)
+    .then((url) => siteRateLimiter.acquire(url))
+    .then(
+      () => respond({ ok: true, data: null } satisfies TabResponse),
+      (err) => respond({ ok: false, error: toErrorBody(err) } satisfies TabResponse)
+    );
+  return true;
+});
 
 // 没连上时 send 会直接丢掉；不要紧，重连后的 hello 会带上完整的列表
 chrome.tabs.onCreated.addListener(reportTabsSoon);

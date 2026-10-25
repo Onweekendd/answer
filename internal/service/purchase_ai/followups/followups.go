@@ -70,17 +70,17 @@ var listMarker = regexp.MustCompile(`^\s*(?:[-*•·]\s*|\d+\s*[.、)）]\s*)`)
 // Split 把回答里的 <followups> 块切出来，返回去掉块的回答和里面的建议（最多 maxFollowups 句）。
 // 写得不规矩也认：没有 <q> 就一行一句；结束标签丢了（回答被截断）就切到结尾
 func Split(text string) (string, []string) {
-	start := strings.Index(text, followupsOpen)
-	if start < 0 {
+	before, after, ok := strings.Cut(text, followupsOpen)
+	if !ok {
 		return text, nil
 	}
-	body := text[start+len(followupsOpen):]
+	body := after
 	rest := ""
 	if end := strings.Index(body, followupsClose); end >= 0 {
 		rest = body[end+len(followupsClose):]
 		body = body[:end]
 	}
-	answer := strings.TrimSpace(strings.TrimSpace(text[:start]) + "\n\n" + strings.TrimSpace(rest))
+	answer := strings.TrimSpace(strings.TrimSpace(before) + "\n\n" + strings.TrimSpace(rest))
 
 	var lines []string
 	if items := followupItem.FindAllStringSubmatch(body, -1); len(items) > 0 {

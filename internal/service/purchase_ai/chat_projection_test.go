@@ -21,10 +21,10 @@ package purchaseai
 
 import (
 	"encoding/json"
-	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"testing"
 
 	"github.com/apache/answer/internal/service/llm"
+	"github.com/apache/answer/internal/service/purchase_ai/tool/browsertool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

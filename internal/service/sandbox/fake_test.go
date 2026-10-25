@@ -134,8 +134,8 @@ func newFakeStore() *fakeStore {
 	return &fakeStore{owner: map[int64]string{}, box: map[int64]string{}}
 }
 
-func (s *fakeStore) addChat(chatID int64, userID, sandboxID string) {
-	s.owner[chatID] = userID
+func (s *fakeStore) addChat(chatID int64, sandboxID string) {
+	s.owner[chatID] = "u1"
 	s.box[chatID] = sandboxID
 }
 
@@ -165,8 +165,8 @@ func (s *fakeStore) SwapSandbox(_ context.Context, chatID int64, old, newID stri
 	return true, nil
 }
 
-func (s *fakeStore) sandboxOf(chatID int64) string {
+func (s *fakeStore) sandboxOf() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.box[chatID]
+	return s.box[7]
 }

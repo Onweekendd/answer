@@ -43,6 +43,7 @@ import (
 //   - CUBE_PROXY_NODE_IP：CubeProxy 的 IP。设了以后传文件、跑命令都直接连这个 IP，不解析 *.cube.app，
 //     Clash 的 fake-ip 就劫持不到（SDK 的 transport.go，DialContext 不管域名）
 //   - CUBE_PROXY_PORT_HTTP：CubeProxy 的端口。本地 WSL 里是 443（TLS）
+//   - CUBE_PROXY_SCHEME：转发到非 443 端口时显式填 https，保持 TLS 校验
 //   - CUBE_CA_FILE：我们自己加的。CubeProxy 的证书是 Cube 安装时用 mkcert 签的，只有 WSL 里认；
 //     指向那个 CA 的证书（公钥，不是私钥），比如 answer-data/cube/ca.crt
 func Configured() bool {

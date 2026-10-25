@@ -148,8 +148,8 @@ func Test_citedShots(t *testing.T) {
 func jpegOf(t *testing.T, w, h int, bg, fg color.Color) string {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for x := 0; x < w; x++ {
-		for y := 0; y < h; y++ {
+	for x := range w {
+		for y := range h {
 			c := bg
 			if x < w/2 && y < h/2 {
 				c = fg
